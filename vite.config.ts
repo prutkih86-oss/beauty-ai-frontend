@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
 
   server: {
-    allowedHosts: ["fool-creatable-ignition.ngrok-free.dev"],
+    allowedHosts: ["fool-creatable-ignition.ngrok-free.dev", "beautyaiservice.polandcentral.cloudapp.azure.com"],
   },
 });
