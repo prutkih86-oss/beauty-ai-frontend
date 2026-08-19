@@ -14,6 +14,18 @@ The frontend provides a modern responsive interface where users can:
 * explore nearby beauty locations on an interactive map;
 * discover partner offers and top-rated services;
 * use a responsive interface across desktop and mobile devices.
+  
+## Preview
+
+### Desktop
+
+<img src="docs/frontend-desktop.jpg" width="100%" alt="Beauty AI Frontend Desktop">
+
+### Mobile
+
+<p align="center">
+  <img src="docs/frontend-mobile.jpg" width="320" alt="Beauty AI Frontend Mobile">
+</p>
 
 ## My Contribution
 
