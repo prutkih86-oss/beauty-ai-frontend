@@ -1081,3 +1081,9 @@ more-filters-text-btn {
     margin-right: auto !important;
   }
 }
+/* ---------- DESKTOP CATEGORIES---------- */
+@media (min-width: 601px) {
+  .categories-container {
+    margin-top: 36px;
+  }
+}
