@@ -977,3 +977,107 @@ more-filters-text-btn {
 .map-district .value {
   font-family: 'Manrope', sans-serif;
 }
+/* ---------- MOBILE HERO ---------- */
+@media (max-width: 600px) {
+  .hero-full-width {
+    background-image: url('./assets/hero-mobile.png') !important;
+    background-position: center;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-content h1 {
+    font-size: 28px !important;
+  }
+}
+@media (max-width: 600px) {
+  .hero-full-width {
+    position: relative;
+    background-image: url('./assets/hero-mobile.png') !important;
+    background-size: cover;
+    background-position: center;
+    overflow: hidden;
+  }
+
+  .hero-full-width::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 90px;
+    background: linear-gradient(
+      to bottom,
+      rgba(252, 250, 255, 0),
+      #fcfaff
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .hero-overlay-content {
+    position: relative;
+    z-index: 1;
+  }
+}
+@media (max-width: 600px) {
+  .hero-full-width::before {
+    background: linear-gradient(
+      to right,
+      rgba(252, 250, 255, 0.95) 0%,
+      rgba(252, 250, 255, 0.10) 18%,
+      rgba(252, 250, 255, 0.10) 82%,
+      rgba(252, 250, 255, 0.95) 100%
+    ) !important;
+  }
+}
+@media (max-width: 600px) {
+  .hero-full-width {
+    margin-top: 0px !important;
+  }
+}
+@media (max-width: 600px) {
+  .search-bar {
+    transform: translateY(-10px);
+  }
+}
+@media (max-width: 600px) {
+  .hero-full-width {
+    min-height: 260px !important;
+    height: 260px !important;
+  }
+
+  .hero-overlay-content {
+    padding-top: 10px !important;
+  }
+
+  .hero-content {
+    padding-top: 15px !important;
+  }
+
+  .hero-subtitle {
+    margin-bottom: 35px !important;
+  }
+}
+@media (max-width: 600px) {
+  .hero-content {
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  .hero-content h1 {
+    text-align: center !important;
+  }
+
+  .hero-subtitle {
+    text-align: center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}

@@ -1,5 +1,5 @@
 import React from "react";
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -41,48 +41,53 @@ export default function MapSection({ lang }: MapSectionProps) {
   return (
     <div className="map-section">
       <div className="map-canvas">
-        {/* District badge now lives INSIDE map-canvas so the absolute
-            positioning in App.css (.map-district) places it in the
-            top-left corner of the map itself, not above it */}
-       <div className="map-district">
-        <span className="label">
-          {lang === "ua" ? "Ваш район" : "Your district"}
-        </span>
+        <div className="map-district">
+          <span className="label">
+            {lang === "ua" ? "Ваш район" : "Your district"}
+          </span>
 
-        <span className="value">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#a855f7"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
+          <span className="value">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#a855f7"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
 
-          {lang === "ua" ? "Печерський" : "Pechersk"}
-        </span>
-      </div>
+            {lang === "ua" ? "Печерський" : "Pechersk"}
+          </span>
+        </div>
 
         <MapContainer
           center={KYIV_CENTER}
           zoom={13}
-          scrollWheelZoom={false}
+          scrollWheelZoom={true}
           zoomControl={false}
-          style={{ height: "100%", width: "100%", borderRadius: "12px" }}
+          style={{
+            height: "100%",
+            width: "100%",
+            borderRadius: "12px",
+          }}
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           />
-          <ZoomControl position="topright" />
-          {salons.map((s) => (
-            <Marker key={s.id} position={[s.lat, s.lng]} icon={purpleIcon}>
-              <Popup>{s.name}</Popup>
+
+          {salons.map((salon) => (
+            <Marker
+              key={salon.id}
+              position={[salon.lat, salon.lng]}
+              icon={purpleIcon}
+            >
+              <Popup>{salon.name}</Popup>
             </Marker>
           ))}
         </MapContainer>
