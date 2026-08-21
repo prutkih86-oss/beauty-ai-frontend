@@ -52,7 +52,7 @@ export default function MapSection({ lang }: MapSectionProps) {
               height="14"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="#a855f7"
+              stroke="#51359b"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -78,7 +78,7 @@ export default function MapSection({ lang }: MapSectionProps) {
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           />
 
           {salons.map((salon) => (

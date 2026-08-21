@@ -3,7 +3,7 @@ import "./App.css";
 import MapSection from "./MapSection";
 import CategoryFilters from "./CategoryFilters";
 import FilterBar from './FilterBar';
-import heroImage from "./assets/hero.png";
+import logoLight from "./assets/beauty-ai-logo-light-transparent.png";
 
 type CardData = {
   image: string;
@@ -26,10 +26,11 @@ type Lang = "ua" | "en";
 
 const dict = {
   ua: {
-    nav: ["Майстри", "Салони", "Послуги", "Блог"],
+    nav: ["Майстри", "Салони", "Акції", "Про Beauty AI"],
     loginGoogle: "Увійти",
-    heroTitle1: "Знайдіть свого майстра",
-    heroTitle2: "за допомогою ",
+    heroTitle1: "Знайдіть свого",   // було "Знайдіть свого майстра"
+    heroTitle2: "майстра краси",          // новий рядок
+    heroTitle3: "за допомогою AI",
     heroSubtitle: "Опишіть, що вам потрібно — ми підберемо найкращі варіанти поруч",
     searchPlaceholder: "Наприклад: манікюр у центрі Києва сьогодні",
     searchBtn: "Знайти",
@@ -47,12 +48,23 @@ const dict = {
     viewSalon: "Дивитися салон",
     inSalon: "у салоні",
     avgCheck: "Середній чек",
+    about: {                                    // ← тут вставляєш новий блок
+      title: "Про Beauty AI",
+      description:
+        "Beauty AI — сервіс, який допомагає знайти майстра краси за лічені секунди. Опишіть, що вам потрібно, а наш AI підбере найкращі салони та майстрів поруч — з урахуванням рейтингу, цін і вільних вікон запису.",
+      contactsTitle: "Зв'язок",
+      partnersTitle: "Співпраця",
+      partnersText:
+        "Ви майстер або власник салону? Приєднуйтесь до Beauty AI та отримуйте нових клієнтів щодня.",
+      partnersCta: "Стати партнером →",
+    },
   },
   en: {
-    nav: ["Masters", "Salons", "Services", "Blog"],
+    nav: ["Masters", "Salons", "Promotions", "About Beauty AI"],
     loginGoogle: "Sign in",
-    heroTitle1: "Find your master",
-    heroTitle2: "with the help of  ",
+    heroTitle1: "Find your",
+    heroTitle2: "beauty master",
+    heroTitle3: "with the help of AI",
     heroSubtitle: "Describe what you need — we'll find the best options nearby",
     searchPlaceholder: "E.g.: manicure in central Kyiv today",
     searchBtn: "Search",
@@ -70,6 +82,16 @@ const dict = {
     viewSalon: "View salon",
     inSalon: "at the salon",
     avgCheck: "Average check",
+    about: {                                    // ← і тут теж
+      title: "About Beauty AI",
+      description:
+        "Beauty AI is a service that helps you find a beauty master in seconds. Describe what you need, and our AI will pick the best salons and masters nearby — based on ratings, prices, and open booking slots.",
+      contactsTitle: "Get in touch",
+      partnersTitle: "Partnership",
+      partnersText:
+        "Are you a master or salon owner? Join Beauty AI and get new clients every day.",
+      partnersCta: "Become a partner →",
+    },
   },
 } as const;
 
@@ -95,6 +117,8 @@ function FavButton() {
 }
 
 function Card({ data, t }: { data: CardData; t: Translations }) {
+  const [showReason, setShowReason] = useState(false);
+
   return (
     <div className="card">
       <div
@@ -171,9 +195,22 @@ function Card({ data, t }: { data: CardData; t: Translations }) {
         </div>
 
         {data.why && (
-          <div className="why-box">
-            <div className="why-title">✦ Чому рекомендуємо?</div>
-            <p>{data.why}</p>
+          <div className={`ai-reason ${showReason ? "is-open" : ""}`}>
+            <button
+              type="button"
+              className="ai-reason-toggle"
+              onClick={() => setShowReason((prev) => !prev)}
+              aria-expanded={showReason}
+            >
+              <span className="ai-reason-label">✦ Чому рекомендуємо?</span>
+              <span className="ai-reason-chevron" aria-hidden="true">⌄</span>
+            </button>
+
+            <div className="ai-reason-content">
+              <div className="ai-reason-inner">
+                <p>{data.why}</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -181,9 +218,6 @@ function Card({ data, t }: { data: CardData; t: Translations }) {
   );
 }
 
-function SectionDivider() {
-  return <p className="section-divider">✦</p>;
-}
 
 const recommendations: CardData[] = [
   {
@@ -462,12 +496,12 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo">
-          <span className="spark">✦</span> Beauty AI
-        </div>
+        <a className="logo" href="#" aria-label="Beauty AI — головна">
+          <img src={logoLight} alt="Beauty AI" className="logo-image" />
+        </a>
         <nav className="nav">
-          {t.nav.map((label) => (
-            <a key={label} href="#">
+          {t.nav.map((label, i) => (
+            <a key={label} href={i === t.nav.length - 1 ? "#about" : "#"}>
               {label}
             </a>
           ))}
@@ -491,30 +525,42 @@ export default function App() {
         <div className="hero-overlay-content">
           <div className="hero-content">
             <h1>
-              {t.heroTitle1} <br />
-              {t.heroTitle2} <span className="accent">AI ✦</span>
+              {t.heroTitle1}
+              <br />
+              {t.heroTitle2}
+              <br />
+              <span className="accent">{t.heroTitle3} </span>
             </h1>
-            <p className="hero-subtitle">{t.heroSubtitle}</p>
+            <p className="hero-subtitle">
+              {t.heroSubtitle.split("—")[0]}—
+              <br />
+              {t.heroSubtitle.split("—")[1]}
+            </p>
 
             <div className="search-bar">
               <input type="text" placeholder={t.searchPlaceholder} />
-              <button className="search-btn">{t.searchBtn} +</button>
+              <button className="search-btn">{t.searchBtn}</button>
             </div>
+          </div>
+
+          <div className="hero-categories">
+            <CategoryFilters lang={lang} />
           </div>
         </div>
       </section>
 
-      <CategoryFilters lang={lang} />
-
       <MapSection lang={lang} />
 
-      <SectionDivider />
       
-      <section className="section">
+      <section className="section ai-recommendations">
         <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h2 className="section-title">
-              <span className="accent">✦</span> {t.sections.recommendations.title}
+              <span className="accent">
+                <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m12 3-1.8 5.4a2.2 2.2 0 0 1-1.4 1.4L3.4 11.6l5.4 1.8a2.2 2.2 0 0 1 1.4 1.4L12 20.2l1.8-5.4a2.2 2.2 0 0 1 1.4-1.4l5.4-1.8-5.4-1.8a2.2 2.2 0 0 1-1.4-1.4L12 3z" />
+                </svg>
+              </span> {t.sections.recommendations.title}
             </h2>
             <p className="section-sub">{t.sections.recommendations.subtitle}</p>
           </div>
@@ -533,12 +579,11 @@ export default function App() {
         </div>
       </section>
 
-      <SectionDivider />
       <Section
         title={t.sections.partners.title}
         subtitle={t.sections.partners.subtitle}
         icon={
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 3h12l4 6-10 12L2 9z" />
             <path d="M11 3 8 9l4 12 4-12-3-6" />
             <path d="M2 9h20" />
@@ -549,21 +594,11 @@ export default function App() {
         t={t}
       />
 
-      <SectionDivider />
       <Section
         title={t.sections.nearby.title}
         subtitle={t.sections.nearby.subtitle}
         icon={
-          <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="#a855f7" 
-            strokeWidth="2.5" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-          >
+          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
@@ -572,28 +607,59 @@ export default function App() {
         t={t}
       />
 
-      <SectionDivider />
       <Section
         title={t.sections.topRated.title}
         subtitle={t.sections.topRated.subtitle}
-        icon="★"
+        icon={
+          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 2.5 2.9 5.88 6.49.94-4.7 4.58 1.11 6.47L12 17.32l-5.8 3.05 1.11-6.47-4.7-4.58 6.49-.94L12 2.5Z" />
+          </svg>
+        }
         cards={topRated}
         t={t}
       />
 
-      <SectionDivider />
       <Section
         title={t.sections.fresh.title}
         subtitle={t.sections.fresh.subtitle}
         icon={
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
-            <circle cx="7.5" cy="7.5" r="1.5" fill="#a855f7" stroke="none" />
+            <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
           </svg>
         }
         cards={fresh}
         t={t}
       />
+      
+      <section className="about-section" id="about">
+        <div className="about-main">
+          <span className="about-kicker">✦ BEAUTY AI</span>
+          <h2>{t.about.title}</h2>
+          <p>{t.about.description}</p>
+        </div>
+
+        <div className="about-column">
+          <h3>{t.about.contactsTitle}</h3>
+
+          <a href="mailto:support@beautyai.ua">
+            support@beautyai.ua
+          </a>
+
+          <a href="#">
+            Telegram
+          </a>
+        </div>
+
+        <div className="about-column about-partners">
+          <h3>{t.about.partnersTitle}</h3>
+          <p>{t.about.partnersText}</p>
+
+          <button className="partner-btn">
+            {t.about.partnersCta}
+          </button>
+        </div>
+      </section>
 
       <p className="footer-note">ⓘ {t.footer} ✦</p>
     </div>
