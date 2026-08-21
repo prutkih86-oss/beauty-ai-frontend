@@ -26,6 +26,7 @@ jobs:
     - name: Build and push image
       uses: docker/build-push-action@v7.3.0
       with:
+        context: .
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:1.0.${{ github.run_number }}
 
