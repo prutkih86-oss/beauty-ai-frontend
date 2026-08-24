@@ -42,20 +42,11 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
   
-      - name: Stop and remove container
-        run: |
-          az vm run-command invoke \
-            --resource-group beauty-app-rg \
-            --name TestingVM \
-            --command-id RunShellScript \
-            --scripts "docker stop ${{env.container-name}} && docker rm ${{env.container-name}}"
-  
       - name: Start container
         run: |
           az vm run-command invoke \
             --resource-group beauty-app-rg \
             --name TestingVM \
             --command-id RunShellScript \
-            --scripts "docker run -d -p 5173:5173 --name ${{env.container-name}} \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:1.0.${{ github.run_number }}"
+            --scripts "systemctl restart igorfrontend.service"
   
