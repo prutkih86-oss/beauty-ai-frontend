@@ -48,5 +48,6 @@ jobs:
             --resource-group beauty-app-rg \
             --name TestingVM \
             --command-id RunShellScript \
-            --scripts "systemctl restart igorfrontend.service"
+            --scripts "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:latest && \
+              systemctl restart igorfrontend.service"
   
