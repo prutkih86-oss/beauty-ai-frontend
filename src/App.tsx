@@ -121,7 +121,7 @@ const dict = {
     nav: ["Salons", "Masters", "Promotions", "About Beauty AI"],
     loginGoogle: "Sign in",
     heroTitle1: "Find your",
-    heroTitle2: "beauty master",
+    heroTitle2: "beauty match",
     heroTitle3: "with the help of AI",
     heroEyebrow: "YOUR SMART BEAUTY SEARCH",
     heroSubtitle: "Describe what you need — we'll find the best options nearby",
