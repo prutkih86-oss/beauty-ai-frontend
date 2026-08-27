@@ -1,10 +1,17 @@
-import React from "react";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import React, { useEffect } from "react";
+import {
+  CircleMarker,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Custom purple teardrop marker matching the Beauty AI design
-// (white dot in the center is added purely via CSS ::after on .beauty-ai-pin)
 const purpleIcon = L.divIcon({
   className: "beauty-ai-marker",
   html: `<div class="beauty-ai-pin"></div>`,
@@ -20,7 +27,6 @@ type Salon = {
   lng: number;
 };
 
-// Sample salons around Pechersk / central Kyiv — replace with real data from your API
 const salons: Salon[] = [
   { id: "1", name: "Luna Beauty House", lat: 50.4380, lng: 30.5325 },
   { id: "2", name: "Nails Studio", lat: 50.4412, lng: 30.5401 },
@@ -32,18 +38,82 @@ const salons: Salon[] = [
 ];
 
 const KYIV_CENTER: [number, number] = [50.4412, 30.5390];
+// Demo current-user position around Pechersk. Later this can come from geolocation/API.
+const USER_LOCATION: [number, number] = [50.4395, 30.5355];
+
+type SelectedMapLocation = {
+  name: string;
+  district: string;
+  distance: string;
+  lat: number;
+  lng: number;
+};
 
 type MapSectionProps = {
   lang: "ua" | "en";
+  selectedLocation?: SelectedMapLocation | null;
 };
 
-export default function MapSection({ lang }: MapSectionProps) {
+function haversineKm(
+  from: [number, number],
+  to: [number, number]
+): number {
+  const R = 6371;
+  const dLat = ((to[0] - from[0]) * Math.PI) / 180;
+  const dLng = ((to[1] - from[1]) * Math.PI) / 180;
+  const lat1 = (from[0] * Math.PI) / 180;
+  const lat2 = (to[0] * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function FocusSelectedLocation({
+  selectedLocation,
+}: {
+  selectedLocation?: SelectedMapLocation | null;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedLocation) return;
+
+    const target: [number, number] = [selectedLocation.lat, selectedLocation.lng];
+    const bounds = L.latLngBounds([USER_LOCATION, target]);
+
+    map.fitBounds(bounds, {
+      padding: [55, 55],
+      maxZoom: 15,
+      animate: true,
+      duration: 0.8,
+    });
+  }, [map, selectedLocation]);
+
+  return null;
+}
+
+export default function MapSection({ lang, selectedLocation }: MapSectionProps) {
+  const target: [number, number] | null = selectedLocation
+    ? [selectedLocation.lat, selectedLocation.lng]
+    : null;
+
+  const distanceKm = target ? haversineKm(USER_LOCATION, target) : null;
+
   return (
-    <div className="map-section">
+    <div className="map-section" id="map">
       <div className="map-canvas">
         <div className="map-district">
           <span className="label">
-            {lang === "ua" ? "Ваш район" : "Your district"}
+            {selectedLocation
+              ? lang === "ua"
+                ? "Обрана локація"
+                : "Selected location"
+              : lang === "ua"
+                ? "Ваш район"
+                : "Your district"}
           </span>
 
           <span className="value">
@@ -61,7 +131,11 @@ export default function MapSection({ lang }: MapSectionProps) {
               <circle cx="12" cy="10" r="3" />
             </svg>
 
-            {lang === "ua" ? "Печерський" : "Pechersk"}
+            {selectedLocation
+              ? selectedLocation.name
+              : lang === "ua"
+                ? "Печерський"
+                : "Pechersk"}
           </span>
         </div>
 
@@ -77,9 +151,11 @@ export default function MapSection({ lang }: MapSectionProps) {
           }}
         >
           <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            attribution='&copy; OpenStreetMap &copy; CARTO'
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           />
+
+          <FocusSelectedLocation selectedLocation={selectedLocation} />
 
           {salons.map((salon) => (
             <Marker
@@ -90,6 +166,55 @@ export default function MapSection({ lang }: MapSectionProps) {
               <Popup>{salon.name}</Popup>
             </Marker>
           ))}
+
+          {target && selectedLocation && (
+            <>
+              <CircleMarker
+                center={USER_LOCATION}
+                radius={7}
+                pathOptions={{
+                  color: "#ffffff",
+                  weight: 3,
+                  fillColor: "#241a3d",
+                  fillOpacity: 1,
+                }}
+                className="map-user-dot"
+              >
+                <Tooltip direction="top" offset={[0, -8]}>
+                  {lang === "ua" ? "Ви тут" : "You are here"}
+                </Tooltip>
+              </CircleMarker>
+
+              <Polyline
+                positions={[USER_LOCATION, target]}
+                pathOptions={{
+                  color: "#735a92",
+                  weight: 3,
+                  opacity: 0.82,
+                  dashArray: "7 7",
+                }}
+              />
+
+              <Marker position={target} icon={purpleIcon}>
+                <Popup>
+                  <strong>{selectedLocation.name}</strong>
+                  <br />
+                  {selectedLocation.district}
+                  <br />
+                  {lang === "ua" ? "Від вас: " : "From you: "}
+                  {distanceKm?.toFixed(1)} {lang === "ua" ? "км" : "km"}
+                </Popup>
+                <Tooltip
+                  permanent
+                  direction="top"
+                  offset={[0, -28]}
+                  className="map-route-distance"
+                >
+                  {distanceKm?.toFixed(1)} {lang === "ua" ? "км" : "km"}
+                </Tooltip>
+              </Marker>
+            </>
+          )}
         </MapContainer>
       </div>
     </div>

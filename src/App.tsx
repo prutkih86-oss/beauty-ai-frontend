@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import MapSection from "./MapSection";
 import CategoryFilters from "./CategoryFilters";
 import FilterBar from './FilterBar';
-import logoLight from "./assets/beauty-ai-logo-light-transparent.png";
+import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
+import DashboardShell from "./dashboard/DashboardShell";
 
 type CardData = {
   image: string;
@@ -20,28 +21,85 @@ type CardData = {
   mastersCount?: string;
   avgCheck?: string;
   why?: string;
+  variant?: "solo";
+  experience?: string;
+  locationNote?: string;
+  profileLinkLabel?: string;
+};
+
+
+type PartnerOffer = {
+  image: string;
+  discount: string;
+  validUntil: string;
+  title: string;
+  partner: string;
+  district: string;
+  distance: string;
+  openNow?: boolean;
+  oldPrice: string;
+  newPrice: string;
+  gift?: string;
+};
+
+
+type SelectedMapLocation = {
+  name: string;
+  district: string;
+  distance: string;
+  lat: number;
+  lng: number;
+};
+
+const LOCATION_COORDINATES: Record<string, [number, number]> = {
+  "Luna Beauty House": [50.4380, 30.5325],
+  "Nails Studio": [50.4412, 30.5401],
+  "Beauty Room": [50.4465, 30.5502],
+  "Atelier Beauty": [50.4438, 30.5268],
+  "Élan Studio": [50.4390, 30.5292],
+  "Wellness Studio": [50.4424, 30.5310],
+  "Brow Bar": [50.4450, 30.5360],
+  "Оксана Мельник": [50.4392, 30.5330],
+  "Дмитро Кравець": [50.4418, 30.5368],
+  "Ірина Бондар": [50.4434, 30.5308],
+  "Марина Кузьменко": [50.4447, 30.5287],
+  "Софія Левченко": [50.4369, 30.5385],
+  "Андрій Савчук": [50.4470, 30.5338],
+  "Beauty Point": [50.4450, 30.5350],
+  "Pink Nail Bar": [50.4404, 30.5306],
+  "Metro Beauty": [50.4428, 30.5440],
+};
+
+const DISTRICT_FALLBACKS: Record<string, [number, number]> = {
+  "Печерський р-н": [50.4388, 30.5350],
+  "Печерськ": [50.4378, 30.5358],
+  "Липки": [50.4430, 30.5298],
+  "Центр": [50.4472, 30.5228],
+  "Золоті ворота": [50.4483, 30.5135],
 };
 
 type Lang = "ua" | "en";
 
 const dict = {
   ua: {
-    nav: ["Майстри", "Салони", "Акції", "Про Beauty AI"],
+    nav: ["Салони","Майстри", "Акції", "Про Beauty AI"],
     loginGoogle: "Увійти",
-    heroTitle1: "Знайдіть свого",   // було "Знайдіть свого майстра"
-    heroTitle2: "майстра краси",          // новий рядок
-    heroTitle3: "за допомогою AI",
-    heroSubtitle: "Опишіть, що вам потрібно — ми підберемо найкращі варіанти поруч",
+    heroTitle1: "ЗНАЙДИ СВІЙ",   // було "Знайдіть свого майстра"
+    heroTitle2: "BEAUTY MATCH",          // новий рядок
+    heroTitle3: "ЗА ДОПОМОГОЮ AI",
+    heroEyebrow: "ТВІЙ РОЗУМНИЙ ПОШУК КРАСИ",
+    heroSubtitle: "Опиши, що тобі потрібно — AI підбере майстра під твій запит",
     searchPlaceholder: "Наприклад: манікюр у центрі Києва сьогодні",
     searchBtn: "Знайти",
     filters: "Фільтри",
-    partnersLink: "Детальніше про партнерів",
+    partnersLink: "Про партнерів>",
     footer: "Beauty AI аналізує ваші запити та обирає найкращі варіанти саме для вас",
     sections: {
-      recommendations: { title: "Рекомендації Beauty AI", subtitle: "Найкраще відповідають вашому запиту" },
+      recommendations: { title: "Салони для вас", subtitle: "Найкращі збіги за рейтингом, ціною та доступністю" },
+      soloMasters: { title: "Майстри для вас", subtitle: "Персональні рекомендації майстрів під ваш запит" },
       partners: { title: "Пропозиції від партнерів", subtitle: "Ексклюзивні знижки та акції" },
-      nearby: { title: "Популярне поруч", subtitle: "Те, що зараз обирають неподалік" },
-      topRated: { title: "Високі рейтинги", subtitle: "Майстри та салони з найкращими відгуками" },
+      nearby: { title: "Найкращі в Києві", subtitle: "Салони та майстри з найвищими показниками" },
+      topRated: { title: "Варто спробувати", subtitle: "Щось нове, що може вас зацікавити" },
       fresh: { title: "Новинки на платформі", subtitle: "Нові майстри та салони для вас" },
     },
     cta: "Записатися",
@@ -60,22 +118,24 @@ const dict = {
     },
   },
   en: {
-    nav: ["Masters", "Salons", "Promotions", "About Beauty AI"],
+    nav: ["Salons", "Masters", "Promotions", "About Beauty AI"],
     loginGoogle: "Sign in",
     heroTitle1: "Find your",
     heroTitle2: "beauty master",
     heroTitle3: "with the help of AI",
+    heroEyebrow: "YOUR SMART BEAUTY SEARCH",
     heroSubtitle: "Describe what you need — we'll find the best options nearby",
     searchPlaceholder: "E.g.: manicure in central Kyiv today",
     searchBtn: "Search",
     filters: "Filters",
-    partnersLink: "More about partners",
+    partnersLink: "About partners",
     footer: "Beauty AI analyzes your requests and picks the best options just for you",
     sections: {
-      recommendations: { title: "Beauty AI Recommendations", subtitle: "Best match for your request" },
+      recommendations: { title: "Salons For You", subtitle: "Best match for your request" },
+      soloMasters: { title: "Masters For You", subtitle: "AI picked these masters for your request" },
       partners: { title: "Partner Offers", subtitle: "Exclusive discounts and promotions" },
-      nearby: { title: "Popular Nearby", subtitle: "What people are choosing nearby right now" },
-      topRated: { title: "Top Rated", subtitle: "Masters and salons with the best reviews" },
+      nearby: { title: "Best in Kyiv", subtitle: "Top salons and masters by overall performance" },
+      topRated: { title: "Worth Trying", subtitle: "Something new that might catch your eye" },
       fresh: { title: "New on the Platform", subtitle: "New masters and salons for you" },
     },
     cta: "Book now",
@@ -97,6 +157,374 @@ const dict = {
 
 type Translations = (typeof dict)[Lang];
 
+type AuthRole = "client" | "master" | "admin";
+type AppView = "home" | "dashboard";
+
+type MockUser = {
+  name: string;
+  email: string;
+  role: AuthRole;
+  avatar: string;
+};
+
+const roleAvatars: Record<AuthRole, string> = {
+  client: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
+  master: "https://images.pexels.com/photos/3993449/pexels-photo-3993449.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
+  admin: "https://images.pexels.com/photos/2381069/pexels-photo-2381069.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
+};
+
+// Дев: йде через Vite proxy (vite.config.ts, ключ "/api") — той самий origin, без CORS/TLS болю.
+// Прод-білд: proxy не існує (це чиста статика), тож б'ємо напряму в бекенд —
+// бекенд для цього має дозволити прод-домен у CORS_ALLOWED_ORIGINS.
+const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiservice.polandcentral.cloudapp.azure.com";
+
+const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
+
+type AuthTokens = { access: string; refresh: string };
+
+function saveAuthTokens(tokens: AuthTokens) {
+  try {
+    localStorage.setItem(AUTH_TOKENS_KEY, JSON.stringify(tokens));
+  } catch {
+    // localStorage може бути недоступний (приватний режим тощо) — не критично для роботи форми
+  }
+}
+
+function clearAuthTokens() {
+  try {
+    localStorage.removeItem(AUTH_TOKENS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+// GET /api/users/me/ -> визначаємо роль з is_staff/is_master (бекенд не віддає окреме поле role)
+function resolveRoleFromProfile(profile: any): AuthRole {
+  if (profile?.is_staff) return "admin";
+  if (profile?.is_master) return "master";
+  return "client";
+}
+
+function AuthModal({
+  lang,
+  onClose,
+  onAuthenticated,
+  initialMode = "login",
+  initialRole = "client",
+  initialPartnerKind,
+}: {
+  lang: Lang;
+  onClose: () => void;
+  onAuthenticated: (user: MockUser) => void;
+  initialMode?: "login" | "register";
+  initialRole?: Exclude<AuthRole, "admin">;
+  initialPartnerKind?: "solo" | "salon";
+}) {
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
+  const [role, setRole] = useState<Exclude<AuthRole, "admin">>(initialRole);
+  const [partnerKind] = useState<"solo" | "salon" | undefined>(initialPartnerKind);
+  const [businessName, setBusinessName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [googlePickerOpen, setGooglePickerOpen] = useState(false);
+  const [googlePickingRole, setGooglePickingRole] = useState<AuthRole | null>(null);
+
+  const ua = lang === "ua";
+
+  const finishAuth = (authRole: AuthRole = role) => {
+    const fallbackEmail =
+      authRole === "master"
+        ? "master@beautyai.demo"
+        : authRole === "admin"
+          ? "admin@beautyai.demo"
+          : "client@beautyai.demo";
+
+    onAuthenticated({
+      name:
+        authRole === "master"
+          ? partnerKind === "salon" && businessName.trim()
+            ? businessName.trim()
+            : ua ? "Майстер Beauty AI" : "Beauty AI Master"
+          : authRole === "admin"
+            ? "Beauty AI Admin"
+            : ua ? "Клієнт Beauty AI" : "Beauty AI Client",
+      email: email || fallbackEmail,
+      role: authRole,
+      avatar: roleAvatars[authRole],
+    });
+  };
+
+  // Реальний логін: POST /api/users/token/ (email+password) → JWT access/refresh → GET /api/users/me/ для профілю й ролі
+  const loginWithPassword = async () => {
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const tokenRes = await fetch(`${API_BASE_URL}/api/users/token/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!tokenRes.ok) {
+        const body = await tokenRes.json().catch(() => null);
+        throw new Error(
+          body?.detail ||
+            (ua ? "Невірний email або пароль" : "Invalid email or password")
+        );
+      }
+
+      const tokens = await tokenRes.json(); // { access, refresh }
+      if (tokens.access && tokens.refresh) {
+        saveAuthTokens({ access: tokens.access, refresh: tokens.refresh });
+      }
+
+      const meRes = await fetch(`${API_BASE_URL}/api/users/me/`, {
+        headers: { Authorization: `Bearer ${tokens.access}` },
+      });
+      if (!meRes.ok) {
+        throw new Error(ua ? "Не вдалося завантажити профіль" : "Failed to load profile");
+      }
+      const profile = await meRes.json();
+      const authRole = resolveRoleFromProfile(profile);
+
+      onAuthenticated({
+        name: `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || (ua ? "Beauty AI користувач" : "Beauty AI user"),
+        email: profile.email || email,
+        role: authRole,
+        avatar: profile.photo || roleAvatars[authRole],
+      });
+    } catch (err: any) {
+      setAuthError(err.message || (ua ? "Сталася помилка. Спробуйте ще раз." : "Something went wrong. Try again."));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const fakeGoogleAccounts: { role: AuthRole; name: string; email: string; avatar: string }[] = [
+    { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: roleAvatars.client },
+    { role: "master", name: ua ? "Майстер Beauty" : "Beauty Master", email: "beauty.master@gmail.com", avatar: roleAvatars.master },
+    { role: "admin", name: ua ? "Адмін Beauty AI" : "Beauty AI Admin", email: "admin.beautyai@gmail.com", avatar: roleAvatars.admin },
+  ];
+
+  const pickGoogleAccount = (account: (typeof fakeGoogleAccounts)[number]) => {
+    setGooglePickingRole(account.role);
+    // Невелика штучна затримка — щоб виглядало як справжній вхід, а не миттєвий клік
+    setTimeout(() => {
+      setGooglePickerOpen(false);
+      setGooglePickingRole(null);
+      onAuthenticated({
+        name: account.name,
+        email: account.email,
+        role: account.role,
+        avatar: account.avatar,
+      });
+    }, 700);
+  };
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (mode === "login") {
+      loginWithPassword();
+      return;
+    }
+    // Реєстрація поки що лишається демо-заглушкою (не запитували підключення /api/users/register/)
+    finishAuth(role);
+  };
+
+  return (
+    <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+      <div
+        className="auth-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button className="auth-close" type="button" onClick={onClose} aria-label={ua ? "Закрити" : "Close"}>
+          ×
+        </button>
+
+        <div className="auth-brand">
+          <span className="auth-kicker">✦ BEAUTY AI</span>
+          <h2 id="auth-title">
+            {mode === "login"
+              ? ua ? "Раді бачити вас знову" : "Welcome back"
+              : ua ? "Створіть свій профіль" : "Create your profile"}
+          </h2>
+          <p>
+            {mode === "login"
+              ? ua ? "Увійдіть, щоб керувати записами, обраним і профілем." : "Sign in to manage bookings, favourites and your profile."
+              : ua ? "Оберіть тип профілю — решту даних підключимо до API після запуску сервера." : "Choose a profile type — the API will be connected when the server is online."}
+          </p>
+        </div>
+
+        <div className="auth-tabs" role="tablist">
+          <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
+            {ua ? "Увійти" : "Sign in"}
+          </button>
+          <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>
+            {ua ? "Реєстрація" : "Register"}
+          </button>
+        </div>
+
+        {mode === "register" && (
+          <div className="auth-role-switch" aria-label={ua ? "Тип профілю" : "Profile type"}>
+            <button className={role === "client" ? "active" : ""} type="button" onClick={() => setRole("client")}>
+              {ua ? "Я клієнт" : "I'm a client"}
+            </button>
+            <button className={role === "master" ? "active" : ""} type="button" onClick={() => setRole("master")}>
+              {ua ? "Я майстер" : "I'm a master"}
+            </button>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={submit}>
+          {mode === "register" && role === "master" && partnerKind === "salon" && (
+            <>
+              <p className="auth-partner-note">
+                {ua ? "Реєстрація закладу — після заповнення підключимо ваш салон до Beauty AI." : "Business registration — we'll connect your salon to Beauty AI after this step."}
+              </p>
+              <label>
+                <span>{ua ? "Назва закладу" : "Business name"}</span>
+                <input
+                  type="text"
+                  value={businessName}
+                  onChange={(event) => setBusinessName(event.target.value)}
+                  placeholder={ua ? "Наприклад, Luna Beauty House" : "e.g. Luna Beauty House"}
+                  required
+                />
+              </label>
+            </>
+          )}
+
+          <label>
+            <span>Email</span>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required />
+          </label>
+          <label>
+            <span>{ua ? "Пароль" : "Password"}</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required />
+          </label>
+
+          {mode === "login" && (
+            <button className="auth-forgot" type="button">
+              {ua ? "Забули пароль?" : "Forgot password?"}
+            </button>
+          )}
+
+          {mode === "login" && authError && <p className="auth-google-error">{authError}</p>}
+
+          <button className="auth-primary" type="submit" disabled={mode === "login" && authLoading}>
+            {mode === "login"
+              ? authLoading
+                ? (ua ? "Входимо…" : "Signing in…")
+                : (ua ? "Увійти" : "Sign in")
+              : (ua ? "Створити акаунт" : "Create account")}
+          </button>
+        </form>
+
+        <div className="auth-divider"><span>{ua ? "або" : "or"}</span></div>
+
+        <button className="auth-google" type="button" onClick={() => setGooglePickerOpen(true)}>
+          <span className="google-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M6.39 13.93A6.02 6.02 0 0 1 6.08 12c0-.67.11-1.32.31-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.55l3.35-2.62Z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z"
+              />
+            </svg>
+          </span>
+          {ua ? "Продовжити з Google" : "Continue with Google"}
+        </button>
+
+        <p className="auth-demo-note">
+          {ua
+            ? "Вхід через email/пароль уже підключений до бекенду. Реєстрація та Google — поки що демо."
+            : "Email/password sign-in is wired to the real backend. Register and Google are still demo."}
+        </p>
+      </div>
+
+      {googlePickerOpen && (
+        <div
+          className="google-picker-backdrop"
+          role="presentation"
+          onMouseDown={() => !googlePickingRole && setGooglePickerOpen(false)}
+        >
+          <div className="google-picker-window" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="google-picker-titlebar">
+              <span className="google-picker-url">accounts.google.com</span>
+              <button
+                type="button"
+                className="google-picker-close"
+                onClick={() => setGooglePickerOpen(false)}
+                aria-label={ua ? "Закрити" : "Close"}
+                disabled={!!googlePickingRole}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="google-picker-body">
+              <span className="google-mark google-mark-lg" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
+                  <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.62-2.36l-3.24-2.54c-.9.6-2.05.96-3.38.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+                  <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.08 12c0-.67.11-1.32.31-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.55l3.35-2.62Z" />
+                  <path fill="#EA4335" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z" />
+                </svg>
+              </span>
+              <h3>{ua ? "Оберіть обліковий запис" : "Choose an account"}</h3>
+              <p>{ua ? "щоб продовжити в Beauty AI" : "to continue to Beauty AI"}</p>
+
+              <div className="google-picker-list">
+                {fakeGoogleAccounts.map((account) => {
+                  const isPicking = googlePickingRole === account.role;
+                  return (
+                    <button
+                      key={account.email}
+                      type="button"
+                      className="google-picker-account"
+                      onClick={() => !googlePickingRole && pickGoogleAccount(account)}
+                      disabled={!!googlePickingRole && !isPicking}
+                    >
+                      <img src={account.avatar} alt={account.name} />
+                      <span className="google-picker-account-info">
+                        <b>{account.name}</b>
+                        <span>{account.email}</span>
+                      </span>
+                      {isPicking && <span className="google-picker-spinner" aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="google-picker-footnote">
+                {ua
+                  ? "Демо-імітація вибору акаунта Google — реальна авторизація Google підключиться пізніше."
+                  : "Demo simulation of Google's account picker — real Google auth will be wired later."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FavButton() {
   const [active, setActive] = useState(false);
   return (
@@ -116,13 +544,26 @@ function FavButton() {
   );
 }
 
-function Card({ data, t }: { data: CardData; t: Translations }) {
+function Card({
+  data,
+  t,
+  hideTags = false,
+  hideReason = false,
+  onLocationClick,
+}: {
+  data: CardData;
+  t: Translations;
+  hideTags?: boolean;
+  hideReason?: boolean;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
   const [showReason, setShowReason] = useState(false);
+  const isSolo = data.variant === "solo";
 
   return (
-    <div className="card">
+    <div className={`card ${isSolo ? "card-solo" : ""}`}>
       <div
-        className="card-image"
+        className={`card-image ${isSolo ? "card-image-solo" : ""}`}
         style={{ ['--card-photo' as string]: `url(${data.image})` }}
       >
         <div className="card-badges">
@@ -148,33 +589,43 @@ function Card({ data, t }: { data: CardData; t: Translations }) {
         </div>
 
         <div className="card-meta">
-          <span className="district-pin">
-            <svg 
-              width="14" 
-              height="14" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="#a855f7" 
-              strokeWidth="2.5" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
-            {data.district}
-          </span>
-          <span>· {data.distance}</span>
-          {data.openNow && <span className="open-now">· Відкрито зараз</span>}
+          <button
+            type="button"
+            className="card-location-link"
+            onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
+            title="Показати на карті"
+          >
+            <span className="district-pin">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a855f7"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              {data.district}
+            </span>
+            <span>· {data.distance}</span>
+          </button>
+          {data.openNow && !isSolo && <span className="open-now">· Відкрито зараз</span>}
+          {isSolo && <span className="solo-availability">· Є вікна сьогодні</span>}
         </div>
 
-        <div className="card-tags">
-          {data.tags.map((tag) => (
-            <span key={tag} className="tag">
-              {tag}
-            </span>
-          ))}
-        </div>
+        {!hideTags && (
+          <div className="card-tags">
+            {data.tags.map((tag) => (
+              <span key={tag} className="tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="card-footer">
           <div className="price-block">
@@ -182,19 +633,19 @@ function Card({ data, t }: { data: CardData; t: Translations }) {
             <div className="avg">{data.avgCheck ?? t.avgCheck}</div>
           </div>
           <div className="masters-block">
-            {data.mastersCount && <div>🕐 {data.mastersCount}</div>}
-            <div>{t.inSalon}</div>
+            {(data.experience ?? data.mastersCount) && <div>🕐 {data.experience ?? data.mastersCount}</div>}
+            <div>{data.locationNote ?? t.inSalon}</div>
           </div>
         </div>
 
         <div className="card-cta-row">
           <button className="cta-btn">{t.cta}</button>
           <a className="view-link" href="#">
-            {t.viewSalon} →
+            {data.profileLinkLabel ?? t.viewSalon} →
           </a>
         </div>
 
-        {data.why && (
+        {data.why && !hideReason && (
           <div className={`ai-reason ${showReason ? "is-open" : ""}`}>
             <button
               type="button"
@@ -221,7 +672,7 @@ function Card({ data, t }: { data: CardData; t: Translations }) {
 
 const recommendations: CardData[] = [
   {
-    image: "https://images.pexels.com/photos/7755296/pexels-photo-7755296.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    image: "https://images.pexels.com/photos/7750114/pexels-photo-7750114.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
     badges: [{ text: "AI MATCH 98%", kind: "ai-match" }],
     title: "Luna Beauty House",
     type: "Салон краси",
@@ -236,7 +687,7 @@ const recommendations: CardData[] = [
     why: "Високий рейтинг, спеціалізація на манікюрі, зручна локація та вільні вікна сьогодні",
   },
   {
-    image: "https://images.pexels.com/photos/19695969/pexels-photo-19695969.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    image: "https://images.pexels.com/photos/7195808/pexels-photo-7195808.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
     badges: [{ text: "AI MATCH 94%", kind: "ai-match" }],
     title: "Nails Studio",
     type: "Салон краси",
@@ -251,7 +702,7 @@ const recommendations: CardData[] = [
     why: "Чудові відгуки та оптимальне співвідношення ціна-якість для вашого запиту",
   },
   {
-    image: "https://images.pexels.com/photos/7447125/pexels-photo-7447125.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    image: "https://images.pexels.com/photos/7750115/pexels-photo-7750115.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
     badges: [
       { text: "AI MATCH 93%", kind: "ai-match" },
       { text: "НОВИНКА", kind: "new" },
@@ -268,98 +719,317 @@ const recommendations: CardData[] = [
     mastersCount: "5 майстрів",
     why: "Підходить вашому бюджету та має багато позитивних відгуків",
   },
-];
-
-const partners: CardData[] = [
   {
-    image: "https://images.pexels.com/photos/7755238/pexels-photo-7755238.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "-20%", kind: "discount" }],
-    title: "Mon Chéri Salon",
+    image: "https://images.pexels.com/photos/7750091/pexels-photo-7750091.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+    badges: [{ text: "AI MATCH 89%", kind: "ai-match" }],
+    title: "Velvet Nails & Spa",
     type: "Салон краси",
     rating: 4.8,
-    reviews: 112,
-    district: "Золоті ворота",
-    distance: "1.1 км",
+    reviews: 61,
+    district: "Печерський р-н",
+    distance: "0.9 км",
     openNow: true,
-    tags: ["Манікюр", "Педикюр", "Масаж", "Косметологія"],
-    priceFrom: "700",
-    mastersCount: "8 майстрів",
+    tags: ["Манікюр", "Педикюр", "SPA", "Масаж"],
+    priceFrom: "580",
+    mastersCount: "6 майстрів",
+    why: "Стабільно високі оцінки за якість сервісу та зручний графік роботи",
+  },
+
+  {
+    image: "https://images.pexels.com/photos/7750117/pexels-photo-7750117.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+    badges: [{ text: "AI MATCH 87%", kind: "ai-match" }],
+    title: "Atelier Beauty",
+    type: "Салон краси",
+    rating: 4.8,
+    reviews: 103,
+    district: "Центр",
+    distance: "1.2 км",
+    openNow: true,
+    tags: ["Стрижка", "Фарбування", "Догляд"],
+    priceFrom: "650",
+    mastersCount: "6 майстрів",
+    why: "Сильні відгуки, зручна локація та послуги, що відповідають вашому запиту",
   },
   {
-    image: "https://images.pexels.com/photos/3993323/pexels-photo-3993323.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "-30%", kind: "discount" }],
-    title: "Queen Studio",
+    image: "https://images.pexels.com/photos/7750116/pexels-photo-7750116.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+    badges: [{ text: "AI MATCH 85%", kind: "ai-match" }, { text: "НОВИНКА", kind: "new" }],
+    title: "Élan Studio",
     type: "Студія краси",
-    rating: 4.7,
-    reviews: 85,
+    rating: 4.9,
+    reviews: 72,
+    district: "Липки",
+    distance: "1.4 км",
+    tags: ["Брови", "Вії", "Макіяж"],
+    priceFrom: "600",
+    mastersCount: "4 майстри",
+    why: "Високий рейтинг і сильна спеціалізація на beauty-послугах, які ви переглядали",
+  },
+
+];
+
+const soloMastersRecommendations: CardData[] = [
+  {
+    image: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 96%", kind: "ai-match" }],
+    title: "Оксана Мельник",
+    type: "Соло майстер · Манікюр",
+    rating: 4.9,
+    reviews: 143,
+    district: "Печерський р-н",
+    distance: "0.5 км",
+    tags: ["Манікюр", "Гель-лак", "Дизайн нігтів"],
+    priceFrom: "500",
+    experience: "6 років досвіду",
+    locationNote: "Приймає у своїй студії",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Високий рейтинг та вузька спеціалізація саме на манікюрі, який ви шукали",
+  },
+  {
+    image: "https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 92%", kind: "ai-match" }],
+    title: "Дмитро Кравець",
+    type: "Соло майстер · Барбер",
+    rating: 4.8,
+    reviews: 201,
+    district: "Печерський р-н",
+    distance: "0.9 км",
+    tags: ["Стрижка", "Борода", "Укладка"],
+    priceFrom: "400",
+    experience: "8 років досвіду",
+    locationNote: "Приймає у своєму кабінеті",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Один з найдосвідченіших барберів поруч із вами, з великою кількістю відгуків",
+  },
+  {
+    image: "https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 90%", kind: "ai-match" }],
+    title: "Ірина Бондар",
+    type: "Соло майстер · Брови та вії",
+    rating: 5.0,
+    reviews: 87,
+    district: "Липки",
+    distance: "1.1 км",
+    tags: ["Брови", "Вії", "Ламінування"],
+    priceFrom: "600",
+    experience: "5 років досвіду",
+    locationNote: "Виїзд та прийом у кабінеті",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Ідеальний рейтинг 5.0 та спеціалізація саме на бровах і віях",
+  },
+  {
+    image: "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 87%", kind: "ai-match" }],
+    title: "Марина Кузьменко",
+    type: "Соло майстер · Візаж",
+    rating: 4.9,
+    reviews: 112,
+    district: "Липки",
+    distance: "1.3 км",
+    tags: ["Візаж", "Укладка", "Брови"],
+    priceFrom: "700",
+    experience: "7 років досвіду",
+    locationNote: "Виїзний майстер",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Багато відгуків саме за святковий та весільний візаж",
+  },
+
+  {
+    image: "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 85%", kind: "ai-match" }],
+    title: "Софія Левченко",
+    type: "Косметолог",
+    rating: 4.8,
+    reviews: 96,
+    district: "Печерськ",
+    distance: "1.5 км",
+    tags: ["Косметологія", "Догляд", "Чистка"],
+    priceFrom: "800",
+    experience: "6 років досвіду",
+    locationNote: "Приймає у власному кабінеті",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Високі оцінки за доглядові процедури та зручний час запису",
+  },
+  {
+    image: "https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+    badges: [{ text: "AI MATCH 83%", kind: "ai-match" }],
+    title: "Андрій Савчук",
+    type: "Стиліст",
+    rating: 4.9,
+    reviews: 131,
+    district: "Центр",
+    distance: "1.7 км",
+    tags: ["Стрижка", "Укладка", "Фарбування"],
+    priceFrom: "700",
+    experience: "9 років досвіду",
+    locationNote: "Приймає у приватній студії",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+    why: "Високий рейтинг, великий досвід і сильний збіг із вашими фільтрами",
+  },
+
+];
+
+const partners: PartnerOffer[] = [
+  {
+    image: "https://images.pexels.com/photos/3993449/pexels-photo-3993449.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-30%",
+    validUntil: "до 30 червня",
+    title: "Комплекс для волосся",
+    partner: "Luna Beauty House",
+    district: "Печерський р-н",
+    distance: "0.4 км",
+    openNow: true,
+    oldPrice: "1 200",
+    newPrice: "840",
+    gift: "Укладка у подарунок",
+  },
+  {
+    image: "https://images.pexels.com/photos/3757942/pexels-photo-3757942.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-20%",
+    validUntil: "до 25 червня",
+    title: "Масаж спини",
+    partner: "Wellness Studio",
+    district: "Липки",
+    distance: "0.7 км",
+    openNow: true,
+    oldPrice: "900",
+    newPrice: "720",
+    gift: "Ароматерапія у подарунок",
+  },
+  {
+    image: "https://images.pexels.com/photos/3997391/pexels-photo-3997391.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-25%",
+    validUntil: "до 20 червня",
+    title: "Манікюр + гель-лак",
+    partner: "Nails Studio",
+    district: "Золоті ворота",
+    distance: "0.9 км",
+    openNow: true,
+    oldPrice: "800",
+    newPrice: "600",
+    gift: "Дизайн 2 нігтів у подарунок",
+  },
+  {
+    image: "https://images.pexels.com/photos/3993324/pexels-photo-3993324.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-15%",
+    validUntil: "до 15 червня",
+    title: "Брови + ламінування",
+    partner: "Brow Bar",
+    district: "Центр",
+    distance: "1.1 км",
+    openNow: false,
+    oldPrice: "1 000",
+    newPrice: "850",
+    gift: "Корекція у подарунок",
+  },
+  {
+    image: "https://images.pexels.com/photos/3997983/pexels-photo-3997983.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-20%",
+    validUntil: "до 12 липня",
+    title: "Стрижка + укладка",
+    partner: "Élan Studio",
     district: "Липки",
     distance: "1.3 км",
     openNow: true,
-    tags: ["Стрижка", "Фарбування", "Ботокс", "Догляд"],
-    priceFrom: "600",
-    mastersCount: "6 майстрів",
+    oldPrice: "1 100",
+    newPrice: "880",
+    gift: "Догляд для волосся",
   },
   {
-    image: "https://images.pexels.com/photos/19695972/pexels-photo-19695972.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "ПОДАРУНОК", kind: "gift" }],
-    title: "Shine Beauty",
-    type: "Салон краси",
-    rating: 4.8,
-    reviews: 64,
-    district: "Арсенальна",
-    distance: "1.4 км",
+    image: "https://images.pexels.com/photos/3764014/pexels-photo-3764014.jpeg?auto=compress&cs=tinysrgb&w=800&h=520&fit=crop",
+    discount: "-25%",
+    validUntil: "до 18 липня",
+    title: "Догляд для обличчя",
+    partner: "Atelier Beauty",
+    district: "Печерськ",
+    distance: "1.5 км",
     openNow: true,
-    tags: ["Манікюр", "Педикюр", "Масаж", "Брови"],
-    priceFrom: "550",
-    mastersCount: "5 майстрів",
+    oldPrice: "1 600",
+    newPrice: "1 200",
+    gift: "Маска у подарунок",
   },
 ];
-
 const nearby: CardData[] = [
   {
-    image: "https://images.pexels.com/photos/7755219/pexels-photo-7755219.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "ВІДКРИТО ЗАРАЗ", kind: "open" }],
+    image: "https://images.openai.com/static-rsc-4/Sdyxiwwe1san-rxTJmneyPfBnIXhc9o_TpIDDLsqRAP38W358_vG-s9JhQ63Mq1DhfN6HfNt1xbDolkTaZE1kIK2q1-XCUQ7lVoSVlNaxWWhzKCZ0cOL-TXvrsyjCUj1AZwmllRow88GnGAliPMmbq2uUjhD9P82zQatVEqq6u2reGLZCK9t5w1dXgDKvOO0?purpose=fullsize",
+    badges: [{ text: "ВИБІР BEAUTY AI", kind: "client-choice" }],
     title: "Beauty Point",
     type: "Салон краси",
-    rating: 4.6,
-    reviews: 53,
+    rating: 4.9,
+    reviews: 324,
     district: "Печерський р-н",
     distance: "0.3 км",
     openNow: true,
-    tags: ["Манікюр", "Гель-лак", "Дизайн нігтів", "Парафінотерапія"],
+    tags: [],
     priceFrom: "500",
-    mastersCount: "4 майстри",
+    mastersCount: "8 майстрів",
   },
+
   {
-    image: "https://images.pexels.com/photos/7755245/pexels-photo-7755245.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "ТРЕНДОВЕ МІСЦЕ", kind: "trend" }],
-    title: "Pink Nail Bar",
-    type: "Нейл-бар",
-    rating: 4.5,
-    reviews: 41,
+    image: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=900&h=1200&fit=crop",
+    badges: [{ text: "ТОП МАЙСТЕР", kind: "top-rating" }],
+    title: "Оксана Мельник",
+    type: "Майстер манікюру",
+    rating: 4.9,
+    reviews: 143,
     district: "Печерський р-н",
-    distance: "0.7 км",
+    distance: "0.5 км",
     openNow: true,
-    tags: ["Манікюр", "Педикюр", "Нарощування", "Дизайн"],
-    priceFrom: "450",
-    mastersCount: "3 майстри",
+    tags: [],
+    priceFrom: "500",
+    variant: "solo",
   },
+
   {
-    image: "https://images.pexels.com/photos/7755173/pexels-photo-7755173.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
-    badges: [{ text: "БЛИЗЬКО ДО МЕТРО", kind: "metro" }],
+    image: "https://images.openai.com/static-rsc-4/MiBKuJGrIQyXhShML9NuST3-78cy-gYZfCKvqIMJNG7Vgck14jXgW9e9P45ID300Fvi8MJXZocOmKdBspdgzAzfi66s6UdemWIk9NjO79Rwgx2MOd8gTj5Jz8S98QLaIaKsDLiqJGZYWPSPJkBv_0U1oDIP1bqLP2QXWvOa5r6BW7pRaBnPY0-IWqQIfl3vC?purpose=fullsize",
+    badges: [{ text: "ТОП РЕЙТИНГ", kind: "top-rating" }],
     title: "Metro Beauty",
     type: "Салон краси",
     rating: 4.8,
-    reviews: 68,
+    reviews: 268,
     district: "Кловська",
     distance: "0.5 км",
     openNow: true,
-    tags: ["Стрижка", "Укладка", "Фарбування", "Догляд"],
+    tags: [],
+    priceFrom: "600",
+    mastersCount: "7 майстрів",
+  },
+
+  {
+    image: "https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=900&h=1200&fit=crop",
+    badges: [{ text: "ВИБІР КЛІЄНТІВ", kind: "client-choice" }],
+    title: "Дмитро Кравець",
+    type: "Барбер",
+    rating: 4.9,
+    reviews: 201,
+    district: "Печерський р-н",
+    distance: "0.9 км",
+    openNow: true,
+    tags: [],
+    priceFrom: "400",
+    variant: "solo",
+  },
+
+  {
+    image: "https://images.pexels.com/photos/7750116/pexels-photo-7750116.jpeg?auto=compress&cs=tinysrgb&w=900&h=1200&fit=crop",
+    badges: [{ text: "ЧАСТО БРОНЮЮТЬ", kind: "trend" }],
+    title: "Élan Studio",
+    type: "Студія краси",
+    rating: 4.9,
+    reviews: 172,
+    district: "Липки",
+    distance: "1.4 км",
+    openNow: true,
+    tags: [],
     priceFrom: "600",
     mastersCount: "5 майстрів",
   },
 ];
-
 const topRated: CardData[] = [
   {
     image: "https://images.pexels.com/photos/7755218/pexels-photo-7755218.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
@@ -402,6 +1072,34 @@ const topRated: CardData[] = [
     tags: ["Манікюр", "Педикюр", "Масаж", "Косметологія"],
     priceFrom: "900",
     mastersCount: "7 майстрів",
+  },
+  {
+    image: "https://images.pexels.com/photos/3997986/pexels-photo-3997986.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    badges: [{ text: "НЕЗВИЧНИЙ ФОРМАТ", kind: "surprise" }],
+    title: "Zen Beauty Loft",
+    type: "Салон краси",
+    rating: 4.7,
+    reviews: 63,
+    district: "Поділ",
+    distance: "1.8 км",
+    openNow: true,
+    tags: ["Масаж", "SPA", "Медитативний догляд"],
+    priceFrom: "650",
+    mastersCount: "4 майстри",
+  },
+  {
+    image: "https://images.pexels.com/photos/3985360/pexels-photo-3985360.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    badges: [{ text: "РЕТЕЛЬНО ДІБРАНО", kind: "surprise" }],
+    title: "Blush Beauty Bar",
+    type: "Нейл-бар",
+    rating: 4.9,
+    reviews: 51,
+    district: "Липки",
+    distance: "1.0 км",
+    openNow: true,
+    tags: ["Манікюр", "Візаж", "Брови"],
+    priceFrom: "550",
+    mastersCount: "5 майстрів",
   },
 ];
 
@@ -448,25 +1146,572 @@ const fresh: CardData[] = [
     priceFrom: "700",
     mastersCount: "3 майстри",
   },
+  {
+    image: "https://images.pexels.com/photos/3997379/pexels-photo-3997379.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    badges: [{ text: "ПРИЄДНАЛИСЬ 3 ДНІ ТОМУ", kind: "new-salon" }],
+    title: "Glow Studio",
+    type: "Салон краси",
+    rating: 4.5,
+    reviews: 9,
+    district: "Печерський р-н",
+    distance: "1.1 км",
+    openNow: true,
+    tags: ["Манікюр", "Брови", "Вії"],
+    priceFrom: "480",
+    mastersCount: "3 майстри",
+  },
+  {
+    image: "https://images.pexels.com/photos/3993445/pexels-photo-3993445.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    badges: [{ text: "ПРИЄДНАВСЯ ВЧОРА", kind: "new-master" }],
+    title: "Olena Style",
+    type: "Майстриня стрижки",
+    rating: 5.0,
+    reviews: 3,
+    district: "Липки",
+    distance: "1.4 км",
+    openNow: true,
+    tags: ["Стрижка", "Укладка"],
+    priceFrom: "420",
+    mastersCount: "1 майстер",
+  },
 ];
 
-function Section({
-  title,
-  subtitle,
-  icon,
-  link,
+
+function RecommendationCarousel({
   cards,
   t,
+  variant,
+  onLocationClick,
+}: {
+  cards: CardData[];
+  t: Translations;
+  variant: "salons" | "masters" | "nearby" | "worth-trying" | "fresh";
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(cards.length > 4);
+
+  const updateArrows = () => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const maxScrollLeft = Math.max(
+      0,
+      track.scrollWidth - track.clientWidth
+    );
+
+    setCanScrollLeft(track.scrollLeft > 5);
+    setCanScrollRight(track.scrollLeft < maxScrollLeft - 5);
+  };
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    // Кожен новий набір рекомендацій починаємо з першої картки
+    track.scrollLeft = 0;
+
+    setCanScrollLeft(false);
+
+    const frame = requestAnimationFrame(() => {
+      updateArrows();
+    });
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateArrows();
+    });
+
+    resizeObserver.observe(track);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, [cards.length]);
+
+  const scroll = (direction: 1 | -1) => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const card = track.querySelector<HTMLElement>(".card");
+
+    const amount = card
+      ? card.offsetWidth + 14
+      : track.clientWidth * 0.25;
+
+    track.scrollBy({
+      left: amount * direction,
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div
+      className={`recommendation-carousel recommendation-carousel-${variant}`}
+    >
+      <div
+        className="carousel-track"
+        ref={trackRef}
+        onScroll={updateArrows}
+      >
+        {cards.map((c, i) => (
+          <Card
+            key={c.title + i}
+            data={c}
+            t={t}
+            hideTags
+            hideReason
+            onLocationClick={onLocationClick}
+          />
+        ))}
+      </div>
+
+      {canScrollLeft && (
+        <button
+          className="carousel-arrow carousel-arrow-prev"
+          type="button"
+          aria-label="Попередні рекомендації"
+          onClick={() => scroll(-1)}
+        >
+          ‹
+        </button>
+      )}
+
+      {canScrollRight && (
+        <button
+          className="carousel-arrow carousel-arrow-next"
+          type="button"
+          aria-label="Наступні рекомендації"
+          onClick={() => scroll(1)}
+        >
+          ›
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+function PartnerOffersCarousel({
+  offers,
+  lang,
+  onLocationClick,
+}: {
+  offers: PartnerOffer[];
+  lang: Lang;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const ua = lang === "ua";
+
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(offers.length > 4);
+
+  const updateArrows = () => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const maxScrollLeft = Math.max(
+      0,
+      track.scrollWidth - track.clientWidth
+    );
+
+    setCanScrollLeft(track.scrollLeft > 5);
+    setCanScrollRight(track.scrollLeft < maxScrollLeft - 5);
+  };
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    track.scrollLeft = 0;
+    setCanScrollLeft(false);
+
+    const frame = requestAnimationFrame(updateArrows);
+
+    const resizeObserver = new ResizeObserver(updateArrows);
+    resizeObserver.observe(track);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+    };
+  }, [offers.length]);
+
+  const scroll = (direction: 1 | -1) => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const card = track.querySelector<HTMLElement>(".partner-offer-card");
+
+    const amount = card
+      ? card.offsetWidth + 14
+      : track.clientWidth * 0.25;
+
+    track.scrollBy({
+      left: amount * direction,
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div className="partner-offers-carousel">
+      <div
+        className="partner-offers-track"
+        ref={trackRef}
+        onScroll={updateArrows}
+      >
+        {offers.map((offer, i) => (
+          <article
+            className="partner-offer-card"
+            key={`${offer.title}-${i}`}
+          >
+            <div
+              className="partner-offer-image"
+              style={{
+                ["--partner-photo" as string]: `url(${offer.image})`,
+              }}
+            >
+              <span className="partner-discount">
+                {offer.discount}
+              </span>
+
+              <span className="partner-valid">
+                {offer.validUntil}
+              </span>
+
+              {offer.gift && (
+                <span className="partner-gift">
+                  🎁 {offer.gift}
+                </span>
+              )}
+
+              <FavButton />
+            </div>
+
+            <div className="partner-offer-body">
+              <h3>{offer.title}</h3>
+
+              <p className="partner-name">
+                {offer.partner}
+              </p>
+
+              <div className="partner-card-meta">
+                <button
+                  type="button"
+                  className="card-location-link partner-location-link"
+                  onClick={() => onLocationClick?.(offer.partner, offer.district, offer.distance)}
+                  title={ua ? "Показати на карті" : "Show on map"}
+                >
+                  <span className="district-pin">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#a855f7"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                    {offer.district}
+                  </span>
+                  <span>· {offer.distance}</span>
+                </button>
+                {offer.openNow && (
+                  <span className="partner-availability">
+                    ● {ua ? "Є вікна сьогодні" : "Slots today"}
+                  </span>
+                )}
+              </div>
+
+              <div className="partner-price-row">
+                <span className="partner-old-price">
+                  {offer.oldPrice} грн
+                </span>
+
+                <strong>
+                  {offer.newPrice} грн
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                className="partner-book-btn"
+              >
+                {ua ? "Записатися" : "Book now"}
+              </button>
+
+              <a
+                href="#"
+                className="partner-details-link"
+              >
+                {ua ? "Детальніше" : "Details"} →
+              </a>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {canScrollLeft && (
+        <button
+          className="partner-carousel-arrow partner-carousel-prev"
+          type="button"
+          aria-label={
+            ua
+              ? "Попередні пропозиції"
+              : "Previous offers"
+          }
+          onClick={() => scroll(-1)}
+        >
+          ‹
+        </button>
+      )}
+
+      {canScrollRight && (
+        <button
+          className="partner-carousel-arrow partner-carousel-next"
+          type="button"
+          aria-label={
+            ua
+              ? "Наступні пропозиції"
+              : "Next offers"
+          }
+          onClick={() => scroll(1)}
+        >
+          ›
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PartnerOffersSection({
+  title,
+  subtitle,
+  link,
+  offers,
+  lang,
+  onLocationClick,
 }: {
   title: string;
   subtitle: string;
-  icon: React.ReactNode; /* Дозволяє передавати як SVG, так і звичайні строки/емодзі */
-  link?: string;
-  cards: CardData[];
-  t: Translations;
+  link: string;
+  offers: PartnerOffer[];
+  lang: Lang;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
 }) {
   return (
-    <section className="section">
+    <section className="section partner-offers-section" id="promotions">
+      <div className="section-head partner-section-head">
+        <div className="partner-section-copy">
+          <h2 className="section-title">
+            <span className="accent">
+              <svg
+                className="section-icon"
+                width="60"
+                height="60"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 3h12l4 6-10 12L2 9z" />
+                <path d="M11 3 8 9l4 12 4-12-3-6" />
+                <path d="M2 9h20" />
+              </svg>
+            </span>
+            {title}
+          </h2>
+
+          <p className="section-sub">{subtitle}</p>
+
+           <a className="section-link partner-info-link" href="#partners-info">
+            {link}
+          </a>
+        </div>
+      </div>
+      <PartnerOffersCarousel offers={offers} lang={lang} onLocationClick={onLocationClick} />
+    </section>
+  );
+}
+
+function KyivTopSection({
+  cards,
+  lang,
+  onLocationClick,
+}: {
+  cards: CardData[];
+  lang: Lang;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(cards.length > 4);
+  const ua = lang === "ua";
+
+  const updateArrows = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+    setCanScrollLeft(track.scrollLeft > 4);
+    setCanScrollRight(track.scrollLeft < maxScrollLeft - 4);
+  };
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollLeft = 0;
+    const frame = requestAnimationFrame(updateArrows);
+    const observer = new ResizeObserver(updateArrows);
+    observer.observe(track);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [cards.length]);
+
+  const scroll = (direction: 1 | -1) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const card = track.querySelector<HTMLElement>(".kyiv-cover-card");
+    const amount = card ? card.offsetWidth + 14 : track.clientWidth * 0.25;
+    track.scrollBy({ left: amount * direction, behavior: "smooth" });
+  };
+
+  return (
+    <section className="section kyiv-top-section" id="nearby">
+      <div className="section-head kyiv-top-head">
+        <div>
+          <h2 className="section-title kyiv-top-title">
+            <span className="kyiv-top-crown" aria-hidden="true">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M8 4h8v3a4 4 0 0 1-8 0V4Z" />
+                <path d="M8 5H5v1a4 4 0 0 0 4 4" />
+                <path d="M16 5h3v1a4 4 0 0 1-4 4" />
+                <path d="M12 11v5" />
+                <path d="M9 20h6" />
+                <path d="M10 16h4v4h-4" />
+              </svg>
+            </span>
+            {ua ? "Найкращі в Києві" : "Best in Kyiv"}
+          </h2>
+          <p className="section-sub">
+            {ua ? "Салони та майстри з найвищими показниками" : "Top salons and masters by overall performance"}
+          </p>
+        </div>
+        <span className="results-badge kyiv-top-badge">
+          {ua ? `ТОП-${cards.length} У КИЄВІ` : `KYIV TOP ${cards.length}`}
+        </span>
+      </div>
+
+      <div className="kyiv-top-carousel">
+        <div className="kyiv-top-track" ref={trackRef} onScroll={updateArrows}>
+          {cards.map((card, i) => (
+            <article className="kyiv-cover-card" key={`${card.title}-${i}`}>
+              <div
+                className="kyiv-cover-photo"
+                style={{ ["--kyiv-cover-photo" as string]: `url(${card.image})` }}
+              >
+                <div className="kyiv-cover-shade" />
+
+                <div className="kyiv-cover-topline">
+                  <span className="kyiv-cover-kicker">BEAUTY AI · KYIV TOP</span>
+                  <FavButton />
+                </div>
+
+                <span className="kyiv-cover-rank">{i + 1}</span>
+
+                <div className="kyiv-cover-copy">
+                  <span className={`kyiv-cover-label kyiv-cover-label-${i % 4}`}>
+                    {card.badges[0]?.text ?? (ua ? "ВИБІР BEAUTY AI" : "BEAUTY AI PICK")}
+                  </span>
+
+                  <h3 className={card.variant === "solo" ? "kyiv-cover-master-name" : ""}>
+                    {card.title}
+                  </h3>
+                  <p className="kyiv-cover-type">{card.type}</p>
+
+                  <div className="kyiv-cover-rating">
+                    <span>★ {card.rating.toFixed(1)}</span>
+                    <span>{card.reviews} {ua ? "відгуків" : "reviews"}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="kyiv-cover-location"
+                    onClick={() => onLocationClick?.(card.title, card.district, card.distance)}
+                    aria-label={ua ? `Показати ${card.title} на карті` : `Show ${card.title} on map`}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
+                    {card.district} · {card.distance}
+                  </button>
+
+                  <div className="kyiv-cover-footer">
+                    <span className="kyiv-cover-price">{ua ? "від" : "from"} {card.priceFrom} грн</span>
+                    <span className="kyiv-cover-view">{ua ? "Профіль" : "Profile"} →</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {canScrollLeft && (
+          <button className="carousel-arrow carousel-arrow-prev kyiv-top-arrow" type="button" aria-label={ua ? "Попередні" : "Previous"} onClick={() => scroll(-1)}>‹</button>
+        )}
+        {canScrollRight && (
+          <button className="carousel-arrow carousel-arrow-next kyiv-top-arrow" type="button" aria-label={ua ? "Наступні" : "Next"} onClick={() => scroll(1)}>›</button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PanelCarouselSection({
+  title,
+  subtitle,
+  icon,
+  cards,
+  t,
+  lang,
+  variant,
+  resultsWord,
+  id,
+  onLocationClick,
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  cards: CardData[];
+  t: Translations;
+  lang: Lang;
+  variant: "nearby" | "worth-trying" | "fresh";
+  resultsWord: string;
+  id?: string;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
+  return (
+    <section className="section subtle-panel-section" id={id}>
       <div className="section-head">
         <div>
           <h2 className="section-title">
@@ -474,34 +1719,82 @@ function Section({
           </h2>
           <p className="section-sub">{subtitle}</p>
         </div>
-        {link && (
-          <a className="section-link" href="#">
-            {link} ›
-          </a>
-        )}
+        <span className="results-badge">
+          {cards.length} {resultsWord}
+        </span>
       </div>
-      <div className="cards-grid">
-        {cards.map((c, i) => (
-          <Card key={c.title + i} data={c} t={t} />
-        ))}
-      </div>
+      <RecommendationCarousel cards={cards} t={t} variant={variant} onLocationClick={onLocationClick} />
     </section>
   );
 }
 
 export default function App() {
   const [lang, setLang] = useState<Lang>("ua");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authIntent, setAuthIntent] = useState<{
+    mode: "login" | "register";
+    role: Exclude<AuthRole, "admin">;
+    partnerKind?: "solo" | "salon";
+  }>({
+    mode: "login",
+    role: "client",
+  });
+  const [partnerChoiceOpen, setPartnerChoiceOpen] = useState(false);
+  const [user, setUser] = useState<MockUser | null>(null);
+  const [view, setView] = useState<AppView>("home");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
+  const [selectedMapLocation, setSelectedMapLocation] = useState<SelectedMapLocation | null>(null);
   const t = dict[lang];
+
+  const handleLocationClick = (name: string, district: string, distance: string) => {
+    const coords = LOCATION_COORDINATES[name] ?? DISTRICT_FALLBACKS[district] ?? [50.4412, 30.5390];
+
+    setSelectedMapLocation({
+      name,
+      district,
+      distance,
+      lat: coords[0],
+      lng: coords[1],
+    });
+  };
+
+  const handleAuthenticated = (nextUser: MockUser) => {
+    setUser(nextUser);
+    setAuthOpen(false);
+    setView("dashboard");
+  };
+
+  const handleLogout = () => {
+    setAccountMenuOpen(false);
+    setUser(null);
+    setView("home");
+    clearAuthTokens();
+  };
+
+  if (view === "dashboard" && user) {
+    return (
+      <div className="app">
+        <DashboardShell
+          user={user}
+          lang={lang}
+          onHome={() => setView("home")}
+          onRoleChange={(role) => setUser((prev) => prev ? { ...prev, role, avatar: roleAvatars[role] } : prev)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
       <header className="header">
         <a className="logo" href="#" aria-label="Beauty AI — головна">
-          <img src={logoLight} alt="Beauty AI" className="logo-image" />
+          <img src={beautyAISparkles} alt="" className="logo-sparkles" aria-hidden="true" />
+          <span className="logo-wordmark"><span>Beauty</span> <strong>AI</strong></span>
         </a>
         <nav className="nav">
           {t.nav.map((label, i) => (
-            <a key={label} href={i === t.nav.length - 1 ? "#about" : "#"}>
+            <a key={label} href={["#salons", "#masters",  "#promotions", "#about"][i]}>
               {label}
             </a>
           ))}
@@ -515,26 +1808,71 @@ export default function App() {
             {lang === "ua" ? "UA" : "EN"} ˅
           </button>
           
-          <button className="google-login-btn">
-            {t.loginGoogle}
-          </button>
+          {user ? (
+            <div className="account-menu-wrap">
+              <button
+                className="header-avatar-btn"
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                aria-label={lang === "ua" ? "Меню акаунта" : "Account menu"}
+                aria-expanded={accountMenuOpen}
+              >
+                <img src={user.avatar} alt={user.name} />
+              </button>
+
+              {accountMenuOpen && (
+                <>
+                  <div className="account-menu-backdrop" onMouseDown={() => setAccountMenuOpen(false)} />
+                  <div className="account-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        setView("dashboard");
+                      }}
+                    >
+                      {lang === "ua" ? "Мій кабінет" : "My account"}
+                    </button>
+                    <button type="button" role="menuitem" className="account-menu-logout" onClick={handleLogout}>
+                      {lang === "ua" ? "Вийти" : "Log out"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <button
+              className="google-login-btn"
+              onClick={() => {
+                setAuthIntent({ mode: "login", role: "client" });
+                setAuthOpen(true);
+              }}
+            >
+              {t.loginGoogle}
+            </button>
+          )}
         </div>
       </header>
 
       <section className="hero-full-width">
         <div className="hero-overlay-content">
           <div className="hero-content">
-            <h1>
-              {t.heroTitle1}
-              <br />
-              {t.heroTitle2}
-              <br />
-              <span className="accent">{t.heroTitle3} </span>
+
+            <div className="hero-eyebrow">
+              <span>BEAUTY AI</span> — {t.heroEyebrow}
+            </div>
+
+            <h1 className="hero-title">
+              <span className="hero-title-line">{t.heroTitle1}</span>
+              <span className="hero-title-line hero-title-match">{t.heroTitle2}</span>
+              <span className="hero-title-line">
+                {lang === "ua" ? "ЗА ДОПОМОГОЮ" : "with the help of"}{" "}
+                <span className="hero-title-ai">AI</span>
+              </span>
             </h1>
+
             <p className="hero-subtitle">
-              {t.heroSubtitle.split("—")[0]}—
-              <br />
-              {t.heroSubtitle.split("—")[1]}
+              {t.heroSubtitle}
             </p>
 
             <div className="search-bar">
@@ -549,65 +1887,96 @@ export default function App() {
         </div>
       </section>
 
-      <MapSection lang={lang} />
-
       
-      <section className="section ai-recommendations">
-        <div className="section-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
+      <section className="section ai-recommendations" id="salons">
+        <div className={`recommendations-topline ${recommendationFiltersOpen ? "filters-open" : ""}`}>
+          <div className="recommendations-heading">
             <h2 className="section-title">
               <span className="accent">
-                <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="m12 3-1.8 5.4a2.2 2.2 0 0 1-1.4 1.4L3.4 11.6l5.4 1.8a2.2 2.2 0 0 1 1.4 1.4L12 20.2l1.8-5.4a2.2 2.2 0 0 1 1.4-1.4l5.4-1.8-5.4-1.8a2.2 2.2 0 0 1-1.4-1.4L12 3z" />
-                </svg>
-              </span> {t.sections.recommendations.title}
+                <img
+                  src={beautyAISparkles}
+                  alt=""
+                  className="beauty-ai-sparkles"
+                  aria-hidden="true"
+                />
+              </span>
+              {lang === "ua" ? (
+                <>Рекомендації Beauty <span className="recommendations-ai">AI</span></>
+              ) : (
+                <>Beauty <span className="recommendations-ai">AI</span> Recommendations</>
+              )}
             </h2>
-            <p className="section-sub">{t.sections.recommendations.subtitle}</p>
+            <p className="section-sub">
+              {lang === "ua" ? "Підібрано відповідно до вашого запиту" : "Selected for your request"}
+            </p>
           </div>
-          
-          {/* Передаємо поточну мову lang у FilterBar */}
-          <FilterBar 
-            lang={lang}
-            onFilterChange={(filters: any) => console.log(filters)} 
-          />
+
+          <div className="recommendations-filter-menu">
+            <button
+              className={`recommendations-filter-toggle ${recommendationFiltersOpen ? "is-open" : ""}`}
+              type="button"
+              aria-expanded={recommendationFiltersOpen}
+              onClick={() => setRecommendationFiltersOpen((open) => !open)}
+            >
+              <span className="recommendations-filter-icon" aria-hidden="true">☷</span>
+              {lang === "ua" ? "Фільтри" : "Filters"}
+              <span className="recommendations-filter-chevron" aria-hidden="true">⌄</span>
+            </button>
+
+          </div>
+
+          {recommendationFiltersOpen && (
+            <div className="recommendations-filter-panel">
+              <FilterBar lang={lang} onFilterChange={(filters: any) => console.log(filters)} />
+            </div>
+          )}
         </div>
-        
-        <div className="cards-grid">
-          {recommendations.map((c, i) => (
-            <Card key={c.title + i} data={c} t={t} />
-          ))}
+
+        <div className="recommendation-row recommendation-row-salons">
+          <div className="recommendation-intro">
+            <div className="recommendation-intro-head">
+              <h2><span className="row-symbol">✦</span>{t.sections.recommendations.title}</h2>
+              <span className="results-count">
+                {recommendations.length} {lang === "ua" ? "варіантів знайдено" : "options found"}
+              </span>
+            </div>
+            <p>{t.sections.recommendations.subtitle}</p>
+          </div>
+          <RecommendationCarousel cards={recommendations} t={t} variant="salons" onLocationClick={handleLocationClick} />
+        </div>
+
+        <div className="recommendation-row recommendation-row-masters" id="masters">
+          <div className="recommendation-intro">
+            <div className="recommendation-intro-head">
+              <h2><span className="row-symbol">✦</span>{t.sections.soloMasters.title}</h2>
+              <span className="results-count">
+                {soloMastersRecommendations.length} {lang === "ua" ? "майстрів знайдено" : "masters found"}
+              </span>
+            </div>
+            <p>{t.sections.soloMasters.subtitle}</p>
+          </div>
+          <RecommendationCarousel cards={soloMastersRecommendations} t={t} variant="masters" onLocationClick={handleLocationClick} />
         </div>
       </section>
-
-      <Section
+      <div className="section-divider" aria-hidden="true">
+        <span>✦</span>
+      </div>
+      <PartnerOffersSection
         title={t.sections.partners.title}
         subtitle={t.sections.partners.subtitle}
-        icon={
-          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 3h12l4 6-10 12L2 9z" />
-            <path d="M11 3 8 9l4 12 4-12-3-6" />
-            <path d="M2 9h20" />
-          </svg>
-        }
         link={t.partnersLink}
-        cards={partners}
-        t={t}
+        offers={partners}
+        lang={lang}
+        onLocationClick={handleLocationClick}
       />
 
-      <Section
-        title={t.sections.nearby.title}
-        subtitle={t.sections.nearby.subtitle}
-        icon={
-          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
-        }
+<KyivTopSection
         cards={nearby}
-        t={t}
+        lang={lang}
+        onLocationClick={handleLocationClick}
       />
 
-      <Section
+      <PanelCarouselSection
         title={t.sections.topRated.title}
         subtitle={t.sections.topRated.subtitle}
         icon={
@@ -617,9 +1986,14 @@ export default function App() {
         }
         cards={topRated}
         t={t}
+        lang={lang}
+        variant="worth-trying"
+        resultsWord={lang === "ua" ? "варіантів знайдено" : "options found"}
+        id="worth-trying"
+        onLocationClick={handleLocationClick}
       />
 
-      <Section
+      <PanelCarouselSection
         title={t.sections.fresh.title}
         subtitle={t.sections.fresh.subtitle}
         icon={
@@ -630,6 +2004,11 @@ export default function App() {
         }
         cards={fresh}
         t={t}
+        lang={lang}
+        variant="fresh"
+        resultsWord={lang === "ua" ? "новинок знайдено" : "new listings"}
+        id="fresh"
+        onLocationClick={handleLocationClick}
       />
       
       <section className="about-section" id="about">
@@ -651,17 +2030,100 @@ export default function App() {
           </a>
         </div>
 
-        <div className="about-column about-partners">
+        <div className="about-column about-partners"
+         id="partners-info">
           <h3>{t.about.partnersTitle}</h3>
           <p>{t.about.partnersText}</p>
 
-          <button className="partner-btn">
+          <button
+            className="partner-btn"
+            onClick={() => setPartnerChoiceOpen(true)}
+          >
             {t.about.partnersCta}
           </button>
         </div>
       </section>
 
       <p className="footer-note">ⓘ {t.footer} ✦</p>
+
+      {partnerChoiceOpen && (
+        <div
+          className="partner-choice-backdrop"
+          role="presentation"
+          onMouseDown={() => setPartnerChoiceOpen(false)}
+        >
+          <div className="partner-choice-window" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="partner-choice-kicker">✦ BEAUTY AI</span>
+            <h3>{lang === "ua" ? "Хто ви?" : "Who are you?"}</h3>
+            <p>
+              {lang === "ua"
+                ? "Оберіть, як вам зручніше приєднатись до Beauty AI"
+                : "Choose how you'd like to join Beauty AI"}
+            </p>
+
+            <div className="partner-choice-options">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthIntent({ mode: "register", role: "master", partnerKind: "solo" });
+                  setPartnerChoiceOpen(false);
+                  setAuthOpen(true);
+                }}
+              >
+                <span className="partner-choice-title">{lang === "ua" ? "Соло-майстер" : "Solo master"}</span>
+                <span className="partner-choice-desc">
+                  {lang === "ua" ? "Працюю сам(а), без прив'язки до салону" : "I work independently, no salon"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthIntent({ mode: "register", role: "master", partnerKind: "salon" });
+                  setPartnerChoiceOpen(false);
+                  setAuthOpen(true);
+                }}
+              >
+                <span className="partner-choice-title">{lang === "ua" ? "Власник салону" : "Salon owner"}</span>
+                <span className="partner-choice-desc">
+                  {lang === "ua" ? "Керую закладом з кількома майстрами" : "I run a business with multiple masters"}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {authOpen && (
+        <AuthModal
+          lang={lang}
+          onClose={() => setAuthOpen(false)}
+          onAuthenticated={handleAuthenticated}
+          initialMode={authIntent.mode}
+          initialRole={authIntent.role}
+          initialPartnerKind={authIntent.partnerKind}
+        />
+      )}
+
+      {selectedMapLocation && (
+        <div
+          className="map-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setSelectedMapLocation(null)}
+        >
+          <div className="map-modal-window" onMouseDown={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="map-modal-close"
+              onClick={() => setSelectedMapLocation(null)}
+              aria-label={lang === "ua" ? "Закрити" : "Close"}
+            >
+              ×
+            </button>
+            <MapSection lang={lang} selectedLocation={selectedMapLocation} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
