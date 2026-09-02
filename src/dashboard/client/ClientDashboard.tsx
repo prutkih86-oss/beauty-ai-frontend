@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
 
 const masterImages = [
@@ -66,8 +67,47 @@ export default function ClientDashboard({
   const [profilePhone, setProfilePhone] = useState("+380 67 123 45 67");
   const bonusBalance = 250;
   const [profileEmail, setProfileEmail] = useState(user.email);
+  const [now, setNow] = useState(() => new Date());
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyPush, setNotifyPush] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const formattedDate = useMemo(() => {
+    if (ua) {
+      const day = new Intl.DateTimeFormat("uk-UA", {
+        day: "2-digit",
+      }).format(now);
+      const month = new Intl.DateTimeFormat("uk-UA", {
+        month: "short",
+      })
+        .format(now)
+        .toLowerCase();
+      const year = new Intl.DateTimeFormat("uk-UA", {
+        year: "numeric",
+      }).format(now);
+
+      return `${day} ${month} ${year}`;
+    }
+
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(now);
+  }, [now, ua]);
+
+  const formattedTime = useMemo(
+    () =>
+      new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(now),
+    [now, ua]
+  );
 
   const firstName = useMemo(() => {
     const value = user.name?.trim().split(/\s+/)[0];
@@ -143,8 +183,8 @@ export default function ClientDashboard({
     <main className="client-dashboard-shell">
       <aside className="client-sidebar">
         <button className="client-brand" type="button" onClick={onHome} aria-label="Beauty AI">
-          <span className="client-brand-mark"><i>✦</i><i>✦</i><i>✦</i></span>
-          <span>Beauty <b>AI</b></span>
+          <img src={beautyAISparkles} alt="" className="client-brand-logo" aria-hidden="true" />
+          <span className="client-brand-wordmark"><span>Beauty</span> <strong>AI</strong></span>
         </button>
 
         <nav className="client-sidebar-nav" aria-label={ua ? "Навігація кабінету" : "Account navigation"}>
@@ -163,10 +203,16 @@ export default function ClientDashboard({
           <div className="client-loyalty-card">
             <div className="client-loyalty-copy">
               <b>{ua ? "Beauty бонуси" : "Beauty bonuses"}</b>
+              <div className="client-loyalty-balance">
+                <span>{ua ? "Твій бонусний баланс" : "Your bonus balance"}</span>
+                <strong>{bonusBalance} ₴</strong>
+              </div>
               <span>{ua ? "Накопичуй бонуси та отримуй знижки на улюблені послуги" : "Earn bonuses and get discounts on favourite services"}</span>
             </div>
             <div className="client-loyalty-sparkles" aria-hidden="true">✦ ✦ ✦</div>
-            <div className="client-loyalty-diamond" aria-hidden="true">◆</div>
+            <div className="client-loyalty-coin" aria-hidden="true">
+              <span>✦</span>
+            </div>
             <button type="button">{ua ? "Дізнатись більше" : "Learn more"}</button>
           </div>
           <div className="client-sidebar-footer">
@@ -181,14 +227,20 @@ export default function ClientDashboard({
         <header className="client-dashboard-header">
           <div className="client-welcome-copy">
             <h1>{ua ? `Вітаємо, ${firstName}! 👋` : `Welcome, ${firstName}! 👋`}</h1>
-            <p>{ua ? "Знайдіть свого майстра краси" : "Find your beauty master"}</p>
           </div>
           <div className="client-header-actions">
-            <div className="client-bonus-balance">
-              <div><span>{ua ? "Твій бонусний баланс" : "Your bonus balance"}</span><strong>{bonusBalance} ₴</strong></div>
-              <span className="client-bonus-diamond" aria-hidden="true">◆</span>
+            <div className="client-datetime-card" aria-label={ua ? "Поточні дата і час" : "Current date and time"}>
+              <div>
+                <span>{formattedDate}</span>
+                <strong>{formattedTime}</strong>
+              </div>
             </div>
-            <button className="client-notification-btn" type="button" aria-label={ua ? "Сповіщення" : "Notifications"}>♧<span></span></button>
+            <button className="client-notification-btn" type="button" aria-label={ua ? "Сповіщення" : "Notifications"}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+              </svg>
+              <span></span>
+            </button>
             <button className="client-profile-trigger" type="button" onClick={() => setTab("profile")}>
               <img src={user.avatar} alt={user.name} /><span>{firstName}</span><b>⌄</b>
             </button>
@@ -222,26 +274,35 @@ export default function ClientDashboard({
                 <div className="client-section-head"><h2>{ua ? "Останні відгуки" : "Latest reviews"}</h2><button type="button">{ua ? "Переглянути всі" : "View all"}</button></div>
                 <div className="client-review-card">
                   <div className="client-review-mainline">
-                    <div className="client-review-author"><img src={user.avatar} alt={user.name} /><div><b>{ua ? "Наталя С." : "Natalia S."}</b><span>{history[0].date}</span></div></div>
+                    <div className="client-review-author"><img src={user.avatar} alt={user.name} /><div><b>{firstName}</b><span>{history[0].date}</span></div></div>
                     <div className="client-review-score"><span>★★★★★</span><strong>5.0</strong></div>
                   </div>
-                  <p>{ratings[0].comment || (ua ? "Дякую за ідеальний манікюр! 💜" : "Thank you for the perfect manicure! 💜")}</p>
-                  <div className="client-review-dots" aria-hidden="true"><i className="active"></i><i></i><i></i><i></i></div>
-                  <button type="button" className="client-review-edit-hit" onClick={() => setOpenReview(openReview === 0 ? null : 0)} aria-label={ua ? "Редагувати відгук" : "Edit review"}></button>
-                  {openReview === 0 && renderReviewForm(0)}
-                </div>
-              </section>
-
-              <section className="client-section client-favorite-masters-section client-surface-panel">
-                <div className="client-section-head"><h2>{ua ? "Улюблені майстри" : "Favourite masters"}</h2><button type="button">{ua ? "Переглянути всі" : "View all"}</button></div>
-                <div className="client-favorite-masters-list">
-                  {favoriteMasters.map((master) => (
-                    <article className="client-master-row" key={master.name}>
-                      <img src={master.image} alt={master.name} />
-                      <div><b>{master.name}</b><span>{master.type} <i>•</i> {master.rating.toFixed(1)}</span></div>
-                      <strong>♥</strong>
-                    </article>
-                  ))}
+                  <div className="client-review-comment-row">
+                    <p>{ratings[0].comment || (ua ? "Дякую за ідеальний манікюр! 💜" : "Thank you for the perfect manicure! 💜")}</p>
+                    {openReview === 0 && (
+                      <button
+                        type="button"
+                        className="client-review-close-btn"
+                        onClick={() => setOpenReview(null)}
+                        aria-label={ua ? "Закрити форму відгуку" : "Close review form"}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {openReview === 0 ? (
+                    <>
+                      {renderReviewForm(0)}
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="client-review-edit-btn"
+                      onClick={() => setOpenReview(0)}
+                    >
+                      {ua ? "Редагувати відгук" : "Edit review"}
+                    </button>
+                  )}
                 </div>
               </section>
             </div>

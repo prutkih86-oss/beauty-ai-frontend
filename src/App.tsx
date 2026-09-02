@@ -1,10 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import "./App.css";
 import MapSection from "./MapSection";
 import CategoryFilters from "./CategoryFilters";
 import FilterBar from './FilterBar';
 import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
 import DashboardShell from "./dashboard/DashboardShell";
+
+type CardReview = {
+  author: string;
+  rating: number;
+  text: string;
+  date?: string;
+};
 
 type CardData = {
   image: string;
@@ -25,6 +33,9 @@ type CardData = {
   experience?: string;
   locationNote?: string;
   profileLinkLabel?: string;
+  description?: string;
+  reviewsList?: CardReview[];
+  website?: string;
 };
 
 
@@ -40,6 +51,9 @@ type PartnerOffer = {
   oldPrice: string;
   newPrice: string;
   gift?: string;
+  rating: number;
+  reviews: number;
+  website?: string;
 };
 
 
@@ -106,6 +120,41 @@ const dict = {
     viewSalon: "Дивитися салон",
     inSalon: "у салоні",
     avgCheck: "Середній чек",
+    open: "Відкрито",
+    available: "Є місця",
+    placeModal: {
+      close: "Закрити",
+      reviews: "відгуків",
+      reviewsTitle: "Відгуки клієнтів",
+      shownReviews: "Показано",
+      ofReviews: "з",
+      aboutTitle: "Про місце",
+      servicesTitle: "Послуги та спеціалізації",
+      detailsTitle: "Інформація",
+      priceFrom: "Ціна від",
+      averageCheck: "Середній чек",
+      experience: "Досвід / команда",
+      location: "Розташування",
+      status: "Статус",
+      book: "Записатися",
+    },
+    bookingModal: {
+      close: "Закрити",
+      title: "Запис до майстра",
+      service: "Послуга",
+      date: "Дата",
+      time: "Вільний час",
+      contact: "Ваш телефон",
+      contactPlaceholder: "+380 00 000 00 00",
+      summary: "Ваш запис",
+      confirm: "Підтвердити запис",
+      successTitle: "Запис підтверджено!",
+      successText: "Готово — час зарезервовано. Ми надішлемо нагадування перед візитом.",
+      bookingCode: "Код запису",
+      done: "Готово",
+      chooseTime: "Оберіть час",
+      salonWebsite: "Перейти на сайт салону",
+    },
     about: {                                    // ← тут вставляєш новий блок
       title: "Про Beauty AI",
       description:
@@ -142,6 +191,41 @@ const dict = {
     viewSalon: "View salon",
     inSalon: "at the salon",
     avgCheck: "Average check",
+    open: "Open",
+    available: "Available",
+    placeModal: {
+      close: "Close",
+      reviews: "reviews",
+      reviewsTitle: "Client reviews",
+      shownReviews: "Showing",
+      ofReviews: "of",
+      aboutTitle: "About",
+      servicesTitle: "Services & specialties",
+      detailsTitle: "Information",
+      priceFrom: "Price from",
+      averageCheck: "Average check",
+      experience: "Experience / team",
+      location: "Location",
+      status: "Status",
+      book: "Book now",
+    },
+    bookingModal: {
+      close: "Close",
+      title: "Book a master",
+      service: "Service",
+      date: "Date",
+      time: "Available time",
+      contact: "Your phone",
+      contactPlaceholder: "+380 00 000 00 00",
+      summary: "Your booking",
+      confirm: "Confirm booking",
+      successTitle: "Booking confirmed!",
+      successText: "Done — the time is reserved. We will send you a reminder before the visit.",
+      bookingCode: "Booking code",
+      done: "Done",
+      chooseTime: "Choose a time",
+      salonWebsite: "Visit salon website",
+    },
     about: {                                    // ← і тут теж
       title: "About Beauty AI",
       description:
@@ -169,7 +253,7 @@ type MockUser = {
 
 const roleAvatars: Record<AuthRole, string> = {
   client: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
-  master: "https://images.pexels.com/photos/3993449/pexels-photo-3993449.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
+  master: "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=320&h=320&fit=crop",
   admin: "https://images.pexels.com/photos/2381069/pexels-photo-2381069.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
 };
 
@@ -347,16 +431,28 @@ function AuthModal({
         </button>
 
         <div className="auth-brand">
-          <span className="auth-kicker">✦ BEAUTY AI</span>
-          <h2 id="auth-title">
-            {mode === "login"
-              ? ua ? "Раді бачити вас знову" : "Welcome back"
-              : ua ? "Створіть свій профіль" : "Create your profile"}
-          </h2>
+          <div className="auth-title-row">
+            <span className="auth-title-icon" aria-hidden="true" />
+
+            <h2 id="auth-title">
+              {mode === "login"
+                ? ua
+                  ? "Раді бачити вас знову"
+                  : "Welcome back"
+                : ua
+                  ? "Створіть свій профіль"
+                  : "Create your profile"}
+            </h2>
+          </div>
+
           <p>
             {mode === "login"
-              ? ua ? "Увійдіть, щоб керувати записами, обраним і профілем." : "Sign in to manage bookings, favourites and your profile."
-              : ua ? "Оберіть тип профілю — решту даних підключимо до API після запуску сервера." : "Choose a profile type — the API will be connected when the server is online."}
+              ? ua
+                ? "Увійдіть, щоб керувати записами, обраним і профілем."
+                : "Sign in to manage bookings, favourites and your profile."
+              : ua
+                ? "Оберіть тип профілю — решту даних підключимо до API після запуску сервера."
+                : "Choose a profile type — the API will be connected when the server is online."}
           </p>
         </div>
 
@@ -544,6 +640,460 @@ function FavButton() {
   );
 }
 
+
+const SALON_WEBSITES: Record<string, string> = {
+  "Luna Beauty House": "https://example.com/?salon=luna-beauty-house",
+  "Nails Studio": "https://example.com/?salon=nails-studio",
+  "Beauty Room": "https://example.com/?salon=beauty-room",
+  "Velvet Nails & Spa": "https://example.com/?salon=velvet-nails-spa",
+  "Wellness Studio": "https://example.com/?salon=wellness-studio",
+  "Brow Bar": "https://example.com/?salon=brow-bar",
+  "Élan Studio": "https://example.com/?salon=elan-studio",
+  "Atelier Beauty": "https://example.com/?salon=atelier-beauty",
+  "Beauty Point": "https://example.com/?salon=beauty-point",
+  "Metro Beauty": "https://example.com/?salon=metro-beauty",
+  "Elegant Beauty": "https://example.com/?salon=elegant-beauty",
+  "Perfect Look": "https://example.com/?salon=perfect-look",
+};
+
+function getSalonWebsite(name: string, explicit?: string) {
+  return explicit ?? SALON_WEBSITES[name] ?? `https://example.com/?salon=${encodeURIComponent(name)}`;
+}
+
+function openSalonWebsite(name: string, explicit?: string) {
+  window.open(getSalonWebsite(name, explicit), "_blank", "noopener,noreferrer");
+}
+
+function getBookingDates() {
+  const formatter = new Intl.DateTimeFormat("uk-UA", { weekday: "short", day: "2-digit", month: "short" });
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() + index);
+    return {
+      value: date.toISOString().slice(0, 10),
+      label: formatter.format(date),
+    };
+  });
+}
+
+const BOOKING_TIMES = ["09:00", "10:30", "12:00", "13:30", "15:00", "16:30", "18:00", "19:30"];
+
+function getAvailableTimes(masterName: string, date: string) {
+  const seed = Array.from(`${masterName}-${date}`).reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return BOOKING_TIMES.filter((_, index) => (seed + index * 3) % 5 !== 0);
+}
+
+function BookingModal({
+  data,
+  t,
+  onClose,
+}: {
+  data: CardData;
+  t: Translations;
+  onClose: () => void;
+}) {
+  const dates = getBookingDates();
+  const services = data.tags.length ? data.tags : [data.type];
+  const [service, setService] = useState(services[0]);
+  const [date, setDate] = useState(dates[0]?.value ?? "");
+  const [time, setTime] = useState("");
+  const [phone, setPhone] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const times = getAvailableTimes(data.title, date);
+  const bookingCode = `BA-${data.title.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, "").slice(0, 3).toUpperCase()}-${date.replace(/-/g, "").slice(4)}-${time.replace(":", "")}`;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="booking-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <div className="booking-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <button type="button" className="booking-modal-close" onClick={onClose} aria-label={t.bookingModal.close}>×</button>
+
+        {!confirmed ? (
+          <>
+            <div className="booking-modal-head">
+              <img src={data.image} alt="" />
+              <div>
+                <span>{t.bookingModal.title}</span>
+                <h2>{data.title}</h2>
+                <p>{data.type}</p>
+              </div>
+            </div>
+
+            <div className="booking-modal-body">
+              <label className="booking-field">
+                <span>{t.bookingModal.service}</span>
+                <select value={service} onChange={(event) => setService(event.target.value)}>
+                  {services.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+
+              <div className="booking-field">
+                <span>{t.bookingModal.date}</span>
+                <div className="booking-date-grid">
+                  {dates.map((item) => (
+                    <button key={item.value} type="button" className={date === item.value ? "active" : ""} onClick={() => { setDate(item.value); setTime(""); }}>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="booking-field">
+                <span>{t.bookingModal.time}</span>
+                <div className="booking-time-grid">
+                  {times.map((slot) => (
+                    <button key={slot} type="button" className={time === slot ? "active" : ""} onClick={() => setTime(slot)}>{slot}</button>
+                  ))}
+                </div>
+                {!time && <small>{t.bookingModal.chooseTime}</small>}
+              </div>
+
+              <label className="booking-field">
+                <span>{t.bookingModal.contact}</span>
+                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder={t.bookingModal.contactPlaceholder} inputMode="tel" />
+              </label>
+
+              <div className="booking-summary">
+                <strong>{t.bookingModal.summary}</strong>
+                <span>{service}</span>
+                <span>{dates.find((item) => item.value === date)?.label} {time ? `· ${time}` : ""}</span>
+                <span>{data.title} · {data.district}</span>
+                <b>{data.priceFrom} грн+</b>
+              </div>
+
+              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => setConfirmed(true)}>
+                {t.bookingModal.confirm}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="booking-success">
+            <div className="booking-success-icon">✓</div>
+            <h2>{t.bookingModal.successTitle}</h2>
+            <p>{t.bookingModal.successText}</p>
+            <div className="booking-success-card">
+              <strong>{data.title}</strong>
+              <span>{service}</span>
+              <span>{dates.find((item) => item.value === date)?.label} · {time}</span>
+              <span>{data.district}</span>
+            </div>
+            <div className="booking-code"><span>{t.bookingModal.bookingCode}</span><strong>{bookingCode}</strong></div>
+            <button type="button" className="cta-btn booking-done-btn" onClick={onClose}>{t.bookingModal.done}</button>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function getPlaceReviews(data: CardData, t: Translations): CardReview[] {
+  if (data.reviewsList?.length) return data.reviewsList;
+
+  const ua = t.placeModal.close === "Закрити";
+  return data.variant === "solo"
+    ? [
+        {
+          author: ua ? "Олена" : "Olena",
+          rating: 5,
+          text: ua
+            ? `Дуже уважний майстер. ${data.title} усе пояснила перед процедурою, а результат вийшов саме таким, як я хотіла.`
+            : `A very attentive master. ${data.title} explained everything before the service and the result was exactly what I wanted.`,
+          date: "28.08.2026",
+        },
+        {
+          author: ua ? "Марія" : "Maria",
+          rating: 5,
+          text: ua
+            ? "Приємна комунікація, чисто й комфортно. Окремий плюс — запис без затримок."
+            : "Great communication, clean and comfortable. Extra points for starting exactly on time.",
+          date: "19.08.2026",
+        },
+        {
+          author: ua ? "Ірина" : "Iryna",
+          rating: 4,
+          text: ua
+            ? "Все сподобалось, результат тримається чудово. Повернуся ще."
+            : "Loved the result and it is holding up beautifully. I would book again.",
+          date: "07.08.2026",
+        },
+      ]
+    : [
+        {
+          author: ua ? "Анна" : "Anna",
+          rating: 5,
+          text: ua
+            ? `Дуже красивий простір і уважна команда. У ${data.title} легко підібрали майстра під мій запит.`
+            : `Beautiful space and a very attentive team. ${data.title} matched me with the right specialist for what I needed.`,
+          date: "30.08.2026",
+        },
+        {
+          author: ua ? "Катерина" : "Kateryna",
+          rating: 5,
+          text: ua
+            ? "Все організовано чітко: швидко підтвердили запис, прийняли вчасно, результат супер."
+            : "Everything was well organized: quick confirmation, on-time appointment, and a great result.",
+          date: "21.08.2026",
+        },
+        {
+          author: ua ? "Юлія" : "Yulia",
+          rating: 4,
+          text: ua
+            ? "Сподобалась атмосфера і сервіс. Ціни відповідають рівню салону."
+            : "Loved the atmosphere and service. The prices match the quality of the salon.",
+          date: "10.08.2026",
+        },
+      ];
+}
+
+function PlaceDetailsModal({
+  data,
+  t,
+  onClose,
+  onBook,
+  onLocationClick,
+}: {
+  data: CardData;
+  t: Translations;
+  onClose: () => void;
+  onBook: () => void;
+  onLocationClick?: (name: string, district: string, distance: string) => void;
+}) {
+  const isSolo = data.variant === "solo";
+  const reviews = getPlaceReviews(data, t);
+  const [reviewsOpen, setReviewsOpen] = useState(false);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="place-modal-overlay"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <div
+        className="place-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="place-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="place-modal-close"
+          onClick={onClose}
+          aria-label={t.placeModal.close}
+        >
+          ×
+        </button>
+
+        <div
+          className="place-modal-hero"
+          style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
+        >
+          <div className="place-modal-hero-shade" />
+          <div className="place-modal-badges">
+            {data.badges.map((badge) => (
+              <span key={badge.text} className={`badge ${badge.kind}`}>
+                {badge.text}
+              </span>
+            ))}
+          </div>
+
+          <div className="place-modal-hero-copy">
+            <p>{data.type}</p>
+            <h2 id="place-modal-title">{data.title}</h2>
+            <button
+              type="button"
+              className="place-modal-rating"
+              aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
+              onClick={() => {
+                setReviewsOpen(true);
+                requestAnimationFrame(() => {
+                  document
+                    .querySelector(".place-modal-reviews")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+              }}
+            >
+              <span className="star">★</span>
+              <strong>{data.rating.toFixed(1)}</strong>
+              <span>({data.reviews} {t.placeModal.reviews})</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="place-modal-body">
+          <div className="place-modal-primary-meta">
+            <button
+              type="button"
+              className="card-location-link place-modal-location-link"
+              onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
+              title={t.placeModal.location}
+            >
+              <span className="district-pin">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                {data.district}
+              </span>
+              <span>· {data.distance}</span>
+            </button>
+            <span className="open-now">
+              ● {isSolo ? t.available : t.open}
+            </span>
+          </div>
+
+          <section className="place-modal-section">
+            <h3>{t.placeModal.aboutTitle}</h3>
+            <p className="place-modal-description">
+              {data.description ??
+                data.why ??
+                (isSolo
+                  ? `${data.title} — ${data.type.toLowerCase()}.`
+                  : `${data.title} — ${data.type.toLowerCase()} у районі ${data.district}.`)}
+            </p>
+          </section>
+
+          {!!data.tags.length && (
+            <section className="place-modal-section">
+              <h3>{t.placeModal.servicesTitle}</h3>
+              <div className="place-modal-tags">
+                {data.tags.map((tag) => (
+                  <span className="tag" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="place-modal-section">
+            <h3>{t.placeModal.detailsTitle}</h3>
+            <div className="place-modal-facts">
+              <div>
+                <span>{t.placeModal.priceFrom}</span>
+                <strong>{data.priceFrom} грн</strong>
+              </div>
+
+              {data.avgCheck && (
+                <div>
+                  <span>{t.placeModal.averageCheck}</span>
+                  <strong>{data.avgCheck}</strong>
+                </div>
+              )}
+
+              {(data.experience ?? data.mastersCount) && (
+                <div>
+                  <span>{t.placeModal.experience}</span>
+                  <strong>{data.experience ?? data.mastersCount}</strong>
+                </div>
+              )}
+
+              <div>
+                <span>{t.placeModal.status}</span>
+                <strong className="place-modal-status">
+                  ● {isSolo ? t.available : t.open}
+                </strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="place-modal-section place-modal-reviews">
+            <button
+              type="button"
+              className="place-modal-reviews-toggle"
+              onClick={() => setReviewsOpen((prev) => !prev)}
+              aria-expanded={reviewsOpen}
+            >
+              <div>
+                <h3>{t.placeModal.reviewsTitle}</h3>
+                <span className="place-modal-reviews-summary">
+                  {data.rating.toFixed(1)} ★ · {data.reviews} {t.placeModal.reviews}
+                </span>
+              </div>
+              <span className={`place-modal-reviews-arrow ${reviewsOpen ? "open" : ""}`} aria-hidden="true">⌄</span>
+            </button>
+
+            {reviewsOpen && (
+              <div className="place-modal-review-list">
+                {reviews.slice(0, 3).map((review, index) => (
+                  <article
+                    className="place-modal-review"
+                    key={`${review.author}-${review.date ?? index}`}
+                  >
+                    <div className="place-modal-review-head">
+                      <strong>{review.author}</strong>
+                      {review.date && <span>{review.date}</span>}
+                    </div>
+
+                    <div
+                      className="place-modal-review-stars"
+                      aria-label={`${review.rating} / 5`}
+                    >
+                      {Array.from({ length: 5 }, (_, starIndex) => (
+                        <span
+                          key={starIndex}
+                          className={starIndex < review.rating ? "active" : ""}
+                        >
+                          ★
+                        </span>
+                      ))}
+                    </div>
+
+                    <p>{review.text}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <button type="button" className="cta-btn place-modal-cta" onClick={onBook}>
+            {isSolo ? t.placeModal.book : t.bookingModal.salonWebsite}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function Card({
   data,
   t,
@@ -558,7 +1108,18 @@ function Card({
   onLocationClick?: (name: string, district: string, distance: string) => void;
 }) {
   const [showReason, setShowReason] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showBooking, setShowBooking] = useState(false);
   const isSolo = data.variant === "solo";
+
+  const handleBook = () => {
+    if (isSolo) {
+      setShowProfile(false);
+      setShowBooking(true);
+      return;
+    }
+    openSalonWebsite(data.title, data.website);
+  };
 
   return (
     <div className={`card ${isSolo ? "card-solo" : ""}`}>
@@ -582,10 +1143,16 @@ function Card({
             <h3>{data.title}</h3>
             <p className="card-type">{data.type}</p>
           </div>
-          <div className="card-rating">
-            <span className="star">★</span> {data.rating.toFixed(1)}{" "}
+          <button
+            type="button"
+            className="card-rating card-rating-button"
+            onClick={() => setShowProfile(true)}
+            aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
+          >
+            <span className="star">★</span>
+            <span>{data.rating.toFixed(1)}</span>
             <span className="count">({data.reviews})</span>
-          </div>
+          </button>
         </div>
 
         <div className="card-meta">
@@ -613,21 +1180,15 @@ function Card({
             </span>
             <span>· {data.distance}</span>
           </button>
-          {data.openNow && !isSolo && <span className="open-now">· Відкрито зараз</span>}
-          {isSolo && <span className="solo-availability">· Є вікна сьогодні</span>}
-        </div>
-
-        {!hideTags && (
-          <div className="card-tags">
-            {data.tags.map((tag) => (
-              <span key={tag} className="tag">
-                {tag}
-              </span>
-            ))}
           </div>
-        )}
 
-        <div className="card-footer">
+          <div className="card-status-row">
+            <span className="open-now">
+              ● {isSolo ? t.available : t.open}
+            </span>
+          </div>
+
+          <div className="card-footer">
           <div className="price-block">
             <div className="price">від {data.priceFrom} грн</div>
             <div className="avg">{data.avgCheck ?? t.avgCheck}</div>
@@ -639,10 +1200,16 @@ function Card({
         </div>
 
         <div className="card-cta-row">
-          <button className="cta-btn">{t.cta}</button>
-          <a className="view-link" href="#">
+          <button type="button" className="cta-btn" onClick={handleBook}>
+            {isSolo ? t.cta : t.bookingModal.salonWebsite}
+          </button>
+          <button
+            type="button"
+            className="view-link"
+            onClick={() => setShowProfile(true)}
+          >
             {data.profileLinkLabel ?? t.viewSalon} →
-          </a>
+          </button>
         </div>
 
         {data.why && !hideReason && (
@@ -665,6 +1232,20 @@ function Card({
           </div>
         )}
       </div>
+
+      {showProfile && (
+        <PlaceDetailsModal
+          data={data}
+          t={t}
+          onClose={() => setShowProfile(false)}
+          onBook={handleBook}
+          onLocationClick={onLocationClick}
+        />
+      )}
+
+      {showBooking && (
+        <BookingModal data={data} t={t} onClose={() => setShowBooking(false)} />
+      )}
     </div>
   );
 }
@@ -881,6 +1462,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 30 червня",
     title: "Комплекс для волосся",
     partner: "Luna Beauty House",
+    rating: 4.9,
+    reviews: 124,
     district: "Печерський р-н",
     distance: "0.4 км",
     openNow: true,
@@ -894,6 +1477,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 25 червня",
     title: "Масаж спини",
     partner: "Wellness Studio",
+    rating: 4.8,
+    reviews: 93,
     district: "Липки",
     distance: "0.7 км",
     openNow: true,
@@ -907,6 +1492,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 20 червня",
     title: "Манікюр + гель-лак",
     partner: "Nails Studio",
+    rating: 4.8,
+    reviews: 98,
     district: "Золоті ворота",
     distance: "0.9 км",
     openNow: true,
@@ -920,6 +1507,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 15 червня",
     title: "Брови + ламінування",
     partner: "Brow Bar",
+    rating: 4.7,
+    reviews: 84,
     district: "Центр",
     distance: "1.1 км",
     openNow: false,
@@ -933,6 +1522,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 12 липня",
     title: "Стрижка + укладка",
     partner: "Élan Studio",
+    rating: 4.9,
+    reviews: 172,
     district: "Липки",
     distance: "1.3 км",
     openNow: true,
@@ -946,6 +1537,8 @@ const partners: PartnerOffer[] = [
     validUntil: "до 18 липня",
     title: "Догляд для обличчя",
     partner: "Atelier Beauty",
+    rating: 4.8,
+    reviews: 119,
     district: "Печерськ",
     distance: "1.5 км",
     openNow: true,
@@ -1308,6 +1901,7 @@ function PartnerOffersCarousel({
 
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(offers.length > 4);
+  const [activeOffer, setActiveOffer] = useState<PartnerOffer | null>(null);
 
   const updateArrows = () => {
     const track = trackRef.current;
@@ -1394,15 +1988,26 @@ function PartnerOffersCarousel({
             <div className="partner-offer-body">
               <h3>{offer.title}</h3>
 
-              <p className="partner-name">
-                {offer.partner}
-              </p>
+              <div className="partner-name-row">
+                <p className="partner-name">{offer.partner}</p>
+                <button type="button" className="partner-rating" onClick={() => setActiveOffer(offer)} aria-label={`${offer.rating.toFixed(1)}, ${offer.reviews} ${ua ? "відгуків" : "reviews"}`}>
+                  <span className="star">★</span>
+                  <span>{offer.rating.toFixed(1)}</span>
+                  <span className="count">({offer.reviews})</span>
+                </button>
+              </div>
 
               <div className="partner-card-meta">
                 <button
                   type="button"
                   className="card-location-link partner-location-link"
-                  onClick={() => onLocationClick?.(offer.partner, offer.district, offer.distance)}
+                  onClick={() =>
+                    onLocationClick?.(
+                      offer.partner,
+                      offer.district,
+                      offer.distance
+                    )
+                  }
                   title={ua ? "Показати на карті" : "Show on map"}
                 >
                   <span className="district-pin">
@@ -1419,15 +2024,16 @@ function PartnerOffersCarousel({
                       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                       <circle cx="12" cy="10" r="3" />
                     </svg>
+
                     {offer.district}
                   </span>
+
                   <span>· {offer.distance}</span>
                 </button>
-                {offer.openNow && (
-                  <span className="partner-availability">
-                    ● {ua ? "Є вікна сьогодні" : "Slots today"}
-                  </span>
-                )}
+
+                <span className="partner-availability">
+                  ● {ua ? "Відкрито" : "Open"}
+                </span>
               </div>
 
               <div className="partner-price-row">
@@ -1443,16 +2049,18 @@ function PartnerOffersCarousel({
               <button
                 type="button"
                 className="partner-book-btn"
+                onClick={() => openSalonWebsite(offer.partner, offer.website)}
               >
-                {ua ? "Записатися" : "Book now"}
+                {ua ? "На сайт салону" : "Salon website"}
               </button>
 
-              <a
-                href="#"
+              <button
+                type="button"
                 className="partner-details-link"
+                onClick={() => setActiveOffer(offer)}
               >
                 {ua ? "Детальніше" : "Details"} →
-              </a>
+              </button>
             </div>
           </article>
         ))}
@@ -1487,6 +2095,31 @@ function PartnerOffersCarousel({
           ›
         </button>
       )}
+
+      {activeOffer && (
+        <PlaceDetailsModal
+          data={{
+            image: activeOffer.image,
+            badges: [{ text: activeOffer.discount, kind: "discount" }],
+            title: activeOffer.partner,
+            type: activeOffer.title,
+            rating: activeOffer.rating,
+            reviews: activeOffer.reviews,
+            district: activeOffer.district,
+            distance: activeOffer.distance,
+            openNow: activeOffer.openNow,
+            tags: [activeOffer.title],
+            priceFrom: activeOffer.newPrice,
+            avgCheck: `${activeOffer.newPrice} грн`,
+            why: activeOffer.gift,
+            website: activeOffer.website,
+          }}
+          t={dict[lang]}
+          onClose={() => setActiveOffer(null)}
+          onBook={() => openSalonWebsite(activeOffer.partner, activeOffer.website)}
+          onLocationClick={onLocationClick}
+        />
+      )}
     </div>
   );
 }
@@ -1494,14 +2127,12 @@ function PartnerOffersCarousel({
 function PartnerOffersSection({
   title,
   subtitle,
-  link,
   offers,
   lang,
   onLocationClick,
 }: {
   title: string;
   subtitle: string;
-  link: string;
   offers: PartnerOffer[];
   lang: Lang;
   onLocationClick?: (name: string, district: string, distance: string) => void;
@@ -1532,10 +2163,6 @@ function PartnerOffersSection({
           </h2>
 
           <p className="section-sub">{subtitle}</p>
-
-           <a className="section-link partner-info-link" href="#partners-info">
-            {link}
-          </a>
         </div>
       </div>
       <PartnerOffersCarousel offers={offers} lang={lang} onLocationClick={onLocationClick} />
@@ -1555,7 +2182,10 @@ function KyivTopSection({
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(cards.length > 4);
+  const [activeCard, setActiveCard] = useState<CardData | null>(null);
+  const [bookingCard, setBookingCard] = useState<CardData | null>(null);
   const ua = lang === "ua";
+  const t = dict[lang];
 
   const updateArrows = () => {
     const track = trackRef.current;
@@ -1593,32 +2223,19 @@ function KyivTopSection({
           <h2 className="section-title kyiv-top-title">
             <span className="kyiv-top-crown" aria-hidden="true">
               <svg
-                width="20"
-                height="20"
+                width="28"
+                height="28"
                 viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+                fill="currentColor"
               >
-                <path d="M8 4h8v3a4 4 0 0 1-8 0V4Z" />
-                <path d="M8 5H5v1a4 4 0 0 0 4 4" />
-                <path d="M16 5h3v1a4 4 0 0 1-4 4" />
-                <path d="M12 11v5" />
-                <path d="M9 20h6" />
-                <path d="M10 16h4v4h-4" />
+                <path d="M4 8.5 8.2 12 12 5.5 15.8 12 20 8.5 18.4 17H5.6L4 8.5Z" />
+                <rect x="6" y="18.2" width="12" height="1.6" rx="0.8" />
+                <circle cx="12" cy="5.5" r="1.05" fill="#f7f4fb" />
               </svg>
             </span>
             {ua ? "Найкращі в Києві" : "Best in Kyiv"}
           </h2>
-          <p className="section-sub">
-            {ua ? "Салони та майстри з найвищими показниками" : "Top salons and masters by overall performance"}
-          </p>
         </div>
-        <span className="results-badge kyiv-top-badge">
-          {ua ? `ТОП-${cards.length} У КИЄВІ` : `KYIV TOP ${cards.length}`}
-        </span>
       </div>
 
       <div className="kyiv-top-carousel">
@@ -1632,44 +2249,93 @@ function KyivTopSection({
                 <div className="kyiv-cover-shade" />
 
                 <div className="kyiv-cover-topline">
-                  <span className="kyiv-cover-kicker">BEAUTY AI · KYIV TOP</span>
+                  <div className={`kyiv-cover-award kyiv-cover-award-${i + 1}`} aria-label={`${i + 1} місце`}>
+                    {i === 0 ? (
+                      <svg className="kyiv-cover-award-crown kyiv-cover-award-crown-first" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M4 8.5 8.2 12 12 5.5 15.8 12 20 8.5 18.4 17H5.6L4 8.5Z" />
+                        <rect x="6" y="18.15" width="12" height="1.7" rx="0.85" />
+                      </svg>
+                    ) : (
+                      <svg className="kyiv-cover-award-crown" viewBox="0 0 24 18" fill="none" aria-hidden="true">
+                        <path d="M6 11 4.4 6.2 9 8.2 12 3.8 15 8.2 19.6 6.2 18 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M4 12.5h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
+                    )}
+                    <span className="kyiv-cover-award-rank">{i + 1}</span>
+                  </div>
                   <FavButton />
                 </div>
 
-                <span className="kyiv-cover-rank">{i + 1}</span>
-
-                <div className="kyiv-cover-copy">
-                  <span className={`kyiv-cover-label kyiv-cover-label-${i % 4}`}>
-                    {card.badges[0]?.text ?? (ua ? "ВИБІР BEAUTY AI" : "BEAUTY AI PICK")}
-                  </span>
-
+                <div className="kyiv-cover-glass-title">
                   <h3 className={card.variant === "solo" ? "kyiv-cover-master-name" : ""}>
                     {card.title}
                   </h3>
-                  <p className="kyiv-cover-type">{card.type}</p>
-
-                  <div className="kyiv-cover-rating">
-                    <span>★ {card.rating.toFixed(1)}</span>
-                    <span>{card.reviews} {ua ? "відгуків" : "reviews"}</span>
-                  </div>
-
                   <button
                     type="button"
-                    className="kyiv-cover-location"
-                    onClick={() => onLocationClick?.(card.title, card.district, card.distance)}
-                    aria-label={ua ? `Показати ${card.title} на карті` : `Show ${card.title} on map`}
+                    className="kyiv-cover-rating kyiv-cover-rating-button"
+                    onClick={() => setActiveCard(card)}
+                    aria-label={`${card.rating.toFixed(1)}, ${card.reviews} ${t.placeModal.reviews}`}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <span className="star">★</span>
+                    <span>{card.rating.toFixed(1)}</span>
+                    <span className="count">({card.reviews})</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="kyiv-cover-copy">
+                <p className="kyiv-cover-type">{card.type}</p>
+
+                <button
+                  type="button"
+                  className="kyiv-cover-location"
+                  onClick={() => onLocationClick?.(card.title, card.district, card.distance)}
+                  aria-label={ua ? `Показати ${card.title} на карті` : `Show ${card.title} on map`}
+                >
+                  <span className="district-pin">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#a855f7"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
                       <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
                       <circle cx="12" cy="10" r="3" />
                     </svg>
-                    {card.district} · {card.distance}
-                  </button>
+                    {card.district}
+                  </span>
+                  <span>· {card.distance}</span>
+                </button>
 
-                  <div className="kyiv-cover-footer">
-                    <span className="kyiv-cover-price">{ua ? "від" : "from"} {card.priceFrom} грн</span>
-                    <span className="kyiv-cover-view">{ua ? "Профіль" : "Profile"} →</span>
-                  </div>
+                <div className="kyiv-cover-service-line">
+                  <span className="open-now">
+                    ● {card.variant === "solo"
+                      ? (ua ? "Є місця" : "Available")
+                      : (ua ? "Відкрито" : "Open")}
+                  </span>
+                  {card.mastersCount && <span>{card.mastersCount}</span>}
+                </div>
+
+                <div className="kyiv-cover-footer">
+                  <span className="kyiv-cover-price">{ua ? "від" : "from"} {card.priceFrom} грн</span>
+                </div>
+
+                <div className="kyiv-cover-actions">
+                  <button className="kyiv-cover-book" type="button">
+                    {ua ? "Записатися" : "Book now"}
+                  </button>
+                  <button
+                    type="button"
+                    className="kyiv-cover-view"
+                    onClick={() => setActiveCard(card)}
+                  >
+                    {ua ? "Детальніше" : "Details"} →
+                  </button>
                 </div>
               </div>
             </article>
@@ -1683,9 +2349,31 @@ function KyivTopSection({
           <button className="carousel-arrow carousel-arrow-next kyiv-top-arrow" type="button" aria-label={ua ? "Наступні" : "Next"} onClick={() => scroll(1)}>›</button>
         )}
       </div>
+
+      {activeCard && (
+        <PlaceDetailsModal
+          data={activeCard}
+          t={t}
+          onClose={() => setActiveCard(null)}
+          onLocationClick={onLocationClick}
+          onBook={() => {
+            if (activeCard.variant === "solo") {
+              setBookingCard(activeCard);
+              setActiveCard(null);
+            } else {
+              openSalonWebsite(activeCard.title, activeCard.website);
+            }
+          }}
+        />
+      )}
+
+      {bookingCard && (
+        <BookingModal data={bookingCard} t={t} onClose={() => setBookingCard(null)} />
+      )}
     </section>
   );
 }
+
 
 function PanelCarouselSection({
   title,
@@ -1719,9 +2407,6 @@ function PanelCarouselSection({
           </h2>
           <p className="section-sub">{subtitle}</p>
         </div>
-        <span className="results-badge">
-          {cards.length} {resultsWord}
-        </span>
       </div>
       <RecommendationCarousel cards={cards} t={t} variant={variant} onLocationClick={onLocationClick} />
     </section>
@@ -1877,7 +2562,18 @@ export default function App() {
 
             <div className="search-bar">
               <input type="text" placeholder={t.searchPlaceholder} />
-              <button className="search-btn">{t.searchBtn}</button>
+              <button className="search-btn">
+                <img
+                  src={beautyAISparkles}
+                  alt=""
+                  className="search-btn-logo"
+                  aria-hidden="true"
+                />
+
+                <span className="search-btn-text">
+                  {t.searchBtn}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1887,60 +2583,49 @@ export default function App() {
         </div>
       </section>
 
-      
-      <section className="section ai-recommendations" id="salons">
-        <div className={`recommendations-topline ${recommendationFiltersOpen ? "filters-open" : ""}`}>
-          <div className="recommendations-heading">
-            <h2 className="section-title">
-              <span className="accent">
-                <img
-                  src={beautyAISparkles}
-                  alt=""
-                  className="beauty-ai-sparkles"
-                  aria-hidden="true"
-                />
-              </span>
-              {lang === "ua" ? (
-                <>Рекомендації Beauty <span className="recommendations-ai">AI</span></>
-              ) : (
-                <>Beauty <span className="recommendations-ai">AI</span> Recommendations</>
-              )}
+    <section className="section ai-recommendations" id="salons">
+      <div className="recommendation-row recommendation-row-salons">
+        <div
+          className={`recommendation-intro ${
+            recommendationFiltersOpen ? "filters-open" : ""
+          }`}
+        >
+          <div className="recommendation-intro-head">
+            <h2>
+              <img
+                src={beautyAISparkles}
+                alt=""
+                aria-hidden="true"
+                className="recommendation-heading-spark"
+              />
+              {t.sections.recommendations.title}
             </h2>
-            <p className="section-sub">
-              {lang === "ua" ? "Підібрано відповідно до вашого запиту" : "Selected for your request"}
-            </p>
-          </div>
 
-          <div className="recommendations-filter-menu">
-            <button
-              className={`recommendations-filter-toggle ${recommendationFiltersOpen ? "is-open" : ""}`}
-              type="button"
-              aria-expanded={recommendationFiltersOpen}
-              onClick={() => setRecommendationFiltersOpen((open) => !open)}
-            >
-              <span className="recommendations-filter-icon" aria-hidden="true">☷</span>
-              {lang === "ua" ? "Фільтри" : "Filters"}
-              <span className="recommendations-filter-chevron" aria-hidden="true">⌄</span>
-            </button>
-
-          </div>
-
-          {recommendationFiltersOpen && (
-            <div className="recommendations-filter-panel">
-              <FilterBar lang={lang} onFilterChange={(filters: any) => console.log(filters)} />
+              <div className="recommendations-filter-menu recommendations-filter-menu-inline">
+                <button
+                  className={`recommendations-filter-toggle ${recommendationFiltersOpen ? "is-open" : ""}`}
+                  type="button"
+                  aria-expanded={recommendationFiltersOpen}
+                  onClick={() => setRecommendationFiltersOpen((open) => !open)}
+                >
+                  
+                  {lang === "ua" ? "Фільтри" : "Filters"}
+                  <span
+                    className={`recommendations-filter-chevron ${recommendationFiltersOpen ? "rotated" : ""}`}
+                    aria-hidden="true"
+                  >
+                    ˅
+                  </span>
+                </button>
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="recommendation-row recommendation-row-salons">
-          <div className="recommendation-intro">
-            <div className="recommendation-intro-head">
-              <h2><span className="row-symbol">✦</span>{t.sections.recommendations.title}</h2>
-              <span className="results-count">
-                {recommendations.length} {lang === "ua" ? "варіантів знайдено" : "options found"}
-              </span>
-            </div>
-            <p>{t.sections.recommendations.subtitle}</p>
+            {recommendationFiltersOpen && (
+              <div className="recommendations-filter-panel recommendations-filter-panel-inline">
+                <FilterBar lang={lang} onFilterChange={(filters: any) => console.log(filters)} />
+              </div>
+            )}
+           
           </div>
           <RecommendationCarousel cards={recommendations} t={t} variant="salons" onLocationClick={handleLocationClick} />
         </div>
@@ -1948,12 +2633,17 @@ export default function App() {
         <div className="recommendation-row recommendation-row-masters" id="masters">
           <div className="recommendation-intro">
             <div className="recommendation-intro-head">
-              <h2><span className="row-symbol">✦</span>{t.sections.soloMasters.title}</h2>
-              <span className="results-count">
-                {soloMastersRecommendations.length} {lang === "ua" ? "майстрів знайдено" : "masters found"}
-              </span>
+              <h2>
+                <img
+                  src={beautyAISparkles}
+                  alt=""
+                  aria-hidden="true"
+                  className="recommendation-heading-spark"
+                />
+                {t.sections.soloMasters.title}
+              </h2>
             </div>
-            <p>{t.sections.soloMasters.subtitle}</p>
+            
           </div>
           <RecommendationCarousel cards={soloMastersRecommendations} t={t} variant="masters" onLocationClick={handleLocationClick} />
         </div>
@@ -1961,17 +2651,16 @@ export default function App() {
       <div className="section-divider" aria-hidden="true">
         <span>✦</span>
       </div>
-      <PartnerOffersSection
-        title={t.sections.partners.title}
-        subtitle={t.sections.partners.subtitle}
-        link={t.partnersLink}
-        offers={partners}
+      <KyivTopSection
+        cards={nearby}
         lang={lang}
         onLocationClick={handleLocationClick}
       />
 
-<KyivTopSection
-        cards={nearby}
+      <PartnerOffersSection
+        title={t.sections.partners.title}
+        subtitle={t.sections.partners.subtitle}
+        offers={partners}
         lang={lang}
         onLocationClick={handleLocationClick}
       />
@@ -1980,8 +2669,19 @@ export default function App() {
         title={t.sections.topRated.title}
         subtitle={t.sections.topRated.subtitle}
         icon={
-          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m12 2.5 2.9 5.88 6.49.94-4.7 4.58 1.11 6.47L12 17.32l-5.8 3.05 1.11-6.47-4.7-4.58 6.49-.94L12 2.5Z" />
+          <svg
+            className="section-icon section-icon-worth"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 22c4.4 0 8-3.3 8-7.8 0-3.2-1.8-5.9-4.7-8.2.2 2.4-.8 4.3-2.7 5.5.3-3.7-1.7-7-5.5-9.5.1 3.7-1.7 6.4-3.4 8.5C2.6 11.9 2 13.6 2 15.3 2 19 6.1 22 12 22Z" />
           </svg>
         }
         cards={topRated}
@@ -1996,12 +2696,7 @@ export default function App() {
       <PanelCarouselSection
         title={t.sections.fresh.title}
         subtitle={t.sections.fresh.subtitle}
-        icon={
-          <svg className="section-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
-            <circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none" />
-          </svg>
-        }
+        icon={<span className="section-symbol-mark section-symbol-mark-new">NEW</span>}
         cards={fresh}
         t={t}
         lang={lang}
@@ -2013,7 +2708,6 @@ export default function App() {
       
       <section className="about-section" id="about">
         <div className="about-main">
-          <span className="about-kicker">✦ BEAUTY AI</span>
           <h2>{t.about.title}</h2>
           <p>{t.about.description}</p>
         </div>

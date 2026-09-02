@@ -151,8 +151,8 @@ export default function MapSection({ lang, selectedLocation }: MapSectionProps) 
           }}
         >
           <TileLayer
-            attribution='&copy; OpenStreetMap &copy; CARTO'
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           />
 
           <FocusSelectedLocation selectedLocation={selectedLocation} />

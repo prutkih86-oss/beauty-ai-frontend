@@ -1,10 +1,78 @@
-import React from "react";
-import DashboardFrame from "../DashboardFrame";
+import React, { useEffect, useState } from "react";
+import { getToken, login } from "./api/client";
 import type { AuthRole, Lang, MockUser } from "../types";
+import AdminLayout, { type AdminSection } from "./AdminLayout";
+import AdminHome from "./AdminHome";
+import AdminAnalytics from "./AdminAnalytics";
+import AdminMasters from "./AdminMasters";
+import AdminSalons from "./AdminSalons";
+import AdminClients from "./AdminClients";
+import AdminBookings from "./AdminBookings";
+import AdminServices from "./AdminServices";
+import AdminPayments from "./AdminPayments";
+import AdminReviews from "./AdminReviews";
+import AdminAI from "./AdminAI";
+import AdminSettings from "./AdminSettings";
 
-export default function AdminDashboard({ user, lang, onHome, onRoleChange }: { user: MockUser; lang: Lang; onHome: () => void; onRoleChange: (role: AuthRole) => void }) {
-  const ua = lang === "ua";
-  const cards: [string,string,string][] = [[ua?"Користувачі":"Users","2 486",ua?"+42 за тиждень":"+42 this week"],[ua?"Майстри":"Masters","684",ua?"51 на модерації":"51 pending"],[ua?"Записи":"Bookings","1 942",ua?"за останні 30 днів":"last 30 days"]];
-  const modules = [ua?"Клієнти":"Clients",ua?"Майстри":"Masters",ua?"Салони":"Salons",ua?"Послуги":"Services",ua?"Записи":"Bookings",ua?"Платежі":"Payments",ua?"Відгуки":"Reviews",ua?"Аналітика":"Analytics",ua?"Налаштування":"Settings"];
-  return <DashboardFrame user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} title={ua?"Адмін-панель":"Admin panel"} cards={cards}><section className="dashboard-panel admin-grid-panel"><div className="dashboard-panel-head"><div><h2>{ua?"Керування платформою":"Platform management"}</h2><p>{ua?"React-версія адмінки в єдиному стилі Beauty AI":"React admin area in the Beauty AI design system"}</p></div></div><div className="admin-module-grid">{modules.map(item=><button className="admin-module" key={item}>{item}<span>→</span></button>)}</div></section></DashboardFrame>;
+const SECTION_TITLES: Record<AdminSection, { title: string; subtitle?: string }> = {
+  dashboard: { title: "Dashboard" },
+  analytics: { title: "Analytics" },
+  masters: { title: "Masters" },
+  salons: { title: "Salons" },
+  clients: { title: "Clients" },
+  bookings: { title: "Bookings" },
+  services: { title: "Services" },
+  payments: { title: "Payments" },
+  reviews: { title: "Reviews" },
+  ai: { title: "AI" },
+  settings: { title: "Settings" },
+};
+
+export default function AdminDashboard({
+  user,
+  lang,
+  onHome,
+}: {
+  user: MockUser;
+  lang: Lang;
+  onHome: () => void;
+  onRoleChange: (role: AuthRole) => void;
+}) {
+  const [section, setSection] = useState<AdminSection>("dashboard");
+  const { title, subtitle } = SECTION_TITLES[section];
+  useEffect(() => {
+      if (!getToken()) {
+        login(
+          import.meta.env.VITE_API_EMAIL,
+          import.meta.env.VITE_API_PASSWORD
+        ).catch((e) => console.error("Admin auto-login failed:", e));
+      }
+    }, []);
+  const page = {
+    dashboard: <AdminHome onHome={onHome} />,
+    analytics: <AdminAnalytics />,
+    masters: <AdminMasters />,
+    salons: <AdminSalons />,
+    clients: <AdminClients />,
+    bookings: <AdminBookings />,
+    services: <AdminServices />,
+    payments: <AdminPayments />,
+    reviews: <AdminReviews />,
+    ai: <AdminAI />,
+    settings: <AdminSettings />,
+  }[section];
+
+  return (
+    <AdminLayout
+      user={user}
+      lang={lang}
+      active={section}
+      onNavigate={setSection}
+      onHome={onHome}
+      title={title}
+      subtitle={subtitle}
+    >
+      {page}
+    </AdminLayout>
+  );
 }

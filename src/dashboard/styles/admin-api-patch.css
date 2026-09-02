@@ -1,0 +1,20 @@
+.admin-info {
+  margin: -10px 0 14px;
+  color: #6f7580;
+  font-size: 12px;
+}
+
+.admin-error {
+  margin: -10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 38, 38, .18);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, .92);
+  color: #b91c1c;
+  font-size: 12px;
+}
+
+.admin-action-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
