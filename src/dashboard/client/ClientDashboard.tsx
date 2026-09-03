@@ -58,6 +58,9 @@ type ReviewDraft = { master: number; salon: number; comment: string };
 type BookingFilter = "upcoming" | "completed" | "cancelled";
 
 const CLIENT_STATE_KEY = "beautyai_client_state";
+const CLIENT_FAVORITES_PREFIX = "beautyai_client_favorites:";
+const CLIENT_PROFILE_PREFIX = "beautyai_client_profile:";
+const STORED_USER_KEY = "beautyai_session_user";
 const emptyState = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
 
 function readClientState(): ClientState {
@@ -70,8 +73,48 @@ function readClientState(): ClientState {
 }
 
 function writeClientState(next: ClientState) {
-  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(next));
+  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify({ ...next, favorites: [] }));
   window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
+}
+
+function clientFavoritesKey(email: string) {
+  return `${CLIENT_FAVORITES_PREFIX}${email.trim().toLowerCase()}`;
+}
+
+function readAccountFavorites(email: string): ClientFavorite[] {
+  try {
+    const key = clientFavoritesKey(email);
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved) as ClientFavorite[];
+
+    const legacy = readClientState().favorites;
+    if (legacy.length) {
+      localStorage.setItem(key, JSON.stringify(legacy));
+      localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify({ ...readClientState(), favorites: [] }));
+      return legacy;
+    }
+  } catch {
+    return [];
+  }
+  return [];
+}
+
+function writeAccountFavorites(email: string, favorites: ClientFavorite[]) {
+  localStorage.setItem(clientFavoritesKey(email), JSON.stringify(favorites));
+  window.dispatchEvent(new CustomEvent("beautyai:client-favorites", { detail: favorites }));
+}
+
+function clientProfileKey(email: string) {
+  return `${CLIENT_PROFILE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
+function readAccountProfile(email: string) {
+  try {
+    const raw = localStorage.getItem(clientProfileKey(email));
+    return raw ? JSON.parse(raw) as { name?: string; phone?: string; email?: string; avatar?: string } : {};
+  } catch {
+    return {};
+  }
 }
 
 function Stars({ value, onChange, label, readonly = false }: { value: number; onChange?: (value: number) => void; label: string; readonly?: boolean }) {
@@ -150,7 +193,7 @@ export default function ClientDashboard({
   const ua = lang === "ua";
   const initialClientState = readClientState();
   const [tab, setTab] = useState<"home" | "profile">("home");
-  const [clientState, setClientState] = useState<ClientState>(initialClientState);
+  const [clientState, setClientState] = useState<ClientState>(() => ({ ...initialClientState, favorites: readAccountFavorites(user.email) }));
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const [notificationPosition, setNotificationPosition] = useState({ top: 0, right: 0 });
@@ -163,10 +206,12 @@ export default function ClientDashboard({
   const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ master: 0, salon: 0, comment: "" });
   const [bonusHistoryOpen, setBonusHistoryOpen] = useState(false);
-  const [profileName, setProfileName] = useState(user.name);
-  const [profilePhone, setProfilePhone] = useState("+380 67 123 45 67");
-  const [profileEmail, setProfileEmail] = useState(user.email);
-  const [profileAvatar, setProfileAvatar] = useState(initialClientState.profileAvatar || user.avatar);
+  const savedProfile = useMemo(() => readAccountProfile(user.email), [user.email]);
+  const [profileName, setProfileName] = useState(savedProfile.name || user.name);
+  const [profilePhone, setProfilePhone] = useState(savedProfile.phone || "+380 67 123 45 67");
+  const [profileEmail, setProfileEmail] = useState(savedProfile.email || user.email);
+  const [profileAvatar, setProfileAvatar] = useState(savedProfile.avatar || initialClientState.profileAvatar || user.avatar);
+  const [profileSaved, setProfileSaved] = useState(false);
   const [avatarDraft, setAvatarDraft] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState("");
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -176,17 +221,20 @@ export default function ClientDashboard({
 
   useEffect(() => {
     const sync = () => {
-      const next = readClientState();
+      const next = { ...readClientState(), favorites: readAccountFavorites(user.email) };
       setClientState(next);
-      if (next.profileAvatar) setProfileAvatar(next.profileAvatar);
+      const profile = readAccountProfile(user.email);
+      if (profile.avatar || next.profileAvatar) setProfileAvatar(profile.avatar || next.profileAvatar || user.avatar);
     };
     window.addEventListener("beautyai:client-state", sync as EventListener);
+    window.addEventListener("beautyai:client-favorites", sync as EventListener);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener("beautyai:client-state", sync as EventListener);
+      window.removeEventListener("beautyai:client-favorites", sync as EventListener);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [user.email, user.avatar]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -250,7 +298,7 @@ export default function ClientDashboard({
   const unreadCount = clientState.notifications.filter((item) => !item.read).length;
   const completedBookings = clientState.bookings.filter((booking) => booking.status === "completed");
   const upcomingBookings = clientState.bookings.filter((booking) => booking.status === "confirmed");
-  const visibleBookings = upcomingBookings.slice(0, 2);
+  const visibleBookings = upcomingBookings.slice(0, 1);
   const visibleFavorites = showAllFavorites ? clientState.favorites : clientState.favorites.slice(0, 4);
   const filteredBookings = clientState.bookings.filter((booking) => {
     if (bookingFilter === "completed") return booking.status === "completed";
@@ -259,7 +307,9 @@ export default function ClientDashboard({
   });
 
   const commit = (updater: (state: ClientState) => ClientState) => {
-    const next = updater(readClientState());
+    const current = { ...readClientState(), favorites: readAccountFavorites(user.email) };
+    const next = updater(current);
+    writeAccountFavorites(user.email, next.favorites);
     writeClientState(next);
     setClientState(next);
     if (next.profileAvatar) setProfileAvatar(next.profileAvatar);
@@ -368,6 +418,8 @@ export default function ClientDashboard({
     // in client state/localStorage instead of accumulating avatar versions.
     commit((state) => ({ ...state, profileAvatar: avatarDraft }));
     setProfileAvatar(avatarDraft);
+    const currentProfile = readAccountProfile(user.email);
+    localStorage.setItem(clientProfileKey(user.email), JSON.stringify({ ...currentProfile, avatar: avatarDraft }));
     window.dispatchEvent(new CustomEvent("beautyai:profile-avatar", { detail: avatarDraft }));
 
     // If a temporary object URL was ever used as the previous preview, release it.
@@ -375,6 +427,34 @@ export default function ClientDashboard({
     setAvatarDraft(null);
     setAvatarError("");
     if (avatarInputRef.current) avatarInputRef.current.value = "";
+  };
+
+  const saveProfile = () => {
+    const nextProfile = {
+      name: profileName.trim() || user.name,
+      phone: profilePhone.trim(),
+      email: profileEmail.trim() || user.email,
+      avatar: profileAvatar,
+    };
+    localStorage.setItem(clientProfileKey(user.email), JSON.stringify(nextProfile));
+    try {
+      const raw = sessionStorage.getItem(STORED_USER_KEY);
+      const stored = raw ? JSON.parse(raw) as MockUser : user;
+      sessionStorage.setItem(STORED_USER_KEY, JSON.stringify({ ...stored, name: nextProfile.name, avatar: nextProfile.avatar }));
+    } catch {
+      // Profile data is already persisted in localStorage.
+    }
+    window.dispatchEvent(new CustomEvent("beautyai:auth-changed"));
+    setProfileName(nextProfile.name);
+    setProfileEmail(nextProfile.email);
+    setProfileSaved(true);
+    window.setTimeout(() => setProfileSaved(false), 1600);
+  };
+
+  const openBookingLocation = (booking: ClientBooking) => {
+    window.dispatchEvent(new CustomEvent("beautyai:open-location", {
+      detail: { name: booking.title, district: booking.district, distance: "" },
+    }));
   };
 
   const statusLabel = (status: ClientBooking["status"]) => {
@@ -409,7 +489,7 @@ export default function ClientDashboard({
         <p className="client-booking-master">{booking.type}</p>
         <div className="client-booking-meta">
           <span className="client-booking-datetime">{formatBookingDateTime(booking.date, booking.time, ua)}</span>
-          <span className="client-booking-location">⌖ {booking.district}</span>
+          <button type="button" className="card-location-link client-booking-location" onClick={() => openBookingLocation(booking)} title={ua ? "Відкрити на карті" : "Open on map"}><span className="district-pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>{booking.district}</button>
         </div>
         {compact && (
           <div className="client-booking-inline-details">
@@ -569,7 +649,7 @@ export default function ClientDashboard({
               </div>
             </div>
             <div className="profile-fields-grid"><label><span>{ua ? "Ім'я" : "Name"}</span><input type="text" value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label><label><span>{ua ? "Телефон" : "Phone"}</span><input type="tel" value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} /></label><label><span>Email</span><input type="email" value={profileEmail} onChange={(event) => setProfileEmail(event.target.value)} /></label></div>
-            <button type="button" className="cta-btn profile-save-btn">{ua ? "Зберегти зміни" : "Save changes"}</button>
+            <button type="button" className="cta-btn profile-save-btn" onClick={saveProfile}>{profileSaved ? (ua ? "Збережено ✓" : "Saved ✓") : (ua ? "Зберегти зміни" : "Save changes")}</button>
             <div className="profile-subsection"><h3>{ua ? "Сповіщення" : "Notifications"}</h3><label className="profile-toggle-row"><span>{ua ? "Email-сповіщення" : "Email notifications"}</span><input type="checkbox" checked={notifyEmail} onChange={(event) => setNotifyEmail(event.target.checked)} /></label><label className="profile-toggle-row"><span>{ua ? "Push-сповіщення" : "Push notifications"}</span><input type="checkbox" checked={notifyPush} onChange={(event) => setNotifyPush(event.target.checked)} /></label></div>
             <div className="profile-subsection profile-danger-zone"><h3>{ua ? "Акаунт" : "Account"}</h3><button type="button" className="profile-delete-btn">{ua ? "Видалити акаунт" : "Delete account"}</button></div>
           </section>
@@ -615,7 +695,7 @@ export default function ClientDashboard({
             <button type="button" className="client-booking-modal-close" onClick={() => setSelectedBooking(null)}>×</button>
             <div className="client-booking-detail-photo-wrap"><img src={selectedBooking.image} alt={selectedBooking.title} /><span className={`client-booking-detail-status status-${selectedBooking.status}`}>{statusLabel(selectedBooking.status)}</span></div>
             <h3>{selectedBooking.service}</h3><p>{selectedBooking.title} · {selectedBooking.type}</p>
-            <div className="client-booking-detail-grid"><div className="date-time"><span>{ua ? "Дата і час" : "Date & time"}</span><b>{formatBookingDate(selectedBooking.date, ua)} · {selectedBooking.time}</b></div><div><span>{ua ? "Локація" : "Location"}</span><b>{selectedBooking.district}</b></div><div><span>{ua ? "Код" : "Code"}</span><b>{selectedBooking.code}</b></div></div>
+            <div className="client-booking-detail-grid"><div className="date-time"><span>{ua ? "Дата і час" : "Date & time"}</span><b>{formatBookingDate(selectedBooking.date, ua)} · {selectedBooking.time}</b></div><div><span>{ua ? "Локація" : "Location"}</span><button type="button" className="card-location-link client-booking-location client-booking-detail-location" onClick={() => openBookingLocation(selectedBooking)}><span className="district-pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>{selectedBooking.district}</button></div><div><span>{ua ? "Код" : "Code"}</span><b>{selectedBooking.code}</b></div></div>
             <div className="client-booking-modal-actions">
               {selectedBooking.status === "confirmed" && <>
                 <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(selectedBooking.id)}>{ua ? "Скасувати запис" : "Cancel booking"}</button>

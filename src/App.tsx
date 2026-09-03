@@ -36,6 +36,7 @@ type CardData = {
   description?: string;
   reviewsList?: CardReview[];
   website?: string;
+  gallery?: string[];
 };
 
 
@@ -113,7 +114,7 @@ const dict = {
       soloMasters: { title: "Майстри для вас", subtitle: "Персональні рекомендації майстрів під ваш запит" },
       partners: { title: "Пропозиції від партнерів", subtitle: "Ексклюзивні знижки та акції" },
       nearby: { title: "Найкращі в Києві", subtitle: "Салони та майстри з найвищими показниками" },
-      topRated: { title: "Варто спробувати", subtitle: "Цеможе вас зацікавити" },
+      topRated: { title: "Варто спробувати", subtitle: "Щось нове, що може вас зацікавити" },
       fresh: { title: "Новинки на платформі", subtitle: "Нові майстри та салони для вас" },
     },
     cta: "Записатися",
@@ -269,6 +270,8 @@ const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiservice.polandc
 const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
 
 const CLIENT_STATE_KEY = "beautyai_client_state";
+const CLIENT_FAVORITES_PREFIX = "beautyai_client_favorites:";
+const CLIENT_PROFILE_PREFIX = "beautyai_client_profile:";
 const STORED_USER_KEY = "beautyai_session_user";
 const MASTER_STATE_PREFIX = "beautyai_master_state:";
 
@@ -283,14 +286,13 @@ function readStoredMasterProfile(email: string): { displayName?: string; avatar?
   }
 }
 
-
-
 type StoredMasterService = { id: string; name: string; price: number; duration: number; active: boolean };
 type StoredMasterWindow = { id: string; date: string; time: string; duration: number };
 type StoredMasterState = {
   profile?: { displayName?: string; specialization?: string; city?: string; salon?: string; about?: string; phone?: string; email?: string; avatar?: string };
   services?: StoredMasterService[];
   windows?: StoredMasterWindow[];
+  portfolioImages?: string[];
 };
 
 function findStoredMasterState(displayName: string): StoredMasterState | null {
@@ -307,6 +309,42 @@ function findStoredMasterState(displayName: string): StoredMasterState | null {
     return null;
   }
   return null;
+}
+
+function readStoredMasterStates(): StoredMasterState[] {
+  const states: StoredMasterState[] = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(MASTER_STATE_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as StoredMasterState;
+      if (parsed.profile?.displayName) states.push(parsed);
+    }
+  } catch {
+    return states;
+  }
+  return states;
+}
+
+function consumeStoredMasterWindow(displayName: string, date: string, time: string) {
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(MASTER_STATE_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as StoredMasterState;
+      if (parsed.profile?.displayName !== displayName) continue;
+      const windows = (parsed.windows ?? []).filter((slot) => !(slot.date === date && slot.time === time));
+      localStorage.setItem(key, JSON.stringify({ ...parsed, windows }));
+      window.dispatchEvent(new CustomEvent("beautyai:master-state", { detail: { state: { ...parsed, windows } } }));
+      return;
+    }
+  } catch {
+    // local demo state: failing to consume a slot must not break a confirmed booking
+  }
 }
 
 type ClientFavorite = {
@@ -332,6 +370,90 @@ function writeClientState(next: ClientState) {
   window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
 }
 
+function clientAccountKey(prefix: string, user: MockUser | null = readStoredUser()) {
+  if (!user || user.role !== "client" || !user.email) return null;
+  return `${prefix}${user.email.trim().toLowerCase()}`;
+}
+
+function readClientFavorites(user: MockUser | null = readStoredUser()): ClientFavorite[] {
+  const key = clientAccountKey(CLIENT_FAVORITES_PREFIX, user);
+  if (!key) return [];
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) return JSON.parse(saved) as ClientFavorite[];
+    const legacy = readClientState().favorites;
+    if (legacy.length) {
+      localStorage.setItem(key, JSON.stringify(legacy));
+      writeClientState({ ...readClientState(), favorites: [] });
+      return legacy;
+    }
+  } catch { return []; }
+  return [];
+}
+
+function writeClientFavorites(favorites: ClientFavorite[], user: MockUser | null = readStoredUser()) {
+  const key = clientAccountKey(CLIENT_FAVORITES_PREFIX, user);
+  if (!key) return;
+  localStorage.setItem(key, JSON.stringify(favorites));
+  window.dispatchEvent(new CustomEvent("beautyai:client-favorites", { detail: favorites }));
+}
+
+function readClientProfile(user: MockUser | null = readStoredUser()): { name?: string; phone?: string; email?: string; avatar?: string } {
+  const key = clientAccountKey(CLIENT_PROFILE_PREFIX, user);
+  if (!key) return {};
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+}
+
+function buildStoredMasterCards(baseCards: CardData[]): CardData[] {
+  const clientState = readClientState();
+  const dynamicCards = readStoredMasterStates().map((state): CardData | null => {
+    const profile = state.profile;
+    if (!profile?.displayName) return null;
+    const activeServices = (state.services ?? []).filter((service) => service.active);
+    const masterBookings = clientState.bookings.filter((booking) => booking.title === profile.displayName);
+    const reviewed = masterBookings.filter((booking: any) => booking.reviewSubmitted && Number(booking.reviewMasterRating) > 0);
+    const rating = reviewed.length
+      ? reviewed.reduce((sum: number, booking: any) => sum + Number(booking.reviewMasterRating || 0), 0) / reviewed.length
+      : 0;
+    const reviewsList: CardReview[] = reviewed
+      .filter((booking: any) => booking.reviewComment)
+      .slice()
+      .sort((a: any, b: any) => String(b.reviewSubmittedAt ?? b.createdAt).localeCompare(String(a.reviewSubmittedAt ?? a.createdAt)))
+      .map((booking: any) => ({
+        author: "Клієнт Beauty AI",
+        rating: Number(booking.reviewMasterRating || 0),
+        text: String(booking.reviewComment || ""),
+        date: booking.reviewSubmittedAt ? new Date(booking.reviewSubmittedAt).toLocaleDateString("uk-UA") : undefined,
+      }));
+    const prices = activeServices.map((service) => Number(service.price)).filter((price) => Number.isFinite(price) && price > 0);
+    const futureWindows = (state.windows ?? []).filter((slot) => `${slot.date}T${slot.time}` >= new Date().toISOString().slice(0, 16));
+    return {
+      image: profile.avatar || roleAvatars.master,
+      badges: [{ text: "BEAUTY AI", kind: "ai-match" }],
+      title: profile.displayName,
+      type: profile.specialization ? `Соло майстер · ${profile.specialization}` : "Соло майстер",
+      rating,
+      reviews: reviewed.length,
+      district: profile.city || "Київ",
+      distance: "",
+      openNow: futureWindows.length > 0,
+      tags: activeServices.map((service) => service.name),
+      priceFrom: prices.length ? String(Math.min(...prices)) : "0",
+      locationNote: profile.salon || profile.city || "Beauty AI",
+      profileLinkLabel: "Профіль майстра",
+      variant: "solo",
+      description: profile.about || undefined,
+      reviewsList,
+      gallery: state.portfolioImages ?? [],
+    };
+  }).filter((card): card is CardData => Boolean(card));
+
+  const dynamicByTitle = new Map(dynamicCards.map((card) => [card.title, card]));
+  const merged = baseCards.map((card) => dynamicByTitle.get(card.title) ?? card);
+  const baseTitles = new Set(baseCards.map((card) => card.title));
+  return [...dynamicCards.filter((card) => !baseTitles.has(card.title)), ...merged];
+}
+
 function readStoredUser(): MockUser | null {
   try { const raw = sessionStorage.getItem(STORED_USER_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
@@ -350,12 +472,14 @@ function awardRegistrationBonus() {
 }
 
 function toggleClientFavorite(data: CardData) {
-  const state = readClientState();
-  const exists = state.favorites.some((item) => item.title === data.title);
+  const currentUser = readStoredUser();
+  if (!currentUser || currentUser.role !== "client") return false;
+  const current = readClientFavorites(currentUser);
+  const exists = current.some((item) => item.title === data.title);
   const favorites = exists
-    ? state.favorites.filter((item) => item.title !== data.title)
-    : [{ title: data.title, type: data.type, image: data.image, rating: data.rating, reviews: data.reviews, district: data.district, distance: data.distance, priceFrom: data.priceFrom, variant: data.variant }, ...state.favorites];
-  writeClientState({ ...state, favorites });
+    ? current.filter((item) => item.title !== data.title)
+    : [{ title: data.title, type: data.type, image: data.image, rating: data.rating, reviews: data.reviews, district: data.district, distance: data.distance, priceFrom: data.priceFrom, variant: data.variant }, ...current];
+  writeClientFavorites(favorites, currentUser);
   return !exists;
 }
 
@@ -736,14 +860,19 @@ function AuthModal({
 }
 
 function FavButton({ data }: { data: CardData }) {
-  const [active, setActive] = useState(() => Boolean(readStoredUser()) && readClientState().favorites.some((item) => item.title === data.title));
+  const isActiveForCurrentClient = () => {
+    const currentUser = readStoredUser();
+    return Boolean(currentUser?.role === "client" && readClientFavorites(currentUser).some((item) => item.title === data.title));
+  };
+  const [active, setActive] = useState(isActiveForCurrentClient);
 
   useEffect(() => {
-    const sync = () => setActive(Boolean(readStoredUser()) && readClientState().favorites.some((item) => item.title === data.title));
+    const sync = () => setActive(isActiveForCurrentClient());
     window.addEventListener("beautyai:client-state", sync as EventListener);
+    window.addEventListener("beautyai:client-favorites", sync as EventListener);
     window.addEventListener("beautyai:auth-changed", sync as EventListener);
     window.addEventListener("storage", sync);
-    return () => { window.removeEventListener("beautyai:client-state", sync as EventListener); window.removeEventListener("beautyai:auth-changed", sync as EventListener); window.removeEventListener("storage", sync); };
+    return () => { window.removeEventListener("beautyai:client-state", sync as EventListener); window.removeEventListener("beautyai:client-favorites", sync as EventListener); window.removeEventListener("beautyai:auth-changed", sync as EventListener); window.removeEventListener("storage", sync); };
   }, [data.title]);
 
   return (
@@ -753,7 +882,8 @@ function FavButton({ data }: { data: CardData }) {
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        if (!readStoredUser()) {
+        const currentUser = readStoredUser();
+        if (!currentUser || currentUser.role !== "client") {
           window.dispatchEvent(new CustomEvent("beautyai:auth-required", { detail: { data, action: "favorite" } }));
           return;
         }
@@ -830,7 +960,7 @@ function BookingModal({
   const [phone, setPhone] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const storedTimes = (storedMaster?.windows ?? []).filter((slot) => slot.date === date).map((slot) => slot.time);
-  const times = storedTimes.length ? storedTimes : getAvailableTimes(data.title, date);
+  const times = storedMaster ? storedTimes : getAvailableTimes(data.title, date);
   const selectedStoredService = storedServices.find((item) => item.name === service);
   const selectedPriceFrom = selectedStoredService ? String(selectedStoredService.price) : data.priceFrom;
   const bookingCode = `BA-${data.title.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, "").slice(0, 3).toUpperCase()}-${date.replace(/-/g, "").slice(4)}-${time.replace(":", "")}`;
@@ -890,7 +1020,7 @@ function BookingModal({
                     <button key={slot} type="button" className={time === slot ? "active" : ""} onClick={() => setTime(slot)}>{slot}</button>
                   ))}
                 </div>
-                {!time && <small>{t.bookingModal.chooseTime}</small>}
+                {!time && <small>{storedMaster && times.length === 0 ? (t.bookingModal.close === "Закрити" ? "На цю дату вільних вікон немає" : "No available slots for this date") : t.bookingModal.chooseTime}</small>}
               </div>
 
               <label className="booking-field">
@@ -906,7 +1036,7 @@ function BookingModal({
                 <b>{selectedPriceFrom} грн+</b>
               </div>
 
-              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => { saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode); setConfirmed(true); }}>
+              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => { saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode); if (storedMaster) consumeStoredMasterWindow(data.title, date, time); setConfirmed(true); }}>
                 {t.bookingModal.confirm}
               </button>
             </div>
@@ -1005,6 +1135,7 @@ function PlaceDetailsModal({
   onLocationClick?: (name: string, district: string, distance: string) => void;
 }) {
   const isSolo = data.variant === "solo";
+  const ua = t.placeModal.close === "Закрити";
   const reviews = getPlaceReviews(data, t);
   const [reviewsOpen, setReviewsOpen] = useState(false);
 
@@ -1116,6 +1247,17 @@ function PlaceDetailsModal({
                   : `${data.title} — ${data.type.toLowerCase()} у районі ${data.district}.`)}
             </p>
           </section>
+
+          {!!data.gallery?.length && (
+            <section className="place-modal-section">
+              <h3>{ua ? "Роботи майстра" : "Master portfolio"}</h3>
+              <div className="place-modal-gallery-v3">
+                {data.gallery.slice(0, 6).map((src, index) => (
+                  <img key={`${index}-${src.slice(-18)}`} src={src} alt={`${ua ? "Робота" : "Work"} ${index + 1}`} />
+                ))}
+              </div>
+            </section>
+          )}
 
           {!!data.tags.length && (
             <section className="place-modal-section">
@@ -2580,11 +2722,26 @@ export default function App() {
   const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("manicure");
   const [selectedMapLocation, setSelectedMapLocation] = useState<SelectedMapLocation | null>(null);
+  const [masterRegistryVersion, setMasterRegistryVersion] = useState(0);
   const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [pendingClientAction, setPendingClientAction] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [bookingCard, setBookingCard] = useState<CardData | null>(null);
   const t = dict[lang];
   const filteredSalons = filterByCategory(recommendations, activeCategory);
+  const liveMasterRecommendations = buildStoredMasterCards(soloMastersRecommendations);
+  void masterRegistryVersion;
+
+  useEffect(() => {
+    const refreshMasters = () => setMasterRegistryVersion((value) => value + 1);
+    window.addEventListener("beautyai:master-state", refreshMasters as EventListener);
+    window.addEventListener("beautyai:client-state", refreshMasters as EventListener);
+    window.addEventListener("storage", refreshMasters);
+    return () => {
+      window.removeEventListener("beautyai:master-state", refreshMasters as EventListener);
+      window.removeEventListener("beautyai:client-state", refreshMasters as EventListener);
+      window.removeEventListener("storage", refreshMasters);
+    };
+  }, []);
 
   useEffect(() => {
     const onAuthRequired = (event: Event) => {
@@ -2652,6 +2809,18 @@ export default function App() {
     return () => window.removeEventListener("beautyai:rebook", onRebook as EventListener);
   }, []);
 
+  useEffect(() => {
+    const onOpenLocation = (event: Event) => {
+      const detail = (event as CustomEvent<{ name?: string; district?: string; distance?: string }>).detail;
+      if (!detail?.name || !detail.district) return;
+      const coords = LOCATION_COORDINATES[detail.name] ?? DISTRICT_FALLBACKS[detail.district] ?? [50.4412, 30.5390];
+      setSelectedMapLocation({ name: detail.name, district: detail.district, distance: detail.distance || "", lat: coords[0], lng: coords[1] });
+      setView("home");
+    };
+    window.addEventListener("beautyai:open-location", onOpenLocation as EventListener);
+    return () => window.removeEventListener("beautyai:open-location", onOpenLocation as EventListener);
+  }, []);
+
   const handleLocationClick = (name: string, district: string, distance: string) => {
     const coords = LOCATION_COORDINATES[name] ?? DISTRICT_FALLBACKS[district] ?? [50.4412, 30.5390];
 
@@ -2665,12 +2834,13 @@ export default function App() {
   };
 
   const handleAuthenticated = (nextUser: MockUser) => {
-    const clientAvatar = nextUser.role === "client" ? readClientState().profileAvatar : undefined;
+    const clientProfile = nextUser.role === "client" ? readClientProfile(nextUser) : {};
+    const clientAvatar = nextUser.role === "client" ? (clientProfile.avatar || readClientState().profileAvatar) : undefined;
     const masterProfile = nextUser.role === "master" ? readStoredMasterProfile(nextUser.email) : null;
     const hydratedUser = nextUser.role === "master"
       ? { ...nextUser, name: masterProfile?.displayName || nextUser.name, avatar: masterProfile?.avatar || nextUser.avatar }
-      : clientAvatar
-        ? { ...nextUser, avatar: clientAvatar }
+      : nextUser.role === "client"
+        ? { ...nextUser, name: clientProfile.name || nextUser.name, avatar: clientAvatar || nextUser.avatar }
         : nextUser;
     setUser(hydratedUser);
     sessionStorage.setItem(STORED_USER_KEY, JSON.stringify(hydratedUser));
@@ -2896,7 +3066,7 @@ export default function App() {
             </div>
             
           </div>
-          <RecommendationCarousel cards={soloMastersRecommendations} t={t} variant="masters" onLocationClick={handleLocationClick} />
+          <RecommendationCarousel cards={liveMasterRecommendations} t={t} variant="masters" onLocationClick={handleLocationClick} />
         </div>
       </section>
       <div className="section-divider" aria-hidden="true">

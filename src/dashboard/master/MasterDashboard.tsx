@@ -48,12 +48,14 @@ type MasterProfile = {
   avatar: string;
 };
 type MasterNotification = MasterHeaderNotification;
+type MasterPayout = { id: string; amount: number; createdAt: string; status: "requested" };
 type MasterState = {
   profile: MasterProfile;
   services: MasterService[];
   windows: MasterWindow[];
   portfolioImages: string[];
   notifications: MasterNotification[];
+  payouts: MasterPayout[];
 };
 
 type ServiceDraft = { id?: string; name: string; price: string; duration: string; active: boolean };
@@ -98,6 +100,7 @@ function emptyMasterState(user: MockUser): MasterState {
     windows: [],
     portfolioImages: [],
     notifications: [],
+    payouts: [],
   };
 }
 
@@ -115,6 +118,7 @@ function readMasterState(user: MockUser): MasterState {
       windows: Array.isArray(parsed.windows) ? parsed.windows : [],
       portfolioImages: Array.isArray(parsed.portfolioImages) ? parsed.portfolioImages : [],
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+      payouts: Array.isArray(parsed.payouts) ? parsed.payouts : [],
     };
   } catch {
     return emptyMasterState(user);
@@ -131,6 +135,22 @@ function toInputDate(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function isPastDateValue(value: string) {
+  return value < toInputDate(new Date());
+}
+
+function currentTimeValue() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function isUnavailableSlot(date: string, time: string) {
+  const today = toInputDate(new Date());
+  if (date < today) return true;
+  if (time > "21:00") return true;
+  return date === today && time < currentTimeValue();
 }
 
 function parsePrice(value: string | number) {
@@ -287,6 +307,8 @@ export default function MasterDashboard({
 
   const completedBookings = bookings.filter((booking) => booking.status === "completed");
   const completedRevenue = completedBookings.reduce((sum, booking) => sum + parsePrice(booking.priceFrom), 0);
+  const requestedPayoutTotal = masterState.payouts.reduce((sum, payout) => sum + payout.amount, 0);
+  const availablePayout = Math.max(0, completedRevenue - requestedPayoutTotal);
   const cancelledBookings = bookings.filter((booking) => booking.status === "cancelled").length;
   const uniqueClients = new Set(bookings.filter((booking) => {
     const d = new Date(`${booking.date}T12:00:00`);
@@ -344,7 +366,7 @@ export default function MasterDashboard({
   };
 
   const addWindow = () => {
-    if (!windowDate || !windowTime || Number(windowDuration) < 15) return;
+    if (!windowDate || !windowTime || Number(windowDuration) < 15 || isUnavailableSlot(windowDate, windowTime)) return;
     updateMasterState((current) => ({
       ...current,
       windows: [
@@ -385,6 +407,32 @@ export default function MasterDashboard({
     updateMasterState((current) => ({ ...current, portfolioImages: [...current.portfolioImages, ...images] }));
   };
 
+  const requestPayout = () => {
+    if (availablePayout <= 0) return;
+    const payout: MasterPayout = { id: `payout-${Date.now()}`, amount: availablePayout, createdAt: new Date().toISOString(), status: "requested" };
+    updateMasterState((current) => ({
+      ...current,
+      payouts: [payout, ...current.payouts],
+      notifications: [{
+        id: `payout-notice-${payout.id}`,
+        title: ua ? "Заявку на виплату створено" : "Payout request created",
+        text: formatMoney(payout.amount, ua),
+        createdAt: payout.createdAt,
+        read: false,
+        kind: "finance",
+        entityId: payout.id,
+      }, ...current.notifications],
+    }));
+  };
+
+  const makePortfolioCover = (index: number) => {
+    updateMasterState((current) => {
+      const selected = current.portfolioImages[index];
+      if (!selected || index === 0) return current;
+      return { ...current, portfolioImages: [selected, ...current.portfolioImages.filter((_, itemIndex) => itemIndex !== index)] };
+    });
+  };
+
   const savePublicProfile = () => {
     setProfileSaved(true);
     window.dispatchEvent(new CustomEvent("beautyai:master-profile", { detail: masterState.profile }));
@@ -399,6 +447,10 @@ export default function MasterDashboard({
   };
 
   const openBookingFromNotification = (notification: MasterNotification) => {
+    if (notification.kind === "finance") {
+      setSection("finance");
+      return;
+    }
     if (!notification.entityId) return;
     const booking = bookings.find((item) => item.id === notification.entityId);
     if (!booking) return;
@@ -456,7 +508,7 @@ export default function MasterDashboard({
             <section className="master-card-v2 master-schedule-v2">
               <div className="master-card-head-v2">
                 <div><h2>{ua ? "Розклад" : "Schedule"}</h2><p>{formatDate(selectedDate, ua, { weekday: "long", day: "numeric", month: "long" })}</p></div>
-                <button type="button" onClick={() => { setWindowDate(selectedDate); setWindowModalOpen(true); }}>+ {ua ? "Додати вікно" : "Add slot"}</button>
+                <button type="button" disabled={isPastDateValue(selectedDate)} onClick={() => { setWindowDate(selectedDate); setWindowTime(selectedDate === todayValue ? currentTimeValue() : "09:00"); setWindowModalOpen(true); }}>+ {ua ? "Додати вікно" : "Add slot"}</button>
               </div>
               <div className="master-schedule-list-v2">
                 {selectedBookings.length === 0 && selectedWindows.length === 0 && <div className="master-empty-v2">{ua ? "На цю дату записів і вільних вікон немає" : "No bookings or available slots for this date"}</div>}
@@ -493,7 +545,7 @@ export default function MasterDashboard({
                 <div className="master-card-head-v2">
                   <div><h2 className="master-month-title-v2">{monthTitle}</h2></div>
                   <div className="master-calendar-nav-v2">
-                    <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>‹</button>
+                    <button type="button" disabled={calendarMonth.getFullYear() === new Date().getFullYear() && calendarMonth.getMonth() === new Date().getMonth()} onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>‹</button>
                     <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}>›</button>
                   </div>
                 </div>
@@ -503,7 +555,8 @@ export default function MasterDashboard({
                   {calendarDays.days.map((day) => {
                     const value = toInputDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day));
                     const count = bookings.filter((booking) => booking.date === value && booking.status !== "cancelled").length;
-                    return <button type="button" className={`${value === selectedDate ? "selected " : ""}${count ? "has-bookings" : ""}`} key={day} onClick={() => setSelectedDate(value)} aria-label={`${formatDate(value, ua)}${count ? `, ${count}` : ""}`}>{day}</button>;
+                    const disabled = isPastDateValue(value);
+                    return <button type="button" disabled={disabled} className={`${value === selectedDate ? "selected " : ""}${count ? "has-bookings " : ""}${disabled ? "past" : ""}`} key={day} onClick={() => !disabled && setSelectedDate(value)} aria-label={`${formatDate(value, ua)}${count ? `, ${count}` : ""}`}>{day}</button>;
                   })}
                 </div>
                 <div className="master-calendar-legend-v2"><span><i className="selected" />{formatDate(selectedDate, ua)}</span><span><i className="busy" />{selectedBookings.length} {ua ? "записів" : "bookings"}</span></div>
@@ -545,7 +598,7 @@ export default function MasterDashboard({
 
           <section className="master-card-v2 master-portfolio-v2">
             <div className="master-card-head-v2"><div><h2>{ua ? "Галерея робіт" : "Portfolio"}</h2><p>{portfolioCountLabel}</p></div><label className="master-upload-work-v2">+ {ua ? "Додати фото" : "Add photos"}<input type="file" accept="image/*" multiple onChange={(event) => { void addPortfolioImages(event.target.files); event.currentTarget.value = ""; }} /></label></div>
-            {masterState.portfolioImages.length ? <div className="master-portfolio-grid-v2">{masterState.portfolioImages.map((src, index) => <article className="master-portfolio-item-v2" key={`${index}-${src.slice(-16)}`}><img src={src} alt={`${ua ? "Робота" : "Work"} ${index + 1}`} /><button type="button" onClick={() => updateMasterState((current) => ({ ...current, portfolioImages: current.portfolioImages.filter((_, itemIndex) => itemIndex !== index) }))}>×</button></article>)}</div> : <label className="master-portfolio-empty-v2"><span>＋</span><strong>{ua ? "Додайте перші фото робіт" : "Add your first work photos"}</strong><small>{ua ? "Вони будуть показані клієнтам у вашому публічному профілі" : "They will be shown in your public profile"}</small><input type="file" accept="image/*" multiple onChange={(event) => { void addPortfolioImages(event.target.files); event.currentTarget.value = ""; }} /></label>}
+            {masterState.portfolioImages.length ? <div className="master-portfolio-grid-v2">{masterState.portfolioImages.map((src, index) => <article className={`master-portfolio-item-v2 ${index === 0 ? "cover" : ""}`} key={`${index}-${src.slice(-16)}`}><img src={src} alt={`${ua ? "Робота" : "Work"} ${index + 1}`} />{index === 0 && <span className="master-portfolio-cover-label-v3">{ua ? "Обкладинка" : "Cover"}</span>}<div className="master-portfolio-actions-v3">{index !== 0 && <button type="button" title={ua ? "Зробити обкладинкою" : "Make cover"} onClick={() => makePortfolioCover(index)}>★</button>}<button type="button" title={ua ? "Видалити" : "Delete"} onClick={() => updateMasterState((current) => ({ ...current, portfolioImages: current.portfolioImages.filter((_, itemIndex) => itemIndex !== index) }))}>×</button></div></article>)}</div> : <label className="master-portfolio-empty-v2"><span>＋</span><strong>{ua ? "Додайте перші фото робіт" : "Add your first work photos"}</strong><small>{ua ? "Вони будуть показані клієнтам у вашому публічному профілі" : "They will be shown in your public profile"}</small><input type="file" accept="image/*" multiple onChange={(event) => { void addPortfolioImages(event.target.files); event.currentTarget.value = ""; }} /></label>}
           </section>
         </div>
       )}
@@ -567,15 +620,15 @@ export default function MasterDashboard({
 
       {section === "finance" && (
         <div className="master-finance-v2">
-          <div className="master-summary-v2 finance"><article><span>{ua ? "Дохід за весь період" : "Total income"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{completedBookings.length} {ua ? "завершених візитів" : "completed visits"}</small></article><article><span>{ua ? "Доступно до виплати" : "Available payout"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{ua ? "До підключення платіжного API" : "Until payout API is connected"}</small></article><article><span>{ua ? "Середній чек" : "Average check"}</span><strong>{completedBookings.length ? formatMoney(Math.round(completedRevenue / completedBookings.length), ua) : "—"}</strong><small>{ua ? "За завершеними записами" : "Completed bookings"}</small></article></div>
+          <div className="master-summary-v2 finance"><article><span>{ua ? "Дохід за весь період" : "Total income"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{completedBookings.length} {ua ? "завершених візитів" : "completed visits"}</small></article><article className="master-payout-summary-v3"><span>{ua ? "Доступно до виплати" : "Available payout"}</span><strong>{formatMoney(availablePayout, ua)}</strong><small>{masterState.payouts.length ? (ua ? `${masterState.payouts.length} заявок створено` : `${masterState.payouts.length} requests created`) : (ua ? "Ще не було заявок" : "No payout requests yet")}</small><button type="button" disabled={availablePayout <= 0} onClick={requestPayout}>{ua ? "Створити заявку" : "Request payout"}</button></article><article><span>{ua ? "Середній чек" : "Average check"}</span><strong>{completedBookings.length ? formatMoney(Math.round(completedRevenue / completedBookings.length), ua) : "—"}</strong><small>{ua ? "За завершеними записами" : "Completed bookings"}</small></article></div>
           <section className="master-card-v2 master-results-v2 master-finance-results-v2"><div className="master-card-head-v2"><div><h2>{ua ? "Результати" : "Results"}</h2><p>{formatDate(selectedDate, ua)}</p></div></div><div className="master-results-grid-v2"><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "completed").length}</strong><span>{ua ? "Завершені" : "Completed"}</span></div><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "cancelled").length}</strong><span>{ua ? "Скасовані" : "Cancelled"}</span></div><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "confirmed").length}</strong><span>{ua ? "Майбутні" : "Upcoming"}</span></div><div><strong>{formatMoney(bookings.filter((b) => b.date === selectedDate && b.status === "completed").reduce((sum, b) => sum + parsePrice(b.priceFrom), 0), ua)}</strong><span>{ua ? "Виручка" : "Revenue"}</span></div></div></section>
-          <section className="master-card-v2"><div className="master-card-head-v2"><div><h2>{ua ? "Останні операції" : "Recent transactions"}</h2><p>{ua ? "Тільки завершені записи" : "Completed bookings only"}</p></div><button type="button" disabled={!completedBookings.length} onClick={() => downloadCsv(`beauty-ai-master-${todayValue}.csv`, [["Date", "Service", "Client", "Amount"], ...completedBookings.map((b) => [b.date, b.service, b.phone, String(parsePrice(b.priceFrom))])])}>{ua ? "Вивантажити звіт" : "Export report"}</button></div><div className="master-transactions-v2">{completedBookings.length ? completedBookings.slice(0, 12).map((booking) => <div key={booking.id}><span>{formatDate(booking.date, ua)}</span><b>{booking.service}<small>{booking.phone}</small></b><strong>+{formatMoney(parsePrice(booking.priceFrom), ua)}</strong></div>) : <div className="master-empty-v2">{ua ? "Операцій ще немає" : "No transactions yet"}</div>}</div></section>
+          <section className="master-card-v2"><div className="master-card-head-v2"><div><h2>{ua ? "Останні операції" : "Recent transactions"}</h2><p>{ua ? "Завершені записи та заявки на виплату" : "Completed bookings and payout requests"}</p></div><button type="button" disabled={!completedBookings.length && !masterState.payouts.length} onClick={() => downloadCsv(`beauty-ai-master-${todayValue}.csv`, [["Type", "Date", "Service / status", "Client", "Amount"], ...completedBookings.map((b) => ["income", b.date, b.service, b.phone, String(parsePrice(b.priceFrom))]), ...masterState.payouts.map((payout) => ["payout_request", payout.createdAt, payout.status, "", String(-payout.amount)])])}>{ua ? "Вивантажити звіт" : "Export report"}</button></div><div className="master-transactions-v2">{completedBookings.length || masterState.payouts.length ? [...completedBookings.map((booking) => ({ id: booking.id, createdAt: `${booking.date}T${booking.time || "00:00"}:00`, kind: "income" as const, booking })), ...masterState.payouts.map((payout) => ({ id: payout.id, createdAt: payout.createdAt, kind: "payout" as const, payout }))].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 16).map((item) => item.kind === "income" ? <div key={item.id}><span>{formatDate(item.booking.date, ua)}</span><b>{item.booking.service}<small>{item.booking.phone}</small></b><strong>+{formatMoney(parsePrice(item.booking.priceFrom), ua)}</strong></div> : <div key={item.id} className="payout"><span>{new Date(item.payout.createdAt).toLocaleDateString(ua ? "uk-UA" : "en-GB")}</span><b>{ua ? "Заявка на виплату" : "Payout request"}<small>{ua ? "Очікує підключення платіжного API" : "Waiting for payout API"}</small></b><strong>−{formatMoney(item.payout.amount, ua)}</strong></div>) : <div className="master-empty-v2">{ua ? "Операцій ще немає" : "No transactions yet"}</div>}</div></section>
         </div>
       )}
 
       {selectedBooking && <div className="master-modal-backdrop-v2" onMouseDown={() => setSelectedBooking(null)}><div className="master-modal-v2 master-booking-detail-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setSelectedBooking(null)}>×</button><div className="master-booking-detail-head-v2"><span className={`master-slot-status-v2 ${selectedBooking.status}`}>{selectedBooking.status === "completed" ? (ua ? "Завершено" : "Completed") : selectedBooking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span><h3>{selectedBooking.service}</h3><p>{formatDate(selectedBooking.date, ua, { weekday: "long", day: "numeric", month: "long" })} · {selectedBooking.time}</p></div><div className="master-booking-detail-grid-v2"><div><span>{ua ? "Клієнт" : "Client"}</span><strong>{selectedBooking.phone || "—"}</strong></div><div><span>{ua ? "Сума" : "Amount"}</span><strong>{formatMoney(parsePrice(selectedBooking.priceFrom), ua)}</strong></div><div><span>{ua ? "Код запису" : "Booking code"}</span><strong>{selectedBooking.code}</strong></div><div><span>{ua ? "Створено" : "Created"}</span><strong>{new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(selectedBooking.createdAt))}</strong></div></div>{selectedBooking.reviewSubmitted && selectedBooking.reviewComment && <div className="master-booking-review-v2"><span>{ua ? "Відгук клієнта" : "Client review"}</span><strong>{"★".repeat(selectedBooking.reviewMasterRating ?? 0)}</strong><p>{selectedBooking.reviewComment}</p></div>}{selectedBooking.status === "confirmed" && <div className="master-booking-detail-actions-v2"><button className="master-primary-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "completed"); setSelectedBooking(null); }}>{ua ? "Завершити візит" : "Complete visit"}</button><button className="master-danger-outline-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "cancelled"); setSelectedBooking(null); }}>{ua ? "Скасувати запис" : "Cancel booking"}</button></div>}</div></div>}
 
-      {windowModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setWindowModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setWindowModalOpen(false)}>×</button><h3>{ua ? "Додати вільне вікно" : "Add available slot"}</h3><label>{ua ? "Дата" : "Date"}<input type="date" value={windowDate} onChange={(event) => setWindowDate(event.target.value)} /></label><label>{ua ? "Час" : "Time"}<input type="time" value={windowTime} onChange={(event) => setWindowTime(event.target.value)} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={windowDuration} onChange={(event) => setWindowDuration(event.target.value)} /></label><button className="master-primary-v2" type="button" onClick={addWindow}>{ua ? "Додати" : "Add"}</button></div></div>}
+      {windowModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setWindowModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setWindowModalOpen(false)}>×</button><h3>{ua ? "Додати вільне вікно" : "Add available slot"}</h3><label>{ua ? "Дата" : "Date"}<input type="date" min={todayValue} value={windowDate} onChange={(event) => { setWindowDate(event.target.value); if (event.target.value === todayValue && windowTime < currentTimeValue()) setWindowTime(currentTimeValue()); }} /></label><label>{ua ? "Час" : "Time"}<input type="time" min={windowDate === todayValue ? currentTimeValue() : undefined} max="21:00" value={windowTime} onChange={(event) => setWindowTime(event.target.value)} /><small className="master-time-hint-v2">{ua ? "Доступний час: від поточного моменту до 21:00" : "Available time: from now until 21:00"}</small></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={windowDuration} onChange={(event) => setWindowDuration(event.target.value)} /></label><button className="master-primary-v2" type="button" disabled={isUnavailableSlot(windowDate, windowTime)} onClick={addWindow}>{ua ? "Додати" : "Add"}</button></div></div>}
 
       {serviceModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setServiceModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setServiceModalOpen(false)}>×</button><h3>{serviceDraft.id ? (ua ? "Редагувати послугу" : "Edit service") : (ua ? "Нова послуга" : "New service")}</h3><label>{ua ? "Назва" : "Name"}<input value={serviceDraft.name} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>{ua ? "Ціна, грн" : "Price, UAH"}<input type="number" min="1" value={serviceDraft.price} onChange={(event) => setServiceDraft((current) => ({ ...current, price: event.target.value }))} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={serviceDraft.duration} onChange={(event) => setServiceDraft((current) => ({ ...current, duration: event.target.value }))} /></label><label className="master-checkbox-v2"><input type="checkbox" checked={serviceDraft.active} onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))} />{ua ? "Показувати клієнтам" : "Visible to clients"}</label><button className="master-primary-v2" type="button" onClick={saveService}>{ua ? "Зберегти" : "Save"}</button></div></div>}
 

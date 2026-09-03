@@ -4676,7 +4676,7 @@ button .place-modal-reviews-summary {
   top: 50%;
   right: calc(100% + 8px);
   margin: 0;
-  transform: translateY(-50%) scale(1.08) !important;
+  transform: translateY(-40%) scale(1.08) !important;
 }
 
 @media (max-width: 640px) {
@@ -4710,4 +4710,26 @@ button .place-modal-reviews-summary {
   font-size: 13px;
   color:  #6f6879;
   margin-left: 8px;
+}
+/* PUBLIC MASTER PROFILE — package V3 portfolio sync */
+.place-modal-gallery-v3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.place-modal-gallery-v3 img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(81, 53, 155, 0.1);
+  background: var(--lavender-50);
+}
+
+@media (max-width: 600px) {
+  .place-modal-gallery-v3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
