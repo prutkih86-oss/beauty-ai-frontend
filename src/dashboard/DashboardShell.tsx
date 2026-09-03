@@ -7,13 +7,14 @@ import AdminDashboard from "./admin/AdminDashboard";
 
 export type { AuthRole, Lang, MockUser } from "./types";
 
-export default function DashboardShell({ user, lang, onHome, onRoleChange }: {
+export default function DashboardShell({ user, lang, onHome, onLogout, onRoleChange }: {
   user: MockUser;
   lang: Lang;
   onHome: () => void;
+  onLogout?: () => void;
   onRoleChange: (role: AuthRole) => void;
 }) {
-  if (user.role === "master") return <MasterDashboard user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} />;
+  if (user.role === "master") return <MasterDashboard user={user} lang={lang} onHome={onHome} onLogout={onLogout} onRoleChange={onRoleChange} />;
   if (user.role === "admin") return <AdminDashboard user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} />;
-  return <ClientDashboard user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} />;
+  return <ClientDashboard user={user} lang={lang} onHome={onHome} onLogout={onLogout} onRoleChange={onRoleChange} />;
 }

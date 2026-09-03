@@ -132,10 +132,11 @@ const Icons = {
 
 interface CategoryFiltersProps {
   lang?: "ua" | "en";
+  activeCategory: string;
+  onCategoryChange: (id: string) => void;
 }
 
-export default function CategoryFilters({ lang = "ua" }: CategoryFiltersProps) {
-  const [activeCategory, setActiveCategory] = useState("manicure");
+export default function CategoryFilters({ lang = "ua", activeCategory, onCategoryChange }: CategoryFiltersProps) {
   const isEn = lang === "en";
 
   const mainCategories = [
@@ -165,7 +166,7 @@ export default function CategoryFilters({ lang = "ua" }: CategoryFiltersProps) {
       <button
         key={cat.id}
         className={`category-chip ${activeCategory === cat.id ? "active" : ""}`}
-        onClick={() => setActiveCategory(cat.id)}
+        onClick={() => onCategoryChange(cat.id)}
       >
         <span className="chip-icon">
           <IconComponent />

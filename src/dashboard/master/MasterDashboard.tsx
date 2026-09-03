@@ -1,304 +1,585 @@
-import React, { useMemo, useState } from "react";
-import DashboardFrame, { type MasterSection } from "../DashboardFrame";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import DashboardFrame, { type MasterSection, type MasterHeaderNotification } from "../DashboardFrame";
 import type { AuthRole, Lang, MockUser } from "../types";
 
-export default function MasterDashboard({ user, lang, onHome, onRoleChange }: { user: MockUser; lang: Lang; onHome: () => void; onRoleChange: (role: AuthRole) => void }) {
-  const ua = lang === "ua";
-  const [section, setSection] = useState<MasterSection>("home");
-  const [portfolioImages, setPortfolioImages] = useState<string[]>([]);
-  const [publicProfile, setPublicProfile] = useState({
-    displayName: user.name,
-    specialization: "Майстер манікюру та brow-artist",
-    city: "Київ",
-    salon: "Beauty Room",
-    about: "Люблю натуральні форми, акуратне покриття та красиві деталі.",
-  });
+type BookingStatus = "confirmed" | "completed" | "cancelled";
+type ClientBooking = {
+  id: string;
+  title: string;
+  type: string;
+  image: string;
+  service: string;
+  date: string;
+  time: string;
+  phone: string;
+  district: string;
+  priceFrom: string;
+  status: BookingStatus;
+  code: string;
+  createdAt: string;
+  reviewSubmitted?: boolean;
+  reviewMasterRating?: number;
+  reviewSalonRating?: number;
+  reviewComment?: string;
+  reviewSubmittedAt?: string;
+  pointsAwarded?: boolean;
+};
 
-  const portfolioCountLabel = useMemo(
-    () => `${portfolioImages.length} ${portfolioImages.length === 1 ? "робота" : "робіт"}`,
-    [portfolioImages.length]
+type ClientNotification = { id: string; title: string; text: string; createdAt: string; read: boolean };
+type ClientState = {
+  favorites: unknown[];
+  bookings: ClientBooking[];
+  notifications: ClientNotification[];
+  points: number;
+  registrationBonusAwarded: boolean;
+  profileAvatar?: string;
+};
+
+type MasterService = { id: string; name: string; price: number; duration: number; active: boolean };
+type MasterWindow = { id: string; date: string; time: string; duration: number };
+type MasterProfile = {
+  displayName: string;
+  specialization: string;
+  city: string;
+  salon: string;
+  about: string;
+  phone: string;
+  email: string;
+  avatar: string;
+};
+type MasterNotification = MasterHeaderNotification;
+type MasterState = {
+  profile: MasterProfile;
+  services: MasterService[];
+  windows: MasterWindow[];
+  portfolioImages: string[];
+  notifications: MasterNotification[];
+};
+
+type ServiceDraft = { id?: string; name: string; price: string; duration: string; active: boolean };
+
+const CLIENT_STATE_KEY = "beautyai_client_state";
+const MASTER_STATE_PREFIX = "beautyai_master_state:";
+const MASTER_REGISTRY_EVENT = "beautyai:master-state";
+
+const clientEmpty = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
+
+function readClientState(): ClientState {
+  try {
+    const raw = localStorage.getItem(CLIENT_STATE_KEY);
+    return raw ? { ...clientEmpty(), ...JSON.parse(raw) } : clientEmpty();
+  } catch {
+    return clientEmpty();
+  }
+}
+
+function writeClientState(next: ClientState) {
+  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
+}
+
+function stateKey(email: string) {
+  return `${MASTER_STATE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
+function emptyMasterState(user: MockUser): MasterState {
+  return {
+    profile: {
+      displayName: user.name,
+      specialization: "",
+      city: "",
+      salon: "",
+      about: "",
+      phone: "",
+      email: user.email,
+      avatar: user.avatar,
+    },
+    services: [],
+    windows: [],
+    portfolioImages: [],
+    notifications: [],
+  };
+}
+
+function readMasterState(user: MockUser): MasterState {
+  try {
+    const raw = localStorage.getItem(stateKey(user.email));
+    if (!raw) return emptyMasterState(user);
+    const parsed = JSON.parse(raw) as Partial<MasterState>;
+    const base = emptyMasterState(user);
+    return {
+      ...base,
+      ...parsed,
+      profile: { ...base.profile, ...(parsed.profile ?? {}) },
+      services: Array.isArray(parsed.services) ? parsed.services : [],
+      windows: Array.isArray(parsed.windows) ? parsed.windows : [],
+      portfolioImages: Array.isArray(parsed.portfolioImages) ? parsed.portfolioImages : [],
+      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+    };
+  } catch {
+    return emptyMasterState(user);
+  }
+}
+
+function writeMasterState(user: MockUser, next: MasterState) {
+  localStorage.setItem(stateKey(user.email), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(MASTER_REGISTRY_EVENT, { detail: { email: user.email, state: next } }));
+}
+
+function toInputDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parsePrice(value: string | number) {
+  return Number(String(value).replace(/[^0-9]/g, "")) || 0;
+}
+
+function formatMoney(value: number, ua: boolean) {
+  return `${value.toLocaleString(ua ? "uk-UA" : "en-GB")} ₴`;
+}
+
+function formatDate(value: string, ua: boolean, options?: Intl.DateTimeFormatOptions) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", options ?? { day: "numeric", month: "long" }).format(date);
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("read"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function MasterDashboard({
+  user,
+  lang,
+  onHome,
+  onLogout,
+  onRoleChange: _onRoleChange,
+}: {
+  user: MockUser;
+  lang: Lang;
+  onHome: () => void;
+  onLogout?: () => void;
+  onRoleChange: (role: AuthRole) => void;
+}) {
+  const ua = lang === "ua";
+  const today = useMemo(() => new Date(), []);
+  const todayValue = toInputDate(today);
+  const [section, setSection] = useState<MasterSection>("home");
+  const [masterState, setMasterState] = useState<MasterState>(() => readMasterState(user));
+  const [clientState, setClientState] = useState<ClientState>(() => readClientState());
+  const [selectedDate, setSelectedDate] = useState(todayValue);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [windowModalOpen, setWindowModalOpen] = useState(false);
+  const [windowDate, setWindowDate] = useState(todayValue);
+  const [windowTime, setWindowTime] = useState("09:00");
+  const [windowDuration, setWindowDuration] = useState("60");
+  const [serviceModalOpen, setServiceModalOpen] = useState(false);
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ name: "", price: "", duration: "60", active: true });
+  const [allReviewsOpen, setAllReviewsOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<ClientBooking | null>(null);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    writeMasterState(user, masterState);
+  }, [masterState, user]);
+
+  useEffect(() => {
+    const sync = () => setClientState(readClientState());
+    window.addEventListener("beautyai:client-state", sync as EventListener);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("beautyai:client-state", sync as EventListener);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    const knownIds = new Set(masterState.notifications.filter((item) => item.kind === "booking").map((item) => item.entityId));
+    const newBookings = clientState.bookings.filter((booking) =>
+      booking.title === masterState.profile.displayName && !knownIds.has(booking.id)
+    );
+    if (!newBookings.length) return;
+    const notices: MasterNotification[] = newBookings.map((booking) => ({
+      id: `master-booking-${booking.id}`,
+      title: ua ? "Новий запис" : "New booking",
+      text: `${booking.service} · ${formatDate(booking.date, ua)} · ${booking.time}`,
+      createdAt: booking.createdAt,
+      read: false,
+      kind: "booking",
+      entityId: booking.id,
+    }));
+    setMasterState((current) => ({ ...current, notifications: [...notices, ...current.notifications] }));
+  }, [clientState.bookings, masterState.profile.displayName, masterState.notifications, ua]);
+
+  useEffect(() => {
+    const knownReviewIds = new Set(masterState.notifications.filter((item) => item.kind === "review").map((item) => item.entityId));
+    const newReviews = clientState.bookings.filter((booking) =>
+      booking.title === masterState.profile.displayName && booking.reviewSubmitted && booking.reviewComment && !knownReviewIds.has(booking.id)
+    );
+    if (!newReviews.length) return;
+    const notices: MasterNotification[] = newReviews.map((booking) => ({
+      id: `master-review-${booking.id}`,
+      title: ua ? "Новий відгук" : "New review",
+      text: `${booking.service} · ${booking.reviewMasterRating ?? 0}★`,
+      createdAt: booking.reviewSubmittedAt || new Date().toISOString(),
+      read: false,
+      kind: "review",
+      entityId: booking.id,
+    }));
+    setMasterState((current) => ({ ...current, notifications: [...notices, ...current.notifications] }));
+  }, [clientState.bookings, masterState.profile.displayName, masterState.notifications, ua]);
+
+  const bookings = useMemo(
+    () => clientState.bookings.filter((booking) => booking.title === masterState.profile.displayName),
+    [clientState.bookings, masterState.profile.displayName]
   );
 
-  const addPortfolioImages = (files: FileList | null) => {
-    if (!files?.length) return;
+  const selectedBookings = useMemo(
+    () => bookings.filter((booking) => booking.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time)),
+    [bookings, selectedDate]
+  );
 
-    const nextImages = Array.from(files).map((file) => URL.createObjectURL(file));
-    setPortfolioImages((current) => [...current, ...nextImages]);
+  const selectedWindows = useMemo(
+    () => masterState.windows.filter((slot) => slot.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time)),
+    [masterState.windows, selectedDate]
+  );
+
+  const todayBookings = useMemo(() => bookings.filter((booking) => booking.date === todayValue), [bookings, todayValue]);
+  const monthBookings = useMemo(
+    () => bookings.filter((booking) => {
+      const d = new Date(`${booking.date}T12:00:00`);
+      return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
+    }),
+    [bookings, calendarMonth]
+  );
+
+  const reviews = useMemo(
+    () => bookings
+      .filter((booking) => booking.status === "completed" && booking.reviewSubmitted && booking.reviewComment)
+      .sort((a, b) => String(b.reviewSubmittedAt ?? b.createdAt).localeCompare(String(a.reviewSubmittedAt ?? a.createdAt))),
+    [bookings]
+  );
+
+  const rating = useMemo(() => {
+    const values = reviews.map((booking) => booking.reviewMasterRating ?? 0).filter(Boolean);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }, [reviews]);
+
+  const completedBookings = bookings.filter((booking) => booking.status === "completed");
+  const completedRevenue = completedBookings.reduce((sum, booking) => sum + parsePrice(booking.priceFrom), 0);
+  const cancelledBookings = bookings.filter((booking) => booking.status === "cancelled").length;
+  const uniqueClients = new Set(bookings.filter((booking) => {
+    const d = new Date(`${booking.date}T12:00:00`);
+    return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
+  }).map((booking) => booking.phone)).size;
+  const availableCount = monthBookings.length + masterState.windows.filter((slot) => {
+    const d = new Date(`${slot.date}T12:00:00`);
+    return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
+  }).length;
+  const occupancy = availableCount ? Math.round((monthBookings.length / availableCount) * 100) : 0;
+
+  const portfolioCountLabel = `${masterState.portfolioImages.length} ${masterState.portfolioImages.length === 1 ? (ua ? "робота" : "work") : (ua ? "робіт" : "works")}`;
+
+  const updateMasterState = (updater: (current: MasterState) => MasterState) => setMasterState((current) => updater(current));
+
+  const syncBookingStatus = (bookingId: string, status: BookingStatus) => {
+    const state = readClientState();
+    let pointsDelta = 0;
+    const updatedBookings = state.bookings.map((booking) => {
+      if (booking.id !== bookingId) return booking;
+      if (status === "completed" && !booking.pointsAwarded) pointsDelta = 50;
+      return {
+        ...booking,
+        status,
+        pointsAwarded: status === "completed" ? true : booking.pointsAwarded,
+      };
+    });
+    const target = updatedBookings.find((booking) => booking.id === bookingId);
+    if (!target) return;
+    const label = status === "completed" ? "Запис завершено" : status === "cancelled" ? "Запис скасовано" : "Запис підтверджено";
+    const notifications: ClientNotification[] = [
+      {
+        id: `master-status-${bookingId}-${Date.now()}`,
+        title: label,
+        text: `${target.title} · ${target.service} · ${formatDate(target.date, true)} · ${target.time}${pointsDelta ? " · +50 Beauty AI балів" : ""}`,
+        createdAt: new Date().toISOString(),
+        read: false,
+      },
+      ...state.notifications,
+    ];
+    writeClientState({ ...state, bookings: updatedBookings, points: state.points + pointsDelta, notifications });
+    setClientState(readClientState());
+    updateMasterState((current) => ({
+      ...current,
+      notifications: [{
+        id: `master-local-status-${bookingId}-${Date.now()}`,
+        title: status === "completed" ? (ua ? "Візит завершено" : "Visit completed") : (ua ? "Запис скасовано" : "Booking cancelled"),
+        text: `${target.service} · ${target.time}`,
+        createdAt: new Date().toISOString(),
+        read: false,
+        kind: "status",
+        entityId: bookingId,
+      }, ...current.notifications],
+    }));
   };
 
-  const schedule = [
-    { time: "10:00", client: "Олена К.", service: "Манікюр", price: "650 ₴", status: "done" },
-    { time: "12:00", client: "Марія П.", service: "Брови + фарбування", price: "550 ₴", status: "done" },
-    { time: "14:00", client: "Наталя С.", service: "Манікюр + покриття", price: "800 ₴", status: "now" },
-    { time: "16:00", client: "Анна Д.", service: "Нарощування вій", price: "1 100 ₴", status: "next" },
-    { time: "18:00", client: "Вікторія М.", service: "Манікюр", price: "700 ₴", status: "next" },
-  ];
+  const addWindow = () => {
+    if (!windowDate || !windowTime || Number(windowDuration) < 15) return;
+    updateMasterState((current) => ({
+      ...current,
+      windows: [
+        ...current.windows.filter((slot) => !(slot.date === windowDate && slot.time === windowTime)),
+        { id: `window-${Date.now()}`, date: windowDate, time: windowTime, duration: Number(windowDuration) },
+      ],
+    }));
+    setSelectedDate(windowDate);
+    setWindowModalOpen(false);
+  };
 
-  const reviews = [
-    { name: "Наталя С.", date: "22 травня", text: "Дякую за ідеальний манікюр! 💜", rating: "5.0" },
-    { name: "Марія П.", date: "20 травня", text: "Брови просто супер! Дуже задоволена!", rating: "5.0" },
-    { name: "Олена К.", date: "16 травня", text: "Все чудово, як завжди!", rating: "5.0" },
-  ];
+  const saveService = () => {
+    const price = Number(serviceDraft.price);
+    const duration = Number(serviceDraft.duration);
+    if (!serviceDraft.name.trim() || !price || !duration) return;
+    updateMasterState((current) => {
+      const next: MasterService = {
+        id: serviceDraft.id ?? `service-${Date.now()}`,
+        name: serviceDraft.name.trim(),
+        price,
+        duration,
+        active: serviceDraft.active,
+      };
+      return {
+        ...current,
+        services: serviceDraft.id
+          ? current.services.map((item) => item.id === serviceDraft.id ? next : item)
+          : [...current.services, next],
+      };
+    });
+    setServiceDraft({ name: "", price: "", duration: "60", active: true });
+    setServiceModalOpen(false);
+  };
 
-  const completedBookings = schedule.filter((slot) => slot.status === "done").length;
-  const cancelledBookings = schedule.filter((slot) => slot.status === "cancelled").length;
-  const noShowBookings = schedule.filter((slot) => slot.status === "no-show").length;
-  const completedRevenue = schedule
-    .filter((slot) => slot.status === "done")
-    .reduce((sum, slot) => sum + Number(slot.price.replace(/[^0-9]/g, "")), 0);
+  const addPortfolioImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const images = await Promise.all(Array.from(files).filter((file) => file.type.startsWith("image/")).map(fileToDataUrl));
+    updateMasterState((current) => ({ ...current, portfolioImages: [...current.portfolioImages, ...images] }));
+  };
 
-  const calendarDays = Array.from({ length: 31 }, (_, index) => index + 1);
-  const calendarStartOffset = 4;
+  const savePublicProfile = () => {
+    setProfileSaved(true);
+    window.dispatchEvent(new CustomEvent("beautyai:master-profile", { detail: masterState.profile }));
+    window.setTimeout(() => setProfileSaved(false), 1800);
+  };
 
-  const title =
-    section === "home"
-      ? (ua ? `Вітаємо, ${user.name}! 👋` : `Welcome, ${user.name}! 👋`)
-      : section === "finance"
-        ? (ua ? "Фінанси" : "Finance")
-        : section === "gallery"
-          ? (ua ? "Галерея" : "Gallery")
+  const changeAvatar = async (file: File | undefined) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    const avatar = await fileToDataUrl(file);
+    updateMasterState((current) => ({ ...current, profile: { ...current.profile, avatar } }));
+    window.dispatchEvent(new CustomEvent("beautyai:master-profile", { detail: { ...masterState.profile, avatar } }));
+  };
+
+  const openBookingFromNotification = (notification: MasterNotification) => {
+    if (!notification.entityId) return;
+    const booking = bookings.find((item) => item.id === notification.entityId);
+    if (!booking) return;
+    setSection("home");
+    setSelectedDate(booking.date);
+    setCalendarMonth(new Date(`${booking.date}T12:00:00`));
+    if (notification.kind === "review") {
+      setAllReviewsOpen(true);
+      return;
+    }
+    setSelectedBooking(booking);
+  };
+
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const mondayOffset = (new Date(year, month, 1).getDay() + 6) % 7;
+    return { days: Array.from({ length: daysInMonth }, (_, index) => index + 1), offset: mondayOffset };
+  }, [calendarMonth]);
+
+  const monthTitle = new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { month: "long", year: "numeric" }).format(calendarMonth);
+  const title = section === "home"
+    ? (ua ? `Вітаємо, ${masterState.profile.displayName}! 👋` : `Welcome, ${masterState.profile.displayName}! 👋`)
+    : section === "finance" ? (ua ? "Фінанси" : "Finance")
+      : section === "services" ? (ua ? "Послуги" : "Services")
+        : section === "gallery" ? (ua ? "Галерея" : "Gallery")
           : (ua ? "Профіль" : "Profile");
 
-  return <DashboardFrame user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} title={title} variant="master" activeSection={section} onSectionChange={setSection}>
-    {section === "home" && <div className="master-home-v2">
-      <div className="master-summary-v2">
-        <article><span>Записи сьогодні</span><strong>6</strong><small>+2 до вчора</small><i>✂</i></article>
-        <article><span>Клієнти за місяць</span><strong>18</strong><small>+12% за місяць</small><i>♙</i></article>
-        <article><span>Заповненість</span><strong>98%</strong><small>Відмінний результат</small><i>◒</i></article>
-        <article><span>Рейтинг</span><strong>4.9 <em>★</em></strong><small>124 відгуки</small><i>☆</i></article>
-      </div>
-
-      <div className="master-main-grid-v2">
-        <section className="master-card-v2 master-schedule-v2">
-          <div className="master-card-head-v2">
-            <div><h2>Ваш розклад на сьогодні</h2></div>
-            <button type="button">+ Додати вікно</button>
+  return (
+    <DashboardFrame
+      user={{ ...user, name: masterState.profile.displayName || user.name, avatar: masterState.profile.avatar || user.avatar }}
+      lang={lang}
+      onHome={onHome}
+      onLogout={onLogout}
+      onRoleChange={_onRoleChange}
+      title={title}
+      variant="master"
+      activeSection={section}
+      onSectionChange={setSection}
+      masterNotifications={masterState.notifications}
+      onMasterNotificationsChange={(notifications) => updateMasterState((current) => ({ ...current, notifications }))}
+      onMasterNotificationClick={openBookingFromNotification}
+    >
+      {section === "home" && (
+        <div className="master-home-v2">
+          <div className="master-summary-v2">
+            <article><span>{ua ? "Записи сьогодні" : "Bookings today"}</span><strong>{todayBookings.length}</strong><small>{ua ? `${todayBookings.filter((b) => b.status === "completed").length} завершено` : `${todayBookings.filter((b) => b.status === "completed").length} completed`}</small><i>✂</i></article>
+            <article><span>{ua ? "Клієнти за місяць" : "Clients this month"}</span><strong>{uniqueClients}</strong><small>{ua ? "Унікальні клієнти" : "Unique clients"}</small><i>♙</i></article>
+            <article><span>{ua ? "Заповненість" : "Occupancy"}</span><strong>{occupancy}%</strong><small>{ua ? "За поточний місяць" : "Current month"}</small><i>◒</i></article>
+            <article><span>{ua ? "Рейтинг" : "Rating"}</span><strong>{rating ? rating.toFixed(1) : "—"} <em>★</em></strong><small>{reviews.length} {ua ? "відгуків" : "reviews"}</small><i>☆</i></article>
           </div>
-          <div className="master-schedule-list-v2">
-            {schedule.map((slot) => <div className={`master-slot-v2 ${slot.status === "now" ? "current" : ""}`} key={slot.time}>
-              <time>{slot.time}</time><div className="master-slot-copy-v2"><b>{slot.service}</b><span>{slot.client}</span></div><strong>{slot.price}</strong><span className={`master-slot-status-v2 ${slot.status}`}>{slot.status === "done" ? "Завершено" : slot.status === "now" ? "Зараз" : "Запис"}</span>
-            </div>)}
+
+          <div className="master-main-grid-v2">
+            <section className="master-card-v2 master-schedule-v2">
+              <div className="master-card-head-v2">
+                <div><h2>{ua ? "Розклад" : "Schedule"}</h2><p>{formatDate(selectedDate, ua, { weekday: "long", day: "numeric", month: "long" })}</p></div>
+                <button type="button" onClick={() => { setWindowDate(selectedDate); setWindowModalOpen(true); }}>+ {ua ? "Додати вікно" : "Add slot"}</button>
+              </div>
+              <div className="master-schedule-list-v2">
+                {selectedBookings.length === 0 && selectedWindows.length === 0 && <div className="master-empty-v2">{ua ? "На цю дату записів і вільних вікон немає" : "No bookings or available slots for this date"}</div>}
+                {selectedBookings.map((booking) => (
+                  <div className={`master-slot-v2 ${booking.status}`} key={booking.id} role="button" tabIndex={0} onClick={() => setSelectedBooking(booking)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedBooking(booking); }}>
+                    <time>{booking.time}</time>
+                    <div className="master-slot-copy-v2"><b>{booking.service}</b><span>{booking.phone || (ua ? "Клієнт" : "Client")}</span></div>
+                    <strong>{formatMoney(parsePrice(booking.priceFrom), ua)}</strong>
+                    <div className="master-slot-actions-v2">
+                      <span className={`master-slot-status-v2 ${booking.status}`}>{booking.status === "completed" ? (ua ? "Завершено" : "Completed") : booking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span>
+                      {booking.status === "confirmed" && <>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "completed"); }}>{ua ? "Завершити" : "Complete"}</button>
+                        <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "cancelled"); }}>{ua ? "Скасувати" : "Cancel"}</button>
+                      </>}
+                    </div>
+                  </div>
+                ))}
+                {selectedWindows.map((slot) => (
+                  <div className="master-slot-v2 available" key={slot.id}>
+                    <time>{slot.time}</time>
+                    <div className="master-slot-copy-v2"><b>{ua ? "Вільне вікно" : "Available slot"}</b><span>{slot.duration} {ua ? "хв" : "min"}</span></div>
+                    <strong>—</strong>
+                    <div className="master-slot-actions-v2">
+                      <span className="master-slot-status-v2 available">{ua ? "Вільно" : "Available"}</span>
+                      <button type="button" className="danger" onClick={() => updateMasterState((current) => ({ ...current, windows: current.windows.filter((item) => item.id !== slot.id) }))}>{ua ? "Видалити" : "Delete"}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="master-side-stack-v2">
+              <section className="master-card-v2 master-calendar-v2">
+                <div className="master-card-head-v2">
+                  <div><h2 className="master-month-title-v2">{monthTitle}</h2></div>
+                  <div className="master-calendar-nav-v2">
+                    <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>‹</button>
+                    <button type="button" onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}>›</button>
+                  </div>
+                </div>
+                <div className="master-calendar-week-v2">{(ua ? ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]).map((day) => <span key={day}>{day}</span>)}</div>
+                <div className="master-calendar-grid-v2">
+                  {Array.from({ length: calendarDays.offset }, (_, index) => <span className="empty" key={`empty-${index}`} />)}
+                  {calendarDays.days.map((day) => {
+                    const value = toInputDate(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day));
+                    const count = bookings.filter((booking) => booking.date === value && booking.status !== "cancelled").length;
+                    return <button type="button" className={`${value === selectedDate ? "selected " : ""}${count ? "has-bookings" : ""}`} key={day} onClick={() => setSelectedDate(value)} aria-label={`${formatDate(value, ua)}${count ? `, ${count}` : ""}`}>{day}</button>;
+                  })}
+                </div>
+                <div className="master-calendar-legend-v2"><span><i className="selected" />{formatDate(selectedDate, ua)}</span><span><i className="busy" />{selectedBookings.length} {ua ? "записів" : "bookings"}</span></div>
+              </section>
+            </div>
+          </div>
+
+          <section className="master-card-v2 master-reviews-v2 master-reviews-wide-v2">
+            <div className="master-card-head-v2"><div><h2>{ua ? "Останні відгуки" : "Latest reviews"}</h2></div><button className="link" type="button" disabled={!reviews.length} onClick={() => setAllReviewsOpen(true)}>{ua ? "Переглянути всі" : "View all"}</button></div>
+            {reviews.length ? <div className="master-reviews-grid-v2">{reviews.slice(0, 3).map((booking) => <article key={booking.id}><div className="master-review-avatar-v2">★</div><div><b>{ua ? "Клієнт Beauty AI" : "Beauty AI client"}</b><span>{booking.reviewSubmittedAt ? new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "numeric", month: "long" }).format(new Date(booking.reviewSubmittedAt)) : formatDate(booking.date, ua)}</span><p>{booking.reviewComment}</p></div><strong>{"★".repeat(booking.reviewMasterRating ?? 0)} <span>{(booking.reviewMasterRating ?? 0).toFixed(1)}</span></strong></article>)}</div> : <div className="master-empty-v2 master-empty-reviews-v2">{ua ? "Відгуків ще немає — вони зʼявляться після завершених візитів" : "No reviews yet — they will appear after completed visits"}</div>}
+          </section>
+        </div>
+      )}
+
+      {section === "services" && (
+        <section className="master-card-v2 master-services-page-v2">
+          <div className="master-card-head-v2"><div><h2>{ua ? "Послуги та ціни" : "Services & prices"}</h2><p>{ua ? "Ці послуги бачить клієнт під час запису" : "Clients see these services while booking"}</p></div><button type="button" onClick={() => { setServiceDraft({ name: "", price: "", duration: "60", active: true }); setServiceModalOpen(true); }}>+ {ua ? "Додати послугу" : "Add service"}</button></div>
+          <div className="master-services-list-v2">
+            {masterState.services.length === 0 && <div className="master-empty-v2">{ua ? "Додайте першу послугу, щоб клієнти могли її забронювати" : "Add your first service so clients can book it"}</div>}
+            {masterState.services.map((service) => <article key={service.id} className={!service.active ? "inactive" : ""}><div><b>{service.name}</b><span>{service.duration} {ua ? "хв" : "min"}</span></div><strong>{formatMoney(service.price, ua)}</strong><span className={`master-service-state-v2 ${service.active ? "active" : ""}`}>{service.active ? (ua ? "Активна" : "Active") : (ua ? "Прихована" : "Hidden")}</span><button type="button" onClick={() => { setServiceDraft({ id: service.id, name: service.name, price: String(service.price), duration: String(service.duration), active: service.active }); setServiceModalOpen(true); }}>{ua ? "Редагувати" : "Edit"}</button><button type="button" className="danger" onClick={() => updateMasterState((current) => ({ ...current, services: current.services.filter((item) => item.id !== service.id) }))}>{ua ? "Видалити" : "Delete"}</button></article>)}
           </div>
         </section>
+      )}
 
-        <div className="master-side-stack-v2">
-          <section className="master-card-v2 master-calendar-v2">
-            <div className="master-card-head-v2">
-              <div>
-                <h2>Серпень 2026</h2>
-              </div>
-              <div className="master-calendar-nav-v2" aria-hidden="true">
-                <button type="button">‹</button>
-                <button type="button">›</button>
-              </div>
+      {section === "gallery" && (
+        <div className="master-gallery-page-v2">
+          <section className="master-card-v2 master-public-profile-v2">
+            <div className="master-card-head-v2"><div><h2>{ua ? "Публічний профіль майстра" : "Public master profile"}</h2><p>{ua ? "Цю інформацію побачить клієнт на сайті" : "Clients see this information on the website"}</p></div></div>
+            <div className="master-public-profile-top-v2"><img src={masterState.profile.avatar} alt={masterState.profile.displayName} /><div><strong>{masterState.profile.displayName || (ua ? "Без імені" : "No name")}</strong><span>{masterState.profile.specialization || (ua ? "Спеціалізацію не вказано" : "No specialization")}</span><small>{[masterState.profile.city, masterState.profile.salon].filter(Boolean).join(" • ") || (ua ? "Локацію не вказано" : "No location")}</small></div></div>
+            <div className="master-public-profile-form-v2">
+              <label>{ua ? "Ім'я для клієнтів" : "Public name"}<input value={masterState.profile.displayName} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, displayName: event.target.value } }))} /></label>
+              <label>{ua ? "Спеціалізація" : "Specialization"}<input value={masterState.profile.specialization} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, specialization: event.target.value } }))} /></label>
+              <label>{ua ? "Місто" : "City"}<input value={masterState.profile.city} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, city: event.target.value } }))} /></label>
+              <label>{ua ? "Салон" : "Salon"}<input value={masterState.profile.salon} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, salon: event.target.value } }))} /></label>
+              <label className="wide">{ua ? "Про себе" : "About"}<textarea value={masterState.profile.about} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, about: event.target.value } }))} /></label>
             </div>
-            <div className="master-calendar-week-v2">
-              {(["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"] as const).map((day) => <span key={day}>{day}</span>)}
-            </div>
-            <div className="master-calendar-grid-v2">
-              {Array.from({ length: calendarStartOffset }, (_, index) => <span className="empty" key={`empty-${index}`} />)}
-              {calendarDays.map((day) => (
-                <button
-                  type="button"
-                  className={day === 27 ? "selected has-bookings" : ""}
-                  key={day}
-                  aria-label={day === 27 ? `${day} травня, ${schedule.length} записів` : `${day} травня`}
-                >
-                  {day}
-                </button>
-              ))}
-            </div>
-            <div className="master-calendar-legend-v2">
-              <span><i className="selected" />27 травня</span>
-              <span><i className="busy" />{schedule.length} записів</span>
-            </div>
+            <button className="master-primary-v2" type="button" onClick={savePublicProfile}>{profileSaved ? (ua ? "Збережено ✓" : "Saved ✓") : (ua ? "Зберегти публічний профіль" : "Save public profile")}</button>
           </section>
 
+          <section className="master-card-v2 master-portfolio-v2">
+            <div className="master-card-head-v2"><div><h2>{ua ? "Галерея робіт" : "Portfolio"}</h2><p>{portfolioCountLabel}</p></div><label className="master-upload-work-v2">+ {ua ? "Додати фото" : "Add photos"}<input type="file" accept="image/*" multiple onChange={(event) => { void addPortfolioImages(event.target.files); event.currentTarget.value = ""; }} /></label></div>
+            {masterState.portfolioImages.length ? <div className="master-portfolio-grid-v2">{masterState.portfolioImages.map((src, index) => <article className="master-portfolio-item-v2" key={`${index}-${src.slice(-16)}`}><img src={src} alt={`${ua ? "Робота" : "Work"} ${index + 1}`} /><button type="button" onClick={() => updateMasterState((current) => ({ ...current, portfolioImages: current.portfolioImages.filter((_, itemIndex) => itemIndex !== index) }))}>×</button></article>)}</div> : <label className="master-portfolio-empty-v2"><span>＋</span><strong>{ua ? "Додайте перші фото робіт" : "Add your first work photos"}</strong><small>{ua ? "Вони будуть показані клієнтам у вашому публічному профілі" : "They will be shown in your public profile"}</small><input type="file" accept="image/*" multiple onChange={(event) => { void addPortfolioImages(event.target.files); event.currentTarget.value = ""; }} /></label>}
+          </section>
         </div>
-      </div>
+      )}
 
-      <section className="master-card-v2 master-reviews-v2 master-reviews-wide-v2">
-        <div className="master-card-head-v2">
-          <div><h2>Останні відгуки</h2></div>
-          <button className="link" type="button">Переглянути всі</button>
-        </div>
-
-        <div className="master-reviews-grid-v2">
-          {reviews.slice(0, 3).map((review) => (
-            <article key={review.name}>
-              <div className="master-review-avatar-v2">{review.name[0]}</div>
-              <div>
-                <b>{review.name}</b>
-                <span>{review.date}</span>
-                <p>{review.text}</p>
-              </div>
-              <strong>★★★★★ <span>{review.rating}</span></strong>
-            </article>
-          ))}
-        </div>
-      </section>
-    </div>}
-
-
-    {section === "gallery" && <div className="master-gallery-page-v2">
-      <section className="master-card-v2 master-public-profile-v2">
-        <div className="master-card-head-v2">
-          <div>
-            <h2>Публічний профіль майстра</h2>
-            <p>Цю інформацію побачить клієнт після натискання «Детальніше про майстра»</p>
+      {section === "profile" && (
+        <section className="master-card-v2 master-profile-v2">
+          <div className="master-card-head-v2"><div><h2>{ua ? "Особиста інформація" : "Personal information"}</h2><p>{ua ? "Дані акаунта та контактна інформація" : "Account and contact information"}</p></div></div>
+          <div className="master-profile-top-v2"><img src={masterState.profile.avatar} alt={masterState.profile.displayName} /><div><b>{masterState.profile.displayName || user.name}</b><span>{ua ? "Майстер • Beauty AI" : "Master • Beauty AI"}</span><button type="button" onClick={() => avatarInputRef.current?.click()}>{ua ? "Змінити фото" : "Change photo"}</button><input ref={avatarInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void changeAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /></div></div>
+          <div className="master-form-grid-v2">
+            <label>{ua ? "Ім'я" : "Name"}<input value={masterState.profile.displayName} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, displayName: event.target.value } }))} /></label>
+            <label>Email<input type="email" value={masterState.profile.email} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, email: event.target.value } }))} /></label>
+            <label>{ua ? "Телефон" : "Phone"}<input value={masterState.profile.phone} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, phone: event.target.value } }))} /></label>
+            <label>{ua ? "Місто" : "City"}<input value={masterState.profile.city} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, city: event.target.value } }))} /></label>
+            <label className="wide">{ua ? "Про себе" : "About"}<textarea value={masterState.profile.about} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, about: event.target.value } }))} /></label>
           </div>
+          <button className="master-primary-v2" type="button" onClick={savePublicProfile}>{ua ? "Зберегти зміни" : "Save changes"}</button>
+        </section>
+      )}
+
+      {section === "finance" && (
+        <div className="master-finance-v2">
+          <div className="master-summary-v2 finance"><article><span>{ua ? "Дохід за весь період" : "Total income"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{completedBookings.length} {ua ? "завершених візитів" : "completed visits"}</small></article><article><span>{ua ? "Доступно до виплати" : "Available payout"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{ua ? "До підключення платіжного API" : "Until payout API is connected"}</small></article><article><span>{ua ? "Середній чек" : "Average check"}</span><strong>{completedBookings.length ? formatMoney(Math.round(completedRevenue / completedBookings.length), ua) : "—"}</strong><small>{ua ? "За завершеними записами" : "Completed bookings"}</small></article></div>
+          <section className="master-card-v2 master-results-v2 master-finance-results-v2"><div className="master-card-head-v2"><div><h2>{ua ? "Результати" : "Results"}</h2><p>{formatDate(selectedDate, ua)}</p></div></div><div className="master-results-grid-v2"><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "completed").length}</strong><span>{ua ? "Завершені" : "Completed"}</span></div><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "cancelled").length}</strong><span>{ua ? "Скасовані" : "Cancelled"}</span></div><div><strong>{bookings.filter((b) => b.date === selectedDate && b.status === "confirmed").length}</strong><span>{ua ? "Майбутні" : "Upcoming"}</span></div><div><strong>{formatMoney(bookings.filter((b) => b.date === selectedDate && b.status === "completed").reduce((sum, b) => sum + parsePrice(b.priceFrom), 0), ua)}</strong><span>{ua ? "Виручка" : "Revenue"}</span></div></div></section>
+          <section className="master-card-v2"><div className="master-card-head-v2"><div><h2>{ua ? "Останні операції" : "Recent transactions"}</h2><p>{ua ? "Тільки завершені записи" : "Completed bookings only"}</p></div><button type="button" disabled={!completedBookings.length} onClick={() => downloadCsv(`beauty-ai-master-${todayValue}.csv`, [["Date", "Service", "Client", "Amount"], ...completedBookings.map((b) => [b.date, b.service, b.phone, String(parsePrice(b.priceFrom))])])}>{ua ? "Вивантажити звіт" : "Export report"}</button></div><div className="master-transactions-v2">{completedBookings.length ? completedBookings.slice(0, 12).map((booking) => <div key={booking.id}><span>{formatDate(booking.date, ua)}</span><b>{booking.service}<small>{booking.phone}</small></b><strong>+{formatMoney(parsePrice(booking.priceFrom), ua)}</strong></div>) : <div className="master-empty-v2">{ua ? "Операцій ще немає" : "No transactions yet"}</div>}</div></section>
         </div>
+      )}
 
-        <div className="master-public-profile-top-v2">
-          <img src={user.avatar} alt={publicProfile.displayName} />
-          <div>
-            <strong>{publicProfile.displayName}</strong>
-            <span>{publicProfile.specialization}</span>
-            <small>{publicProfile.city}{publicProfile.salon ? ` • ${publicProfile.salon}` : ""}</small>
-          </div>
-        </div>
+      {selectedBooking && <div className="master-modal-backdrop-v2" onMouseDown={() => setSelectedBooking(null)}><div className="master-modal-v2 master-booking-detail-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setSelectedBooking(null)}>×</button><div className="master-booking-detail-head-v2"><span className={`master-slot-status-v2 ${selectedBooking.status}`}>{selectedBooking.status === "completed" ? (ua ? "Завершено" : "Completed") : selectedBooking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span><h3>{selectedBooking.service}</h3><p>{formatDate(selectedBooking.date, ua, { weekday: "long", day: "numeric", month: "long" })} · {selectedBooking.time}</p></div><div className="master-booking-detail-grid-v2"><div><span>{ua ? "Клієнт" : "Client"}</span><strong>{selectedBooking.phone || "—"}</strong></div><div><span>{ua ? "Сума" : "Amount"}</span><strong>{formatMoney(parsePrice(selectedBooking.priceFrom), ua)}</strong></div><div><span>{ua ? "Код запису" : "Booking code"}</span><strong>{selectedBooking.code}</strong></div><div><span>{ua ? "Створено" : "Created"}</span><strong>{new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(selectedBooking.createdAt))}</strong></div></div>{selectedBooking.reviewSubmitted && selectedBooking.reviewComment && <div className="master-booking-review-v2"><span>{ua ? "Відгук клієнта" : "Client review"}</span><strong>{"★".repeat(selectedBooking.reviewMasterRating ?? 0)}</strong><p>{selectedBooking.reviewComment}</p></div>}{selectedBooking.status === "confirmed" && <div className="master-booking-detail-actions-v2"><button className="master-primary-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "completed"); setSelectedBooking(null); }}>{ua ? "Завершити візит" : "Complete visit"}</button><button className="master-danger-outline-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "cancelled"); setSelectedBooking(null); }}>{ua ? "Скасувати запис" : "Cancel booking"}</button></div>}</div></div>}
 
-        <div className="master-public-profile-form-v2">
-          <label>
-            Ім'я для клієнтів
-            <input
-              value={publicProfile.displayName}
-              onChange={(event) => setPublicProfile((current) => ({ ...current, displayName: event.target.value }))}
-            />
-          </label>
-          <label>
-            Спеціалізація
-            <input
-              value={publicProfile.specialization}
-              onChange={(event) => setPublicProfile((current) => ({ ...current, specialization: event.target.value }))}
-            />
-          </label>
-          <label>
-            Місто
-            <input
-              value={publicProfile.city}
-              onChange={(event) => setPublicProfile((current) => ({ ...current, city: event.target.value }))}
-            />
-          </label>
-          <label>
-            Салон
-            <input
-              value={publicProfile.salon}
-              onChange={(event) => setPublicProfile((current) => ({ ...current, salon: event.target.value }))}
-            />
-          </label>
-          <label className="wide">
-            Про себе
-            <textarea
-              value={publicProfile.about}
-              onChange={(event) => setPublicProfile((current) => ({ ...current, about: event.target.value }))}
-            />
-          </label>
-        </div>
+      {windowModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setWindowModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setWindowModalOpen(false)}>×</button><h3>{ua ? "Додати вільне вікно" : "Add available slot"}</h3><label>{ua ? "Дата" : "Date"}<input type="date" value={windowDate} onChange={(event) => setWindowDate(event.target.value)} /></label><label>{ua ? "Час" : "Time"}<input type="time" value={windowTime} onChange={(event) => setWindowTime(event.target.value)} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={windowDuration} onChange={(event) => setWindowDuration(event.target.value)} /></label><button className="master-primary-v2" type="button" onClick={addWindow}>{ua ? "Додати" : "Add"}</button></div></div>}
 
-        <button className="master-primary-v2" type="button">
-          Зберегти публічний профіль
-        </button>
-      </section>
+      {serviceModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setServiceModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setServiceModalOpen(false)}>×</button><h3>{serviceDraft.id ? (ua ? "Редагувати послугу" : "Edit service") : (ua ? "Нова послуга" : "New service")}</h3><label>{ua ? "Назва" : "Name"}<input value={serviceDraft.name} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>{ua ? "Ціна, грн" : "Price, UAH"}<input type="number" min="1" value={serviceDraft.price} onChange={(event) => setServiceDraft((current) => ({ ...current, price: event.target.value }))} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={serviceDraft.duration} onChange={(event) => setServiceDraft((current) => ({ ...current, duration: event.target.value }))} /></label><label className="master-checkbox-v2"><input type="checkbox" checked={serviceDraft.active} onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))} />{ua ? "Показувати клієнтам" : "Visible to clients"}</label><button className="master-primary-v2" type="button" onClick={saveService}>{ua ? "Зберегти" : "Save"}</button></div></div>}
 
-      <section className="master-card-v2 master-portfolio-v2">
-        <div className="master-card-head-v2">
-          <div>
-            <h2>Галерея робіт</h2>
-            <p>{portfolioCountLabel}</p>
-          </div>
-          <label className="master-upload-work-v2">
-            + Додати фото
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => {
-                addPortfolioImages(event.target.files);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-        </div>
-
-        {portfolioImages.length > 0 ? (
-          <div className="master-portfolio-grid-v2">
-            {portfolioImages.map((src, index) => (
-              <article className="master-portfolio-item-v2" key={`${src}-${index}`}>
-                <img src={src} alt={`Робота ${index + 1}`} />
-                <button
-                  type="button"
-                  aria-label={`Видалити роботу ${index + 1}`}
-                  onClick={() => setPortfolioImages((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                >
-                  ×
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <label className="master-portfolio-empty-v2">
-            <span>＋</span>
-            <strong>Додайте перші фото робіт</strong>
-            <small>Вони будуть показані клієнтам у вашому публічному профілі</small>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => {
-                addPortfolioImages(event.target.files);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-        )}
-      </section>
-    </div>}
-
-    {section === "profile" && <section className="master-card-v2 master-profile-v2">
-      <div className="master-card-head-v2"><div><h2>Особиста інформація</h2><p>Дані акаунта та контактна інформація</p></div></div>
-      <div className="master-profile-top-v2"><img src={user.avatar} alt={user.name}/><div><b>{user.name}</b><span>Майстер • Beauty AI</span><button type="button">Змінити фото</button></div></div>
-      <div className="master-form-grid-v2"><label>Ім'я<input defaultValue={user.name}/></label><label>Email<input defaultValue={user.email}/></label><label>Телефон<input defaultValue="+380 67 123 45 67"/></label><label>Місто<input defaultValue="Київ"/></label><label className="wide">Про себе<textarea defaultValue="Майстер манікюру та brow-artist. Люблю натуральні форми, акуратне покриття та красиві деталі."/></label></div>
-      <button className="master-primary-v2" type="button">Зберегти зміни</button>
-    </section>}
-
-    {section === "finance" && <div className="master-finance-v2">
-      <div className="master-summary-v2 finance">
-        <article><span>Дохід за місяць</span><strong>28 450 ₴</strong><small>+18% до квітня</small></article>
-        <article><span>Доступно до виплати</span><strong>12 750 ₴</strong><small>Наступна виплата 1 червня</small></article>
-        <article><span>Beauty бонуси</span><strong>1 250</strong><small>Накопичено</small></article>
-      </div>
-
-      <section className="master-card-v2 master-results-v2 master-finance-results-v2">
-        <div className="master-card-head-v2">
-          <div>
-            <h2>Результати сьогодні</h2>
-            <p>27 травня 2026</p>
-          </div>
-        </div>
-        <div className="master-results-grid-v2">
-          <div><strong>{completedBookings}</strong><span>Завершені</span></div>
-          <div><strong>{cancelledBookings}</strong><span>Скасовані</span></div>
-          <div><strong>{noShowBookings}</strong><span>No-show</span></div>
-          <div><strong>{completedRevenue.toLocaleString("uk-UA")} ₴</strong><span>Виручка</span></div>
-        </div>
-      </section>
-
-      <section className="master-card-v2">
-        <div className="master-card-head-v2">
-          <div><h2>Останні операції</h2><p>Травень 2026</p></div>
-          <button type="button">Вивантажити звіт</button>
-        </div>
-        <div className="master-transactions-v2">
-          {[["27 травня","Манікюр + покриття","Наталя С.","+800 ₴"],["27 травня","Брови + фарбування","Марія П.","+550 ₴"],["26 травня","Манікюр","Олена К.","+650 ₴"],["25 травня","Виплата на картку","•• 4821","−8 000 ₴"]].map(x => (
-            <div key={x.join("")}>
-              <span>{x[0]}</span>
-              <b>{x[1]}<small>{x[2]}</small></b>
-              <strong>{x[3]}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>}
-  </DashboardFrame>;
+      {allReviewsOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setAllReviewsOpen(false)}><div className="master-modal-v2 master-reviews-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setAllReviewsOpen(false)}>×</button><h3>{ua ? "Усі відгуки" : "All reviews"}</h3><div className="master-all-reviews-list-v2">{reviews.map((booking) => <article key={booking.id}><div><b>{ua ? "Клієнт Beauty AI" : "Beauty AI client"}</b><span>{booking.reviewSubmittedAt ? new Date(booking.reviewSubmittedAt).toLocaleDateString(ua ? "uk-UA" : "en-GB") : formatDate(booking.date, ua)}</span></div><strong>{"★".repeat(booking.reviewMasterRating ?? 0)}</strong><p>{booking.reviewComment}</p></article>)}</div></div></div>}
+    </DashboardFrame>
+  );
 }

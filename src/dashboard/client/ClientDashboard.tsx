@@ -1,183 +1,444 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
 
-const masterImages = [
-  "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop",
-  "https://images.pexels.com/photos/3765114/pexels-photo-3765114.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop",
-  "https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop",
-];
-
-const likedImages = [
-  "https://images.pexels.com/photos/3997379/pexels-photo-3997379.jpeg?auto=compress&cs=tinysrgb&w=900&h=650&fit=crop",
-  "https://images.pexels.com/photos/3764014/pexels-photo-3764014.jpeg?auto=compress&cs=tinysrgb&w=900&h=650&fit=crop",
-  "https://images.pexels.com/photos/705255/pexels-photo-705255.jpeg?auto=compress&cs=tinysrgb&w=900&h=650&fit=crop",
-  "https://images.pexels.com/photos/3769021/pexels-photo-3769021.jpeg?auto=compress&cs=tinysrgb&w=900&h=650&fit=crop",
-];
-
-const bookingImage =
-  "https://images.pexels.com/photos/705255/pexels-photo-705255.jpeg?auto=compress&cs=tinysrgb&w=1000&h=700&fit=crop";
-
-type Review = {
-  master: number;
-  salon: number;
-  comment: string;
-  sent: boolean;
+type ClientFavorite = {
+  title: string;
+  type: string;
+  image: string;
+  rating: number;
+  reviews: number;
+  district: string;
+  distance: string;
+  priceFrom: string;
+  variant?: "solo";
 };
 
-function Stars({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) {
+type ClientBooking = {
+  id: string;
+  title: string;
+  type: string;
+  image: string;
+  service: string;
+  date: string;
+  time: string;
+  phone: string;
+  district: string;
+  priceFrom: string;
+  status: "confirmed" | "completed" | "cancelled";
+  code: string;
+  createdAt: string;
+  reviewSubmitted?: boolean;
+  reviewMasterRating?: number;
+  reviewSalonRating?: number;
+  reviewComment?: string;
+  reviewSubmittedAt?: string;
+  pointsAwarded?: boolean;
+};
+
+type ClientNotification = {
+  id: string;
+  title: string;
+  text: string;
+  createdAt: string;
+  read: boolean;
+};
+
+type ClientState = {
+  favorites: ClientFavorite[];
+  bookings: ClientBooking[];
+  notifications: ClientNotification[];
+  points: number;
+  registrationBonusAwarded: boolean;
+  profileAvatar?: string;
+};
+
+type ReviewDraft = { master: number; salon: number; comment: string };
+type BookingFilter = "upcoming" | "completed" | "cancelled";
+
+const CLIENT_STATE_KEY = "beautyai_client_state";
+const emptyState = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
+
+function readClientState(): ClientState {
+  try {
+    const raw = localStorage.getItem(CLIENT_STATE_KEY);
+    return raw ? { ...emptyState(), ...JSON.parse(raw) } : emptyState();
+  } catch {
+    return emptyState();
+  }
+}
+
+function writeClientState(next: ClientState) {
+  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
+}
+
+function Stars({ value, onChange, label, readonly = false }: { value: number; onChange?: (value: number) => void; label: string; readonly?: boolean }) {
   return (
-    <div className="review-stars" role="radiogroup" aria-label={label}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          className={star <= value ? "active" : ""}
-          onClick={() => onChange(star)}
-          aria-label={`${star} / 5`}
-          aria-checked={star === value}
-          role="radio"
-        >
-          ★
-        </button>
+    <div className={`review-stars ${readonly ? "readonly" : ""}`} role={readonly ? "img" : "radiogroup"} aria-label={label}>
+      {[1, 2, 3, 4, 5].map((star) => readonly ? (
+        <span key={star} className={star <= value ? "active" : ""}>★</span>
+      ) : (
+        <button key={star} type="button" className={star <= value ? "active" : ""} onClick={() => onChange?.(star)} aria-label={`${star} / 5`} aria-checked={star === value} role="radio">★</button>
       ))}
     </div>
   );
+}
+
+function formatBookingDate(value: string, ua: boolean) {
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "numeric", month: "long", weekday: "short" }).format(date);
+}
+
+function formatBookingDateTime(date: string, time: string, ua: boolean) {
+  return `${formatBookingDate(date, ua)} · ${time}`;
+}
+
+function formatNoticeTime(value: string, ua: boolean) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+async function prepareAvatar(file: File): Promise<string> {
+  const supported = ["image/jpeg", "image/png", "image/webp"];
+  if (!supported.includes(file.type)) throw new Error("format");
+  if (file.size > 5 * 1024 * 1024) throw new Error("size");
+
+  const source = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("read"));
+    reader.readAsDataURL(file);
+  });
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image"));
+    img.src = source;
+  });
+
+  const max = 640;
+  const scale = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return source;
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", 0.86);
 }
 
 export default function ClientDashboard({
   user,
   lang,
   onHome,
+  onLogout,
   onRoleChange: _onRoleChange,
 }: {
   user: MockUser;
   lang: Lang;
   onHome: () => void;
+  onLogout?: () => void;
   onRoleChange: (role: AuthRole) => void;
 }) {
   const ua = lang === "ua";
+  const initialClientState = readClientState();
   const [tab, setTab] = useState<"home" | "profile">("home");
-  const [openReview, setOpenReview] = useState<number | null>(null);
-  const [ratings, setRatings] = useState<Record<number, Review>>({
-    0: { master: 5, salon: 5, comment: ua ? "Дякую за ідеальний манікюр! 💜" : "Thank you for the perfect manicure! 💜", sent: true },
-    1: { master: 0, salon: 0, comment: "", sent: false },
-  });
+  const [clientState, setClientState] = useState<ClientState>(initialClientState);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
+  const [notificationPosition, setNotificationPosition] = useState({ top: 0, right: 0 });
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [allBookingsOpen, setAllBookingsOpen] = useState(false);
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("upcoming");
+  const [showAllFavorites, setShowAllFavorites] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<ClientBooking | null>(null);
+  const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ master: 0, salon: 0, comment: "" });
+  const [bonusHistoryOpen, setBonusHistoryOpen] = useState(false);
   const [profileName, setProfileName] = useState(user.name);
   const [profilePhone, setProfilePhone] = useState("+380 67 123 45 67");
-  const bonusBalance = 250;
   const [profileEmail, setProfileEmail] = useState(user.email);
+  const [profileAvatar, setProfileAvatar] = useState(initialClientState.profileAvatar || user.avatar);
+  const [avatarDraft, setAvatarDraft] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => new Date());
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyPush, setNotifyPush] = useState(true);
+
+  useEffect(() => {
+    const sync = () => {
+      const next = readClientState();
+      setClientState(next);
+      if (next.profileAvatar) setProfileAvatar(next.profileAvatar);
+    };
+    window.addEventListener("beautyai:client-state", sync as EventListener);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("beautyai:client-state", sync as EventListener);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const formattedDate = useMemo(() => {
-    if (ua) {
-      const day = new Intl.DateTimeFormat("uk-UA", {
-        day: "2-digit",
-      }).format(now);
-      const month = new Intl.DateTimeFormat("uk-UA", {
-        month: "short",
-      })
-        .format(now)
-        .toLowerCase();
-      const year = new Intl.DateTimeFormat("uk-UA", {
-        year: "numeric",
-      }).format(now);
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    const updatePosition = () => {
+      const rect = notificationButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setNotificationPosition({ top: rect.bottom + 10, right: Math.max(16, window.innerWidth - rect.right) });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [notificationsOpen]);
 
-      return `${day} ${month} ${year}`;
-    }
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) setProfileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [profileMenuOpen]);
 
-    return new Intl.DateTimeFormat("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).format(now);
+  useEffect(() => {
+    const completedWithoutPoints = clientState.bookings.filter((booking) => booking.status === "completed" && !booking.pointsAwarded);
+    if (!completedWithoutPoints.length) return;
+    const ids = new Set(completedWithoutPoints.map((booking) => booking.id));
+    const notifications: ClientNotification[] = completedWithoutPoints.map((booking) => ({
+      id: `points-${booking.id}`,
+      title: "+50 Beauty AI балів",
+      text: ua ? `За завершений запис у ${booking.title}` : `For completed booking at ${booking.title}`,
+      createdAt: new Date().toISOString(),
+      read: false,
+    }));
+    const next: ClientState = {
+      ...clientState,
+      points: clientState.points + completedWithoutPoints.length * 50,
+      bookings: clientState.bookings.map((booking) => ids.has(booking.id) ? { ...booking, pointsAwarded: true } : booking),
+      notifications: [...notifications, ...clientState.notifications],
+    };
+    writeClientState(next);
+  }, [clientState, ua]);
+
+  const formattedDateTime = useMemo(() => {
+    const date = new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short" })
+      .format(now)
+      .replace(/\.$/, "")
+      .toLocaleLowerCase(ua ? "uk-UA" : "en-GB");
+    const time = new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { hour: "2-digit", minute: "2-digit" }).format(now);
+    return `${date} · ${time}`;
   }, [now, ua]);
+  const firstName = useMemo(() => profileName?.trim().split(/\s+/)[0] || (ua ? "Клієнт" : "Client"), [profileName, ua]);
+  const unreadCount = clientState.notifications.filter((item) => !item.read).length;
+  const completedBookings = clientState.bookings.filter((booking) => booking.status === "completed");
+  const upcomingBookings = clientState.bookings.filter((booking) => booking.status === "confirmed");
+  const visibleBookings = upcomingBookings.slice(0, 2);
+  const visibleFavorites = showAllFavorites ? clientState.favorites : clientState.favorites.slice(0, 4);
+  const filteredBookings = clientState.bookings.filter((booking) => {
+    if (bookingFilter === "completed") return booking.status === "completed";
+    if (bookingFilter === "cancelled") return booking.status === "cancelled";
+    return booking.status === "confirmed";
+  });
 
-  const formattedTime = useMemo(
-    () =>
-      new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(now),
-    [now, ua]
-  );
-
-  const firstName = useMemo(() => {
-    const value = user.name?.trim().split(/\s+/)[0];
-    return value || (ua ? "Наталя" : "Natalia");
-  }, [user.name, ua]);
-
-  const history = [
-    {
-      salon: "Beauty Room",
-      master: ua ? "Ірина Бондар" : "Iryna Bondar",
-      service: ua ? "Манікюр · гель-лак" : "Manicure · gel polish",
-      date: ua ? "27 травня" : "May 27",
-    },
-    {
-      salon: "Perfect Look",
-      master: ua ? "Марія Левченко" : "Maria Levchenko",
-      service: ua ? "Стрижка та укладка" : "Haircut & styling",
-      date: ua ? "9 серпня" : "Aug 9",
-    },
-  ];
-
-  const favoriteMasters = [
-    { name: ua ? "Олена К." : "Olena K.", type: ua ? "Манікюр" : "Manicure", rating: 5.0, image: masterImages[0] },
-    { name: ua ? "Марія П." : "Maria P.", type: ua ? "Брови" : "Brows", rating: 5.0, image: masterImages[1] },
-    { name: ua ? "Дмитро С." : "Dmytro S.", type: ua ? "Чоловічі стрижки" : "Men's haircuts", rating: 4.9, image: masterImages[2] },
-  ];
-
-  const liked = [
-    { name: "Velvet Nails & Spa", type: ua ? "Салон краси" : "Beauty salon", rating: 4.9, reviews: 131, distance: ua ? "0.9 км" : "0.9 km", district: ua ? "Печерський р-н" : "Pechersk", match: 96, image: likedImages[0] },
-    { name: ua ? "Ірина Бондар" : "Iryna Bondar", type: ua ? "Брови" : "Brows", rating: 5.0, reviews: 107, distance: ua ? "1.1 км" : "1.1 km", district: ua ? "Брови" : "Brows", match: 90, image: likedImages[1] },
-    { name: "Luna Beauty House", type: ua ? "Салон краси" : "Beauty salon", rating: 4.8, reviews: 124, distance: ua ? "0.6 км" : "0.6 km", district: ua ? "Печерський р-н" : "Pechersk", match: 90, image: likedImages[2] },
-    { name: ua ? "Марина Кузьменко" : "Maryna Kuzmenko", type: ua ? "Візаж" : "Makeup", rating: 4.9, reviews: 112, distance: ua ? "1.3 км" : "1.3 km", district: ua ? "Візаж" : "Makeup", match: 88, image: likedImages[3] },
-  ];
-
-  const patchReview = (index: number, patch: Partial<Review>) =>
-    setRatings((prev) => ({ ...prev, [index]: { ...prev[index], ...patch, sent: false } }));
-
-  const renderReviewForm = (index: number) => {
-    const visit = history[index];
-    const review = ratings[index];
-
-    return (
-      <div className="client-review-form review-form-card">
-        <div className="review-rating-grid">
-          <div className="review-rating-block">
-            <span>{ua ? "Майстер" : "Master"}</span>
-            <strong>{visit.master}</strong>
-            <Stars value={review.master} onChange={(value) => patchReview(index, { master: value })} label={ua ? "Рейтинг майстра" : "Master rating"} />
-          </div>
-          <div className="review-rating-block">
-            <span>{ua ? "Салон" : "Salon"}</span>
-            <strong>{visit.salon}</strong>
-            <Stars value={review.salon} onChange={(value) => patchReview(index, { salon: value })} label={ua ? "Рейтинг салону" : "Salon rating"} />
-          </div>
-        </div>
-        <label className="review-comment">
-          <span>{ua ? "Коментар" : "Comment"}</span>
-          <textarea value={review.comment} onChange={(event) => patchReview(index, { comment: event.target.value })} rows={3} />
-        </label>
-        <div className="review-submit-row">
-          <span className={!review.master || !review.salon ? "review-hint" : "review-hint ready"}>
-            {!review.master || !review.salon ? (ua ? "Поставте оцінку і майстру, і салону" : "Rate both the master and salon") : (ua ? "Все готово до відправлення" : "Ready to submit")}
-          </span>
-          <button type="button" className="review-submit-btn" disabled={!review.master || !review.salon} onClick={() => setRatings((prev) => ({ ...prev, [index]: { ...prev[index], sent: true } }))}>
-            {review.sent ? (ua ? "Надіслано ✓" : "Sent ✓") : ua ? "Надіслати відгук" : "Submit review"}
-          </button>
-        </div>
-      </div>
-    );
+  const commit = (updater: (state: ClientState) => ClientState) => {
+    const next = updater(readClientState());
+    writeClientState(next);
+    setClientState(next);
+    if (next.profileAvatar) setProfileAvatar(next.profileAvatar);
+    return next;
   };
+
+  const openNotifications = () => {
+    setProfileMenuOpen(false);
+    const nextOpen = !notificationsOpen;
+    setNotificationsOpen(nextOpen);
+    if (nextOpen && unreadCount) {
+      commit((state) => ({ ...state, notifications: state.notifications.map((item) => ({ ...item, read: true })) }));
+    }
+  };
+
+  const removeFavorite = (title: string) => commit((state) => ({ ...state, favorites: state.favorites.filter((item) => item.title !== title) }));
+
+  const cancelBooking = (id: string) => {
+    const next = commit((state) => {
+      const booking = state.bookings.find((item) => item.id === id);
+      if (!booking || booking.status !== "confirmed") return state;
+      const notice: ClientNotification = {
+        id: `cancel-${id}-${Date.now()}`,
+        title: ua ? "Запис скасовано" : "Booking cancelled",
+        text: `${booking.title} · ${formatBookingDate(booking.date, ua)} · ${booking.time}`,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      return { ...state, bookings: state.bookings.map((item) => item.id === id ? { ...item, status: "cancelled" } : item), notifications: [notice, ...state.notifications] };
+    });
+    const updated = next.bookings.find((booking) => booking.id === id) ?? null;
+    setSelectedBooking(updated?.status === "cancelled" ? null : updated);
+  };
+
+  const completeBooking = (id: string) => {
+    const next = commit((state) => {
+      const booking = state.bookings.find((item) => item.id === id);
+      if (!booking || booking.status !== "confirmed") return state;
+      const notice: ClientNotification = {
+        id: `completed-${id}-${Date.now()}`,
+        title: ua ? "Візит завершено" : "Visit completed",
+        text: ua ? `${booking.title} · тепер можна залишити відгук` : `${booking.title} · you can now leave a review`,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      return { ...state, bookings: state.bookings.map((item) => item.id === id ? { ...item, status: "completed" } : item), notifications: [notice, ...state.notifications] };
+    });
+    setSelectedBooking(next.bookings.find((booking) => booking.id === id) ?? null);
+  };
+
+  const submitReview = (booking: ClientBooking) => {
+    if (booking.status !== "completed" || !reviewDraft.master || !reviewDraft.salon) return;
+    const isEditing = Boolean(booking.reviewSubmitted);
+    commit((state) => {
+      const notice: ClientNotification = {
+        id: `review-${booking.id}-${Date.now()}`,
+        title: ua ? (isEditing ? "Відгук оновлено" : "Відгук опубліковано") : (isEditing ? "Review updated" : "Review published"),
+        text: booking.title,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      return {
+        ...state,
+        bookings: state.bookings.map((item) => item.id === booking.id ? {
+          ...item,
+          reviewSubmitted: true,
+          reviewMasterRating: reviewDraft.master,
+          reviewSalonRating: reviewDraft.salon,
+          reviewComment: reviewDraft.comment.trim(),
+          reviewSubmittedAt: new Date().toISOString(),
+        } : item),
+        notifications: [notice, ...state.notifications],
+      };
+    });
+    setReviewBookingId(null);
+    setReviewDraft({ master: 0, salon: 0, comment: "" });
+  };
+
+  const startReview = (booking: ClientBooking) => {
+    setReviewBookingId(booking.id);
+    setReviewDraft({
+      master: booking.reviewMasterRating ?? 0,
+      salon: booking.reviewSalonRating ?? 0,
+      comment: booking.reviewComment ?? "",
+    });
+  };
+
+  const handleAvatarFile = async (file?: File) => {
+    if (!file) return;
+    setAvatarError("");
+    try {
+      setAvatarDraft(await prepareAvatar(file));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      setAvatarError(code === "size"
+        ? (ua ? "Фото має бути до 5 МБ" : "Image must be up to 5 MB")
+        : (ua ? "Оберіть JPG, PNG або WebP" : "Choose JPG, PNG or WebP"));
+    }
+  };
+
+  const saveAvatar = () => {
+    if (!avatarDraft) return;
+    const previousAvatar = profileAvatar;
+
+    // Keep only one current avatar: the new image replaces the previous value
+    // in client state/localStorage instead of accumulating avatar versions.
+    commit((state) => ({ ...state, profileAvatar: avatarDraft }));
+    setProfileAvatar(avatarDraft);
+    window.dispatchEvent(new CustomEvent("beautyai:profile-avatar", { detail: avatarDraft }));
+
+    // If a temporary object URL was ever used as the previous preview, release it.
+    if (previousAvatar.startsWith("blob:")) URL.revokeObjectURL(previousAvatar);
+    setAvatarDraft(null);
+    setAvatarError("");
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
+  };
+
+  const statusLabel = (status: ClientBooking["status"]) => {
+    if (status === "completed") return ua ? "Завершено" : "Completed";
+    if (status === "cancelled") return ua ? "Скасовано" : "Cancelled";
+    return ua ? "Підтверджено" : "Confirmed";
+  };
+
+  const openReviewFromHistory = (booking: ClientBooking) => {
+    setAllBookingsOpen(false);
+    setTab("home");
+    startReview(booking);
+    window.setTimeout(() => {
+      document.getElementById("client-reviews")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+  };
+
+  const rebook = (booking: ClientBooking) => {
+    setAllBookingsOpen(false);
+    window.dispatchEvent(new CustomEvent("beautyai:rebook", { detail: booking }));
+  };
+
+  const bookingCard = (booking: ClientBooking, compact = false) => (
+    <article className={`client-booking-card client-booking-card-compact status-${booking.status} ${compact ? "in-list-modal" : ""}`} key={booking.id}>
+      <div className="client-booking-photo-wrap">
+        <img className="client-booking-photo" src={booking.image} alt={booking.title} />
+        <span className="client-booking-soon">{statusLabel(booking.status)}</span>
+      </div>
+      <div className="client-booking-info">
+        <h3>{booking.service}</h3>
+        <p className="client-booking-salon">{booking.title}</p>
+        <p className="client-booking-master">{booking.type}</p>
+        <div className="client-booking-meta">
+          <span className="client-booking-datetime">{formatBookingDateTime(booking.date, booking.time, ua)}</span>
+          <span className="client-booking-location">⌖ {booking.district}</span>
+        </div>
+        {compact && (
+          <div className="client-booking-inline-details">
+            <span><small>{ua ? "Ціна" : "Price"}</small><b>{booking.priceFrom} грн</b></span>
+            <span><small>{ua ? "Код" : "Code"}</small><b>{booking.code}</b></span>
+          </div>
+        )}
+      </div>
+      {compact ? (
+        <div className="client-booking-inline-actions">
+          {booking.status === "confirmed" && (
+            <>
+              <button type="button" className="booking-action-btn ghost" onClick={() => completeBooking(booking.id)}>{ua ? "Завершити" : "Complete"}</button>
+              <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(booking.id)}>{ua ? "Скасувати" : "Cancel"}</button>
+            </>
+          )}
+          {booking.status === "completed" && (
+            <>
+              <button type="button" className="client-history-action-btn review" onClick={() => openReviewFromHistory(booking)}>{booking.reviewSubmitted ? (ua ? "Відгук" : "Review") : (ua ? "Залишити відгук" : "Leave review")}</button>
+              <button type="button" className="client-history-action-btn rebook" onClick={() => rebook(booking)}>{ua ? "Записатися знову" : "Book again"}</button>
+            </>
+          )}
+          {booking.status === "cancelled" && <button type="button" className="client-history-action-btn rebook" onClick={() => rebook(booking)}>{ua ? "Записатися знову" : "Book again"}</button>}
+        </div>
+      ) : (
+        <button className="client-details-btn" type="button" onClick={() => setSelectedBooking(booking)}>{ua ? "Деталі" : "Details"}</button>
+      )}
+    </article>
+  );
 
   return (
     <main className="client-dashboard-shell">
@@ -186,64 +447,54 @@ export default function ClientDashboard({
           <img src={beautyAISparkles} alt="" className="client-brand-logo" aria-hidden="true" />
           <span className="client-brand-wordmark"><span>Beauty</span> <strong>AI</strong></span>
         </button>
-
         <nav className="client-sidebar-nav" aria-label={ua ? "Навігація кабінету" : "Account navigation"}>
-          <button type="button" className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}>
-            <span className="client-nav-icon">⌂</span>{ua ? "Головна" : "Home"}
-          </button>
-          <button type="button" className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>
-            <span className="client-nav-icon">♙</span>{ua ? "Профіль" : "Profile"}
-          </button>
-          <button type="button" className="client-sidebar-logout-top" onClick={onHome}>
-            <span className="client-nav-icon">↪</span>{ua ? "Вийти" : "Log out"}
-          </button>
+          <button type="button" className={tab === "home" ? "active" : ""} onClick={() => setTab("home")}><span className="client-nav-icon">⌂</span>{ua ? "Головна" : "Home"}</button>
+          <button type="button" className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><span className="client-nav-icon">♙</span>{ua ? "Профіль" : "Profile"}</button>
+          <button type="button" className="client-sidebar-logout-top" onClick={onHome}><span className="client-nav-icon">↗</span>{ua ? "На сайт" : "To website"}</button>
         </nav>
-
         <div className="client-sidebar-bottom">
           <div className="client-loyalty-card">
             <div className="client-loyalty-copy">
-              <b>{ua ? "Beauty бонуси" : "Beauty bonuses"}</b>
-              <div className="client-loyalty-balance">
-                <span>{ua ? "Твій бонусний баланс" : "Your bonus balance"}</span>
-                <strong>{bonusBalance} ₴</strong>
-              </div>
-              <span>{ua ? "Накопичуй бонуси та отримуй знижки на улюблені послуги" : "Earn bonuses and get discounts on favourite services"}</span>
+              <b>{ua ? "Beauty AI бали" : "Beauty AI points"}</b>
+              <div className="client-loyalty-balance"><span>{ua ? "Твій баланс" : "Your balance"}</span><strong>{clientState.points}</strong></div>
+              <span>{ua ? "+100 за реєстрацію · +50 за завершений запис" : "+100 for registration · +50 for a completed booking"}</span>
             </div>
             <div className="client-loyalty-sparkles" aria-hidden="true">✦ ✦ ✦</div>
-            <div className="client-loyalty-coin" aria-hidden="true">
-              <span>✦</span>
-            </div>
-            <button type="button">{ua ? "Дізнатись більше" : "Learn more"}</button>
-          </div>
-          <div className="client-sidebar-footer">
-            <p>© Beauty AI, 2024</p>
-            <span>{ua ? "Усі права захищено" : "All rights reserved"}</span>
-            <div className="client-socials" aria-label="Social links"><button type="button">◎</button><button type="button">f</button><button type="button">➤</button></div>
+            <div className="client-loyalty-coin" aria-hidden="true"><span>✦</span></div>
+            <button type="button" onClick={() => setBonusHistoryOpen((open) => !open)}>{ua ? "Історія балів" : "Points history"}</button>
+            {bonusHistoryOpen && (
+              <div className="client-points-popover">
+                {clientState.registrationBonusAwarded && <div><b>+100</b><span>{ua ? "Перша реєстрація" : "First registration"}</span></div>}
+                {clientState.bookings.filter((b) => b.pointsAwarded).map((b) => <div key={b.id}><b>+50</b><span>{ua ? `Завершений запис · ${b.title}` : `Completed booking · ${b.title}`}</span></div>)}
+                {!clientState.registrationBonusAwarded && !clientState.bookings.some((b) => b.pointsAwarded) && <p>{ua ? "Нарахувань поки немає" : "No points history yet"}</p>}
+              </div>
+            )}
           </div>
         </div>
       </aside>
 
       <div className="client-dashboard-main">
         <header className="client-dashboard-header">
-          <div className="client-welcome-copy">
-            <h1>{ua ? `Вітаємо, ${firstName}! 👋` : `Welcome, ${firstName}! 👋`}</h1>
-          </div>
+          <div className="client-welcome-copy"><h1>{ua ? `Вітаємо, ${firstName}! 👋` : `Welcome, ${firstName}! 👋`}</h1></div>
           <div className="client-header-actions">
-            <div className="client-datetime-card" aria-label={ua ? "Поточні дата і час" : "Current date and time"}>
-              <div>
-                <span>{formattedDate}</span>
-                <strong>{formattedTime}</strong>
-              </div>
+            <div className="client-datetime-card"><span className="client-header-datetime">{formattedDateTime}</span></div>
+            <div className="client-notification-wrap">
+              <button ref={notificationButtonRef} className="client-notification-btn" type="button" onClick={openNotifications} aria-expanded={notificationsOpen} aria-label={ua ? "Сповіщення" : "Notifications"}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+                {unreadCount > 0 && <span className="client-notification-count">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+              </button>
             </div>
-            <button className="client-notification-btn" type="button" aria-label={ua ? "Сповіщення" : "Notifications"}>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-              </svg>
-              <span></span>
-            </button>
-            <button className="client-profile-trigger" type="button" onClick={() => setTab("profile")}>
-              <img src={user.avatar} alt={user.name} /><span>{firstName}</span><b>⌄</b>
-            </button>
+            <div className="client-profile-menu-wrap" ref={profileMenuRef}>
+              <button className="client-profile-trigger" type="button" onClick={() => { setNotificationsOpen(false); setProfileMenuOpen((open) => !open); }} aria-haspopup="menu" aria-expanded={profileMenuOpen}>
+                <img src={profileAvatar} alt={profileName} /><span>{firstName}</span><b>⌄</b>
+              </button>
+              {profileMenuOpen && (
+                <div className="client-profile-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { setTab("profile"); setProfileMenuOpen(false); }}>{ua ? "Профіль" : "Profile"}</button>
+                  <button type="button" role="menuitem" className="logout" onClick={() => { setProfileMenuOpen(false); onLogout?.(); }}>{ua ? "Вийти з акаунту" : "Log out"}</button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -251,100 +502,130 @@ export default function ClientDashboard({
           <div className="client-dashboard-content">
             <section className="client-section client-upcoming-section client-surface-panel">
               <div className="client-section-head">
-                <h2>{ua ? "Мої майбутні записи" : "My upcoming bookings"}</h2>
-                <button type="button">{ua ? "Переглянути всі" : "View all"}</button>
+                <h2>{ua ? "Мої записи" : "My bookings"}</h2>
+                {clientState.bookings.length > 0 && <button type="button" onClick={() => { setBookingFilter("upcoming"); setAllBookingsOpen(true); }}>{ua ? "Переглянути всі" : "View all"}</button>}
               </div>
-              <article className="client-booking-card">
-                <div className="client-booking-photo-wrap">
-                  <img className="client-booking-photo" src={bookingImage} alt="Beauty Room" />
-                  <span className="client-booking-soon">{ua ? "Через 2 дні" : "In 2 days"}</span>
-                </div>
-                <div className="client-booking-info">
-                  <h3>{ua ? "Манікюр + покриття гель-лаком" : "Manicure + gel polish"}</h3>
-                  <p className="client-booking-salon">Beauty Room</p>
-                  <p className="client-booking-master">{ua ? "Майстер: Ірина Бондар" : "Master: Iryna Bondar"}</p>
-                  <div className="client-booking-meta"><span>▣ {ua ? "24 травня, пт" : "Fri, May 24"}</span><span>◯ 14:00</span><span>◷ {ua ? "1 год 30 хв" : "1 h 30 min"}</span></div>
-                </div>
-                <button className="client-details-btn" type="button">{ua ? "Деталі" : "Details"}</button>
-              </article>
+              <div className="client-bookings-list">
+                {visibleBookings.length ? visibleBookings.map((booking) => bookingCard(booking)) : (
+                  <div className="client-empty-state"><b>{ua ? "Немає майбутніх записів" : "No upcoming bookings"}</b><p>{ua ? "Знайдіть майстра на головній і забронюйте зручний час." : "Find a specialist on the home page and book a time."}</p><button type="button" className="cta-btn" onClick={onHome}>{ua ? "Знайти майстра" : "Find a master"}</button></div>
+                )}
+              </div>
             </section>
 
-            <div className="client-middle-grid">
-              <section className="client-section client-reviews-section client-surface-panel">
-                <div className="client-section-head"><h2>{ua ? "Останні відгуки" : "Latest reviews"}</h2><button type="button">{ua ? "Переглянути всі" : "View all"}</button></div>
-                <div className="client-review-card">
+            <section id="client-reviews" className="client-section client-reviews-section client-surface-panel client-dashboard-reviews-panel">
+              <div className="client-section-head"><h2>{ua ? "Відгуки" : "Reviews"}</h2></div>
+              {completedBookings.length ? completedBookings.map((booking) => (
+                <article className="client-review-card" key={booking.id}>
                   <div className="client-review-mainline">
-                    <div className="client-review-author"><img src={user.avatar} alt={user.name} /><div><b>{firstName}</b><span>{history[0].date}</span></div></div>
-                    <div className="client-review-score"><span>★★★★★</span><strong>5.0</strong></div>
+                    <div className="client-review-author"><img src={profileAvatar} alt={profileName} /><div><b>{profileName}</b><span className="client-review-datetime">{formatBookingDateTime(booking.date, booking.time, ua)}</span></div></div>
+                    {booking.reviewSubmitted && reviewBookingId !== booking.id ? (
+                      <button type="button" className="client-review-pencil-btn" onClick={() => startReview(booking)} aria-label={ua ? "Редагувати відгук" : "Edit review"}>✎ <span>{ua ? "Редагувати" : "Edit"}</span></button>
+                    ) : !booking.reviewSubmitted ? (
+                      <span className="status-pill neutral">{ua ? "Очікує відгуку" : "Review available"}</span>
+                    ) : null}
                   </div>
-                  <div className="client-review-comment-row">
-                    <p>{ratings[0].comment || (ua ? "Дякую за ідеальний манікюр! 💜" : "Thank you for the perfect manicure! 💜")}</p>
-                    {openReview === 0 && (
-                      <button
-                        type="button"
-                        className="client-review-close-btn"
-                        onClick={() => setOpenReview(null)}
-                        aria-label={ua ? "Закрити форму відгуку" : "Close review form"}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                  {openReview === 0 ? (
+                  {!booking.reviewSubmitted && reviewBookingId !== booking.id && <button type="button" className="client-review-edit-btn" onClick={() => startReview(booking)}>{ua ? "Залишити відгук" : "Leave a review"}</button>}
+                  {booking.reviewSubmitted && reviewBookingId !== booking.id && (
                     <>
-                      {renderReviewForm(0)}
+                      <div className="client-review-saved">
+                        <div className="client-review-saved-copy">
+                          {booking.reviewComment && <p>{booking.reviewComment}</p>}
+                        </div>
+                        <aside className="client-review-saved-ratings" aria-label={ua ? "Оцінки відгуку" : "Review ratings"}>
+                          <div><span>{ua ? "Майстер" : "Master"}</span><Stars value={booking.reviewMasterRating ?? 0} label={ua ? "Оцінка майстра" : "Master rating"} readonly /></div>
+                          <div><span>{ua ? "Сервіс" : "Service"}</span><Stars value={booking.reviewSalonRating ?? 0} label={ua ? "Оцінка сервісу" : "Service rating"} readonly /></div>
+                        </aside>
+                      </div>
                     </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="client-review-edit-btn"
-                      onClick={() => setOpenReview(0)}
-                    >
-                      {ua ? "Редагувати відгук" : "Edit review"}
-                    </button>
                   )}
-                </div>
-              </section>
-            </div>
+                  {reviewBookingId === booking.id && (
+                    <div className="client-review-form review-form-card">
+                      <div className="review-rating-grid"><div className="review-rating-block"><span>{ua ? "Майстер" : "Master"}</span><Stars value={reviewDraft.master} onChange={(master) => setReviewDraft((d) => ({ ...d, master }))} label={ua ? "Рейтинг майстра" : "Master rating"} /></div><div className="review-rating-block"><span>{ua ? "Салон / сервіс" : "Salon / service"}</span><Stars value={reviewDraft.salon} onChange={(salon) => setReviewDraft((d) => ({ ...d, salon }))} label={ua ? "Рейтинг сервісу" : "Service rating"} /></div></div>
+                      <label className="review-comment"><span>{ua ? "Коментар" : "Comment"}</span><textarea rows={3} value={reviewDraft.comment} onChange={(event) => setReviewDraft((d) => ({ ...d, comment: event.target.value }))} /></label>
+                      <div className="review-submit-row"><button type="button" className="booking-action-btn ghost" onClick={() => setReviewBookingId(null)}>{ua ? "Скасувати" : "Cancel"}</button><button type="button" className="review-submit-btn" disabled={!reviewDraft.master || !reviewDraft.salon} onClick={() => submitReview(booking)}>{booking.reviewSubmitted ? (ua ? "Зберегти зміни" : "Save changes") : (ua ? "Надіслати відгук" : "Submit review")}</button></div>
+                    </div>
+                  )}
+                </article>
+              )) : <div className="client-empty-state compact"><p>{ua ? "Відгук можна залишити після завершеного бронювання." : "Reviews become available after a completed booking."}</p></div>}
+            </section>
 
             <section className="client-section client-liked-section client-surface-panel">
-              <div className="client-section-head"><h2>{ua ? "Вам сподобалось" : "You liked"}</h2><button type="button">{ua ? "Переглянути всі" : "View all"}</button></div>
-              <div className="client-liked-carousel">
-                <div className="client-liked-grid">
-                  {liked.map((item) => (
-                    <article className="client-liked-card" key={item.name}>
-                      <div className="client-liked-image-wrap">
-                        <img src={item.image} alt={item.name} />
-                        <span className="client-ai-match">AI MATCH {item.match}%</span>
-                        <button className="client-heart-btn active" type="button" aria-label={ua ? "Прибрати з обраного" : "Remove from favourites"}>♡</button>
-                      </div>
-                      <div className="client-liked-body">
-                        <div className="client-liked-title-row"><h3>{item.name}</h3><span className="client-liked-rating">★ {item.rating.toFixed(1)} <small>({item.reviews})</small></span></div>
-                        <div className="client-liked-meta"><span>⌖ {item.distance}</span><i>•</i><span>{item.district}</span></div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                <button className="client-carousel-next" type="button" aria-label={ua ? "Наступні" : "Next"}>›</button>
-              </div>
+              <div className="client-section-head"><h2>{ua ? "Вам сподобалось" : "You liked"}</h2>{clientState.favorites.length > 4 && <button type="button" onClick={() => setShowAllFavorites((v) => !v)}>{showAllFavorites ? (ua ? "Згорнути" : "Show less") : (ua ? "Переглянути всі" : "View all")}</button>}</div>
+              {visibleFavorites.length ? <div className="client-liked-grid">{visibleFavorites.map((item) => (
+                <article className="client-liked-card" key={item.title}><div className="client-liked-image-wrap"><img src={item.image} alt={item.title} /><button className="client-heart-btn active" type="button" onClick={() => removeFavorite(item.title)} aria-label={ua ? "Прибрати з обраного" : "Remove from favourites"}>♥</button></div><div className="client-liked-body"><div className="client-liked-title-row"><h3>{item.title}</h3><span className="client-liked-rating">★ {item.rating.toFixed(1)} <small>({item.reviews})</small></span></div><div className="client-liked-meta"><span>⌖ {item.distance}</span><i>•</i><span>{item.district}</span></div></div></article>
+              ))}</div> : <div className="client-empty-state compact"><p>{ua ? "Натискайте ♡ на майстрах і салонах — вони з'являться тут." : "Tap ♡ on masters and salons to save them here."}</p></div>}
             </section>
           </div>
         ) : (
           <section className="client-profile-card client-surface-panel">
             <div className="client-section-head client-profile-head"><div><h2>{ua ? "Профіль" : "Profile"}</h2><p>{ua ? "Особисті дані та налаштування акаунта" : "Personal details and account settings"}</p></div></div>
-            <div className="profile-photo-row"><div className="dashboard-avatar profile-avatar"><img src={user.avatar} alt={user.name} /></div><button type="button" className="booking-action-btn ghost">{ua ? "Змінити фото" : "Change photo"}</button></div>
-            <div className="profile-fields-grid">
-              <label><span>{ua ? "Ім'я" : "Name"}</span><input type="text" value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
-              <label><span>{ua ? "Телефон" : "Phone"}</span><input type="tel" value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} /></label>
-              <label><span>Email</span><input type="email" value={profileEmail} onChange={(event) => setProfileEmail(event.target.value)} /></label>
+            <div className="profile-photo-row">
+              <div className="dashboard-avatar profile-avatar"><img src={avatarDraft || profileAvatar} alt={profileName} /></div>
+              <div className="client-avatar-actions">
+                <input ref={avatarInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => { void handleAvatarFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                <button type="button" className="booking-action-btn ghost" onClick={() => avatarInputRef.current?.click()}>{ua ? "Змінити фото" : "Change photo"}</button>
+                {avatarDraft && <><button type="button" className="booking-action-btn" onClick={saveAvatar}>{ua ? "Зберегти" : "Save"}</button><button type="button" className="booking-action-btn ghost" onClick={() => { setAvatarDraft(null); setAvatarError(""); }}>{ua ? "Скасувати" : "Cancel"}</button></>}
+                {avatarError && <span className="client-avatar-error">{avatarError}</span>}
+              </div>
             </div>
+            <div className="profile-fields-grid"><label><span>{ua ? "Ім'я" : "Name"}</span><input type="text" value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label><label><span>{ua ? "Телефон" : "Phone"}</span><input type="tel" value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} /></label><label><span>Email</span><input type="email" value={profileEmail} onChange={(event) => setProfileEmail(event.target.value)} /></label></div>
             <button type="button" className="cta-btn profile-save-btn">{ua ? "Зберегти зміни" : "Save changes"}</button>
-            <div className="profile-subsection"><h3>{ua ? "Пароль" : "Password"}</h3><button type="button" className="booking-action-btn ghost">{ua ? "Змінити пароль" : "Change password"}</button></div>
             <div className="profile-subsection"><h3>{ua ? "Сповіщення" : "Notifications"}</h3><label className="profile-toggle-row"><span>{ua ? "Email-сповіщення" : "Email notifications"}</span><input type="checkbox" checked={notifyEmail} onChange={(event) => setNotifyEmail(event.target.checked)} /></label><label className="profile-toggle-row"><span>{ua ? "Push-сповіщення" : "Push notifications"}</span><input type="checkbox" checked={notifyPush} onChange={(event) => setNotifyPush(event.target.checked)} /></label></div>
-            <div className="profile-subsection profile-danger-zone"><h3>{ua ? "Акаунт" : "Account"}</h3><button type="button" className="booking-action-btn ghost" onClick={onHome}>{ua ? "Вийти" : "Log out"}</button><button type="button" className="profile-delete-btn">{ua ? "Видалити акаунт" : "Delete account"}</button></div>
+            <div className="profile-subsection profile-danger-zone"><h3>{ua ? "Акаунт" : "Account"}</h3><button type="button" className="profile-delete-btn">{ua ? "Видалити акаунт" : "Delete account"}</button></div>
           </section>
         )}
       </div>
+
+      {notificationsOpen && createPortal(
+        <>
+          <button className="client-notification-dismiss" type="button" aria-label={ua ? "Закрити сповіщення" : "Close notifications"} onClick={() => setNotificationsOpen(false)} />
+          <div className="client-notification-menu client-notification-menu-portal" style={{ top: notificationPosition.top, right: notificationPosition.right }}>
+            <div className="client-notification-head"><b>{ua ? "Сповіщення" : "Notifications"}</b><span>{clientState.notifications.length}</span></div>
+            <div className="client-notification-list">
+              {clientState.notifications.length ? clientState.notifications.map((item) => (
+                <article key={item.id}><div><strong>{item.title}</strong><p>{item.text}</p></div><time>{formatNoticeTime(item.createdAt, ua)}</time></article>
+              )) : <p className="client-empty-copy">{ua ? "Нових сповіщень поки немає" : "No notifications yet"}</p>}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )}
+
+      {allBookingsOpen && createPortal(
+        <div className="client-booking-modal-backdrop" role="presentation" onMouseDown={() => setAllBookingsOpen(false)}>
+          <div className="client-all-bookings-modal" role="dialog" aria-modal="true" aria-label={ua ? "Усі записи" : "All bookings"} onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="client-booking-modal-close" onClick={() => setAllBookingsOpen(false)}>×</button>
+            <div className="client-all-bookings-head"><div><span>{ua ? "Історія" : "History"}</span><h2>{ua ? "Мої записи" : "My bookings"}</h2></div></div>
+            <div className="client-booking-tabs" role="tablist">
+              <button className={`tab-upcoming ${bookingFilter === "upcoming" ? "active" : ""}`} type="button" onClick={() => setBookingFilter("upcoming")}>{ua ? "Майбутні" : "Upcoming"} <span>{upcomingBookings.length}</span></button>
+              <button className={`tab-completed ${bookingFilter === "completed" ? "active" : ""}`} type="button" onClick={() => setBookingFilter("completed")}>{ua ? "Завершені" : "Completed"} <span>{completedBookings.length}</span></button>
+              <button className={`tab-cancelled ${bookingFilter === "cancelled" ? "active" : ""}`} type="button" onClick={() => setBookingFilter("cancelled")}>{ua ? "Скасовані" : "Cancelled"} <span>{clientState.bookings.filter((booking) => booking.status === "cancelled").length}</span></button>
+            </div>
+            <div className="client-all-bookings-list">
+              {filteredBookings.length ? filteredBookings.map((booking) => bookingCard(booking, true)) : <div className="client-empty-state compact"><p>{ua ? "У цій категорії записів поки немає." : "There are no bookings in this category yet."}</p></div>}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {selectedBooking && (
+        <div className="client-booking-modal-backdrop" role="presentation" onMouseDown={() => setSelectedBooking(null)}>
+          <div className="client-booking-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="client-booking-modal-close" onClick={() => setSelectedBooking(null)}>×</button>
+            <div className="client-booking-detail-photo-wrap"><img src={selectedBooking.image} alt={selectedBooking.title} /><span className={`client-booking-detail-status status-${selectedBooking.status}`}>{statusLabel(selectedBooking.status)}</span></div>
+            <h3>{selectedBooking.service}</h3><p>{selectedBooking.title} · {selectedBooking.type}</p>
+            <div className="client-booking-detail-grid"><div className="date-time"><span>{ua ? "Дата і час" : "Date & time"}</span><b>{formatBookingDate(selectedBooking.date, ua)} · {selectedBooking.time}</b></div><div><span>{ua ? "Локація" : "Location"}</span><b>{selectedBooking.district}</b></div><div><span>{ua ? "Код" : "Code"}</span><b>{selectedBooking.code}</b></div></div>
+            <div className="client-booking-modal-actions">
+              {selectedBooking.status === "confirmed" && <>
+                <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(selectedBooking.id)}>{ua ? "Скасувати запис" : "Cancel booking"}</button>
+                <button type="button" className="booking-action-btn ghost" onClick={() => completeBooking(selectedBooking.id)}>{ua ? "Позначити як завершене" : "Mark completed"}</button>
+              </>}
+              {selectedBooking.status === "completed" && <><button type="button" className="booking-action-btn ghost" onClick={() => { setSelectedBooking(null); openReviewFromHistory(selectedBooking); }}>{selectedBooking.reviewSubmitted ? (ua ? "Переглянути відгук" : "View review") : (ua ? "Залишити відгук" : "Leave a review")}</button><button type="button" className="cta-btn" onClick={() => { setSelectedBooking(null); rebook(selectedBooking); }}>{ua ? "Записатися знову" : "Book again"}</button></>}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

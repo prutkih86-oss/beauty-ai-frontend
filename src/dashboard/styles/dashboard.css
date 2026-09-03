@@ -1669,7 +1669,7 @@
   color: #6f6a78;
   font-size: 13px;
   font-weight: 500;
-}
+} 
 
 .kyiv-cover-copy {
   position: static;
@@ -4055,4 +4055,551 @@
 .kyiv-cover-rating-star svg {
   color: #d4af5a !important;
   fill: currentColor;
+}
+/* ==========================================================
+   CLIENT INTERACTIONS — bookings, favourites, points, notices
+   ========================================================== */
+.client-notification-wrap{position:relative;z-index:40}
+.client-notification-btn .client-notification-count{position:absolute;top:-2px;right:-3px;min-width:20px;height:20px;display:grid;place-items:center;padding:0 5px;border:2px solid #fff;border-radius:999px;background:#8f49ff;color:#fff;font-size:10px;font-weight:800;line-height:1}
+.client-notification-menu{position:absolute;top:68px;right:0;width:min(390px,calc(100vw - 32px));overflow:hidden;border:1px solid rgba(81,53,155,.12);border-radius:18px;background:#fff;box-shadow:0 22px 60px rgba(36,26,61,.18)}
+.client-notification-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid #eee9f3}.client-notification-head b{font-size:14px}.client-notification-head span{min-width:24px;height:24px;display:grid;place-items:center;border-radius:999px;background:#f0e9fb;color:#7135e8;font-size:11px;font-weight:800}
+.client-notification-list{max-height:360px;overflow:auto}.client-notification-list article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:14px 18px;border-bottom:1px solid #f0edf3}.client-notification-list article:last-child{border-bottom:0}.client-notification-list strong{display:block;color:#21172d;font-size:12.5px}.client-notification-list p{margin:4px 0 0;color:#756c81;font-size:11.5px;line-height:1.4}.client-notification-list time{color:#a098aa;font-size:10px;white-space:nowrap}
+.client-bookings-list{display:grid;gap:14px}.client-booking-card-compact{min-height:180px}.client-booking-card.status-cancelled{opacity:.65}.client-booking-card.status-completed .client-booking-soon{background:#6d8f82}.client-booking-card.status-cancelled .client-booking-soon{background:#9d93a6}
+.client-empty-state{display:flex;min-height:190px;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px;border:1px dashed rgba(81,53,155,.18);border-radius:18px;background:#fcfbfd}.client-empty-state b{color:#241a3d;font-size:15px}.client-empty-state p{max-width:430px;margin:7px 0 18px;color:#7b7286;font-size:12px;line-height:1.5}.client-empty-state.compact{min-height:90px}.client-empty-state.compact p{margin:0}
+.client-dashboard-reviews-panel{padding:22px}.client-dashboard-reviews-panel .client-review-card+.client-review-card{margin-top:14px}
+.client-points-popover{position:absolute;left:18px;right:18px;bottom:70px;z-index:6;padding:10px;border:1px solid rgba(81,53,155,.12);border-radius:14px;background:#fff;box-shadow:0 16px 40px rgba(36,26,61,.14)}.client-points-popover div{display:grid;grid-template-columns:44px 1fr;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #f0edf3}.client-points-popover div:last-child{border-bottom:0}.client-points-popover b{color:#7135e8;font-size:13px}.client-points-popover span{color:#695f76;font-size:10.5px}.client-points-popover p{margin:6px;color:#756c81;font-size:11px}
+.client-booking-modal-backdrop{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:22px;background:rgba(24,18,34,.42);backdrop-filter:blur(7px)}.client-booking-modal{position:relative;width:min(520px,100%);padding:22px;border:1px solid rgba(81,53,155,.12);border-radius:22px;background:#fff;box-shadow:0 28px 80px rgba(36,26,61,.2)}.client-booking-modal>img{width:100%;height:190px;display:block;object-fit:cover;border-radius:16px;margin-bottom:16px}.client-booking-modal-close{position:absolute;top:34px;right:34px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.94);color:#33244f;font-size:22px;cursor:pointer;box-shadow:0 5px 16px rgba(36,26,61,.12)}.client-booking-modal h3{margin:12px 0 4px;color:#1d1528;font-size:21px}.client-booking-modal>p{margin:0 0 18px;color:#756c81;font-size:12px}.client-booking-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.client-booking-detail-grid div{padding:12px;border-top:1px solid #eee9f3}.client-booking-detail-grid span{display:block;color:#91899a;font-size:10px;text-transform:uppercase;letter-spacing:.05em}.client-booking-detail-grid b{display:block;margin-top:4px;color:#2b2236;font-size:12px}.client-booking-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.client-booking-modal-actions .cta-btn{width:auto;min-width:150px}
+.client-liked-card .client-heart-btn.active{color:#7135e8}
+@media(max-width:640px){.client-notification-menu{right:-70px}.client-booking-detail-grid{grid-template-columns:1fr}.client-booking-modal-actions{flex-direction:column}.client-booking-modal-actions .cta-btn,.client-booking-modal-actions .profile-delete-btn{width:100%}}
+
+/* CLIENT NOTIFICATIONS — portal dropdown; never participates in header layout */
+.client-notification-dismiss{
+  position:fixed;
+  inset:0;
+  z-index:14990;
+  padding:0;
+  border:0;
+  background:transparent;
+  cursor:default;
+}
+.client-notification-menu.client-notification-menu-portal{
+  position:fixed !important;
+  z-index:15000 !important;
+  width:min(390px,calc(100vw - 32px));
+  max-height:min(460px,calc(100vh - 110px));
+  margin:0 !important;
+  transform:none !important;
+}
+@media(max-width:640px){
+  .client-notification-menu.client-notification-menu-portal{
+    right:16px !important;
+    width:calc(100vw - 32px);
+  }
+}
+
+/* ==========================================================
+   CLIENT FLOW V3 — post-v2 product interactions
+   ========================================================== */
+
+/* Profile trigger is a true dropdown and never changes header layout. */
+.client-profile-menu-wrap{position:relative;z-index:60;flex:0 0 auto}
+.client-profile-menu{position:absolute;top:calc(100% + 10px);right:0;z-index:15100;width:190px;padding:7px;border:1px solid rgba(81,53,155,.12);border-radius:14px;background:#fff;box-shadow:0 18px 48px rgba(36,26,61,.16)}
+.client-profile-menu button{width:100%;display:flex;align-items:center;padding:10px 12px;border:0;border-radius:9px;background:transparent;color:#33244f;font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+.client-profile-menu button:hover{background:#f7f4fb}.client-profile-menu button.logout{color:#a34555}
+
+/* Booking status belongs at the bottom of the photo, away from faces. */
+.client-booking-soon{top:auto!important;bottom:12px!important;left:12px!important;padding:7px 12px!important;background:rgba(113,53,232,.92)!important;backdrop-filter:blur(8px)}
+.client-booking-card.status-completed .client-booking-soon{background:rgba(76,119,101,.94)!important}
+.client-booking-card.status-cancelled .client-booking-soon{background:rgba(113,105,122,.92)!important}
+
+/* Compact admin-like date + time line. */
+.client-booking-meta{gap:10px 22px!important;margin-top:24px!important}.client-booking-meta span:first-child{font-weight:700;color:#33244f}.client-booking-meta span{white-space:nowrap}
+
+/* Avatar upload / preview actions. */
+.client-avatar-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}.client-avatar-error{width:100%;color:#b85c68;font-size:11px;font-weight:600}
+
+/* Saved reviews remain visible after submission. */
+.client-review-saved{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:18px;margin-top:14px;padding:14px 16px;border-top:1px solid #eee9f3}
+.client-review-saved>div>span{display:block;margin-bottom:3px;color:#8d8498;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}.client-review-saved p{margin:0;color:#5f566b;font-size:12px;line-height:1.55}
+.review-stars.readonly{display:flex;gap:2px}.review-stars.readonly span{color:#ded8e3;font-size:15px}.review-stars.readonly span.active{color:#b9965a}
+
+/* All-bookings history with real tabs. */
+.client-all-bookings-modal{position:relative;width:min(920px,calc(100vw - 40px));max-height:min(780px,calc(100vh - 40px));display:flex;flex-direction:column;padding:26px;border:1px solid rgba(81,53,155,.12);border-radius:24px;background:#fff;box-shadow:0 28px 80px rgba(36,26,61,.22)}
+.client-all-bookings-head{padding-right:50px}.client-all-bookings-head span{color:#8d8498;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.client-all-bookings-head h2{margin:4px 0 0;color:#21172d;font-size:24px!important}
+.client-booking-tabs{display:flex;gap:7px;margin:20px 0 16px;padding:4px;border-radius:14px;background:#f7f4fb}.client-booking-tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;border:0;border-radius:10px;background:transparent;color:#71677e;font-size:12px;font-weight:800;cursor:pointer}.client-booking-tabs button.active{background:#fff;color:#7135e8;box-shadow:0 5px 14px rgba(81,53,155,.08)}.client-booking-tabs button span{min-width:21px;height:21px;display:grid;place-items:center;border-radius:999px;background:#eee9f7;font-size:10px}
+.client-all-bookings-list{display:grid;gap:12px;min-height:0;overflow:auto;padding-right:3px}.client-booking-card.in-list-modal{grid-template-columns:150px minmax(0,1fr) 110px!important;min-height:132px!important;gap:18px!important;padding:10px 14px 10px 10px!important}.client-booking-card.in-list-modal .client-booking-photo-wrap{width:150px!important;height:110px!important}.client-booking-card.in-list-modal .client-booking-info h3{font-size:17px!important}.client-booking-card.in-list-modal .client-booking-meta{margin-top:15px!important}.client-booking-card.in-list-modal .client-details-btn{height:44px}
+
+/* Booking details: status also lives at the bottom of the image. */
+.client-booking-detail-photo-wrap{position:relative;margin-bottom:16px}.client-booking-detail-photo-wrap>img{width:100%;height:190px;display:block;object-fit:cover;border-radius:16px}.client-booking-detail-status{position:absolute;left:12px;bottom:12px;padding:7px 12px;border-radius:999px;background:rgba(113,53,232,.92);color:#fff;font-size:11px;font-weight:800;box-shadow:0 6px 16px rgba(36,26,61,.16)}.client-booking-detail-status.status-completed{background:rgba(76,119,101,.94)}.client-booking-detail-status.status-cancelled{background:rgba(113,105,122,.92)}
+.client-booking-detail-grid .date-time{grid-column:1/-1}.client-booking-modal-actions .booking-action-btn{min-height:42px}
+
+@media(max-width:760px){.client-all-bookings-modal{width:calc(100vw - 24px);max-height:calc(100vh - 24px);padding:18px}.client-booking-tabs{overflow-x:auto}.client-booking-tabs button{min-width:120px}.client-booking-card.in-list-modal{display:grid!important;grid-template-columns:100px minmax(0,1fr)!important}.client-booking-card.in-list-modal .client-booking-photo-wrap{width:100px!important;height:100px!important}.client-booking-card.in-list-modal .client-details-btn{grid-column:1/-1}.client-review-saved{grid-template-columns:1fr 1fr}.client-review-saved p{grid-column:1/-1}}
+
+/* ==========================================================
+   CLIENT FLOW V4 — history density, profile borders, review layout
+   ========================================================== */
+
+/* History cards are self-contained: no nested details modal is needed. */
+.client-booking-card.in-list-modal{
+  grid-template-columns:170px minmax(0,1fr) 150px!important;
+  min-height:158px!important;
+  gap:20px!important;
+  padding:12px 16px 12px 12px!important;
+}
+.client-booking-card.in-list-modal .client-booking-photo-wrap{
+  width:170px!important;
+  height:134px!important;
+}
+.client-booking-card.in-list-modal .client-booking-info h3{font-size:18px!important}
+.client-booking-card.in-list-modal .client-booking-meta{margin-top:14px!important}
+.client-booking-datetime,
+.client-booking-location{
+  display:inline-flex;
+  align-items:center;
+  min-height:18px;
+  line-height:18px!important;
+  vertical-align:middle;
+}
+.client-booking-datetime{font-weight:700;color:#33244f}
+.client-booking-inline-details{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:9px 22px;
+  margin-top:10px;
+  padding-top:9px;
+  border-top:1px solid rgba(81,53,155,.12);
+}
+.client-booking-inline-details>span{display:flex;align-items:baseline;gap:7px}
+.client-booking-inline-details small{color:#958c9e;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.client-booking-inline-details b{color:#33244f;font-size:11px}
+.client-booking-inline-actions{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:8px}
+.client-booking-inline-actions button{width:100%;min-height:36px;margin:0!important}
+.client-history-link-btn{border:0;background:transparent;color:#7135e8;font-size:10.5px;font-weight:800;cursor:pointer}
+
+/* Inactive controls should still have a visible premium outline. */
+.client-profile-card.client-surface-panel{border-color:rgba(81,53,155,.16)!important}
+.client-profile-card .profile-fields-grid input{
+  border-color:rgba(81,53,155,.22)!important;
+  box-shadow:0 1px 0 rgba(81,53,155,.025);
+}
+.client-profile-card .profile-fields-grid input:hover{border-color:rgba(81,53,155,.30)!important}
+.client-profile-card .profile-fields-grid input:focus{border-color:#8b5cf6!important;box-shadow:0 0 0 3px rgba(139,92,246,.09)}
+.client-profile-card .profile-subsection{border-top-color:rgba(81,53,155,.14)!important}
+
+/* Saved review: text stays on the left, both rating rows form one compact block on the right. */
+.client-review-saved{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:24px!important;
+  margin-top:14px;
+  padding:14px 16px;
+  border-top:1px solid rgba(81,53,155,.13)!important;
+}
+.client-review-saved-copy{min-width:0}
+.client-review-saved-copy p{margin:0!important;color:#5f566b;font-size:12px;line-height:1.55}
+.client-review-saved-ratings{display:grid;gap:8px;min-width:150px;padding-left:18px;border-left:1px solid rgba(81,53,155,.12)}
+.client-review-saved-ratings>div{display:grid;grid-template-columns:52px auto;align-items:center;gap:8px}
+.client-review-saved-ratings>div>span{margin:0!important;color:#8d8498;font-size:9px!important;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.client-review-saved-ratings .review-stars.readonly{justify-content:flex-end}
+
+@media(max-width:760px){
+  .client-booking-card.in-list-modal{grid-template-columns:112px minmax(0,1fr)!important;min-height:146px!important}
+  .client-booking-card.in-list-modal .client-booking-photo-wrap{width:112px!important;height:122px!important}
+  .client-booking-inline-actions{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .client-review-saved{grid-template-columns:1fr!important;gap:12px!important}
+  .client-review-saved-ratings{padding:12px 0 0;border-left:0;border-top:1px solid rgba(81,53,155,.12)}
+}
+
+/* ==========================================================
+   CLIENT FLOW V5 — history balance, actions, scrolling, tabs
+   ========================================================== */
+
+/* Give history rows a little more breathing room and visual symmetry. */
+.client-booking-card.in-list-modal{
+  min-height:174px!important;
+  padding:14px 16px 14px 12px!important;
+  align-items:center!important;
+}
+.client-booking-card.in-list-modal .client-booking-photo-wrap{
+  height:146px!important;
+}
+.client-booking-card.in-list-modal .client-booking-info{
+  align-self:center;
+}
+.client-booking-card.in-list-modal .client-booking-meta{
+  margin-top:16px!important;
+}
+
+/* History action buttons: all actions are visually balanced pills. */
+.client-history-action-btn{
+  width:100%;
+  min-height:38px;
+  padding:8px 14px;
+  border:1px solid rgba(113,53,232,.24);
+  border-radius:999px;
+  background:#fff;
+  color:#7135e8;
+  font-size:10.5px;
+  font-weight:800;
+  line-height:1.2;
+  cursor:pointer;
+  transition:background .16s ease,border-color .16s ease,transform .16s ease,box-shadow .16s ease;
+}
+.client-history-action-btn:hover{
+  background:#f8f4ff;
+  border-color:rgba(113,53,232,.42);
+  box-shadow:0 5px 14px rgba(81,53,155,.08);
+  transform:translateY(-1px);
+}
+.client-history-action-btn.rebook{
+  border-color:rgba(113,53,232,.30);
+  color:#7135e8;
+}
+.client-history-action-btn.review{
+  border-color:rgba(81,53,155,.20);
+  color:#33244f;
+}
+
+/* Scroll only the list when needed; keep the scrollbar invisible. */
+.client-all-bookings-modal{
+  max-height:min(720px,calc(100vh - 44px))!important;
+}
+.client-all-bookings-list{
+  min-height:0;
+  max-height:min(500px,calc(100vh - 250px));
+  overflow-y:auto!important;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+  padding-right:2px!important;
+}
+.client-all-bookings-list::-webkit-scrollbar{width:0;height:0;display:none}
+
+/* Status counters make the three history tabs easier to distinguish. */
+.client-booking-tabs .tab-upcoming span{
+  background:#eee6ff!important;
+  color:#7135e8!important;
+}
+.client-booking-tabs .tab-completed span{
+  background:#e7f4ed!important;
+  color:#3b8a68!important;
+}
+.client-booking-tabs .tab-cancelled span{
+  background:#f5e9ec!important;
+  color:#b85c68!important;
+}
+.client-booking-tabs .tab-upcoming.active{color:#7135e8!important}
+.client-booking-tabs .tab-completed.active{color:#3b8a68!important}
+.client-booking-tabs .tab-cancelled.active{color:#a64f5d!important}
+
+/* Stronger but still soft borders for the two main dashboard sections. */
+.client-upcoming-section,
+.client-dashboard-reviews-panel{
+  border-color:rgba(81,53,155,.19)!important;
+}
+.client-upcoming-section .client-booking-card,
+.client-dashboard-reviews-panel .client-review-card{
+  border-color:rgba(81,53,155,.17)!important;
+}
+
+/* Dashboard favourites use the same active-heart colour as the website cards. */
+.client-liked-card .client-heart-btn.active{
+  background:#fff!important;
+  color:#a879f7!important;
+  border-color:transparent!important;
+  box-shadow:0 2px 6px rgba(0,0,0,.12)!important;
+}
+
+@media(max-width:760px){
+  .client-booking-card.in-list-modal{min-height:158px!important}
+  .client-booking-card.in-list-modal .client-booking-photo-wrap{height:128px!important}
+  .client-all-bookings-list{max-height:calc(100vh - 230px)}
+}
+
+
+/* ==========================================================
+   CLIENT FLOW V6 — exact datetime, review editing, history height
+   ========================================================== */
+
+/* Date + time is one physical line with one baseline, matching the admin metadata style. */
+.client-booking-datetime,
+.client-review-datetime{
+  display:inline-flex!important;
+  align-items:center!important;
+  white-space:nowrap!important;
+  line-height:1!important;
+  vertical-align:middle!important;
+}
+.client-review-datetime{color:#8b8296;font-size:12px}
+
+/* Add only bottom breathing room to history cards. Top spacing/content positions stay unchanged. */
+.client-booking-card.in-list-modal{
+  min-height:194px!important;
+  padding-top:14px!important;
+  padding-bottom:34px!important;
+  align-items:start!important;
+}
+.client-booking-card.in-list-modal .client-booking-info{align-self:start!important}
+
+/* Explicit edit affordance for an already-published review. */
+.client-review-card{position:relative}
+.client-review-pencil-btn{
+  position:absolute;
+  top:18px;
+  right:132px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:4px 8px;
+  border:0;
+  background:transparent;
+  color:#7135e8;
+  font-size:10px;
+  font-weight:800;
+  cursor:pointer;
+}
+.client-review-pencil-btn:hover{color:#33244f}
+
+@media(max-width:760px){
+  .client-booking-card.in-list-modal{min-height:178px!important;padding-bottom:28px!important}
+  .client-review-pencil-btn{position:static;margin:8px 0 0 auto}
+}
+
+
+/* ==========================================================
+   CLIENT FLOW V7 — compact header datetime + review header + extra history depth
+   ========================================================== */
+.client-datetime-card{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-width:auto!important;
+}
+.client-header-datetime{
+  display:inline-flex;
+  align-items:center;
+  white-space:nowrap;
+  color:#6f6678;
+  font-size:12px;
+  font-weight:700;
+  line-height:1;
+}
+
+/* Review edit replaces the old "review submitted" badge. */
+.client-review-mainline{position:relative}
+.client-review-pencil-btn{
+  position:static!important;
+  margin-left:auto!important;
+  padding:3px 0!important;
+  gap:6px!important;
+  color:#8b8492!important;
+  font-size:12.5px!important;
+  font-weight:700!important;
+  line-height:1.2!important;
+}
+.client-review-pencil-btn:hover{color:#5f566b!important}
+
+/* One more +20px only at the bottom of history rows; top/content placement stays untouched. */
+.client-booking-card.in-list-modal{
+  min-height:214px!important;
+  padding-bottom:54px!important;
+}
+@media(max-width:760px){
+  .client-booking-card.in-list-modal{min-height:198px!important;padding-bottom:48px!important}
+}
+
+/* ==========================================================
+   MASTER FUNCTIONAL FLOW — persistent state, services, schedule, menus
+   ========================================================== */
+.master-header-actions-v2{position:relative}
+.master-notification-wrap-v2,.master-user-menu-wrap-v2{position:relative}
+.master-user-v2{border:0;background:transparent;font:inherit;cursor:pointer;text-align:left}
+.master-user-v2>span{display:inline!important;color:#7b728c;font-size:12px;margin-left:2px}
+.master-notification-badge-v2{position:absolute;top:-4px;right:-5px;min-width:17px;height:17px;padding:0 4px;display:grid;place-items:center;border:2px solid #fff;border-radius:999px;background:#7135e8;color:#fff;font-size:8px;font-weight:800;line-height:1}
+.master-notifications-menu-v2,.master-user-menu-v2{position:absolute;top:calc(100% + 10px);right:0;z-index:240;width:320px;border:1px solid rgba(71,54,102,.16);border-radius:14px;background:#fff;box-shadow:0 18px 46px rgba(36,26,61,.16);overflow:hidden}
+.master-user-menu-v2{width:185px;padding:6px}
+.master-user-menu-v2 button{width:100%;padding:10px 11px;border:0;border-radius:9px;background:transparent;color:#40384d;font:inherit;font-size:11px;font-weight:700;text-align:left;cursor:pointer}
+.master-user-menu-v2 button:hover{background:#f7f3fc}
+.master-user-menu-v2 button.danger{color:#b04b64}
+.master-notifications-head-v2{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #eee8f4}
+.master-notifications-head-v2 b{font-size:12px;color:#2e2639}.master-notifications-head-v2 span{min-width:22px;height:22px;display:grid;place-items:center;border-radius:999px;background:#f0e7ff;color:#7135e8;font-size:9px;font-weight:800}
+.master-notifications-list-v2{max-height:330px;overflow:auto;scrollbar-width:none}.master-notifications-list-v2::-webkit-scrollbar{display:none}
+.master-notifications-list-v2 article{padding:11px 14px;border-bottom:1px solid #f2eef6}.master-notifications-list-v2 article:last-child{border-bottom:0}.master-notifications-list-v2 b{display:block;color:#332b40;font-size:10.5px}.master-notifications-list-v2 p{margin:3px 0;color:#716a7b;font-size:9.5px;line-height:1.4}.master-notifications-list-v2 span{color:#a19aa9;font-size:8.5px}.master-notifications-empty-v2{padding:28px 18px;color:#8e8797;font-size:10px;text-align:center}
+.master-datetime-v2 strong{font-size:13px!important;white-space:nowrap}.master-datetime-v2{gap:0!important}
+.master-empty-v2{margin:16px 18px;padding:24px 18px;border:1px dashed #ddd3e8;border-radius:12px;background:#fcfbfe;color:#81798d;font-size:10px;line-height:1.5;text-align:center}.master-empty-reviews-v2{margin-bottom:18px}
+.master-slot-actions-v2{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}
+.master-slot-actions-v2 button{padding:5px 7px;border:1px solid #dfd2f3;border-radius:999px;background:#fff;color:#6d28d9;font:inherit;font-size:8px;font-weight:700;cursor:pointer}.master-slot-actions-v2 button:hover{background:#f7f2ff}.master-slot-actions-v2 button.danger{border-color:#edd5db;color:#a84d62}.master-slot-status-v2.confirmed{background:#f2ecff;color:#7135e8}.master-slot-status-v2.cancelled{background:#f8edef;color:#a84d62}.master-slot-status-v2.completed{background:#eef8f1;color:#4a9a6a}.master-slot-status-v2.available{background:#eef7ff;color:#397aa6}.master-slot-v2.available{background:#fbfdff}
+.master-month-title-v2{text-transform:capitalize}
+.master-calendar-nav-v2 button{cursor:pointer}
+.master-services-page-v2{padding-bottom:20px;overflow:hidden}.master-services-list-v2{display:flex;flex-direction:column;padding:0 18px 2px;gap:8px}.master-services-list-v2>.master-empty-v2{margin:8px 0 0}
+.master-services-list-v2 article{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;align-items:center;gap:10px;padding:13px 14px;border:1px solid #e8e0ef;border-radius:12px;background:#fff}.master-services-list-v2 article.inactive{opacity:.62}.master-services-list-v2 article>div{display:flex;flex-direction:column;gap:3px}.master-services-list-v2 b{color:#2d2538;font-size:11px}.master-services-list-v2 article>div span{color:#8e8796;font-size:9px}.master-services-list-v2 article>strong{color:#2d2538;font-size:11px;white-space:nowrap}.master-services-list-v2 article>button{padding:6px 8px;border:1px solid #dfd3ed;border-radius:8px;background:#fff;color:#7135e8;font:inherit;font-size:8.5px;font-weight:700;cursor:pointer}.master-services-list-v2 article>button.danger{color:#a84d62;border-color:#edd5db}.master-service-state-v2{padding:5px 7px;border-radius:999px;background:#f4f1f7;color:#81798b;font-size:8px;font-weight:800;white-space:nowrap}.master-service-state-v2.active{background:#eef8f1;color:#4a9a6a}
+.master-modal-backdrop-v2{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:20px;background:rgba(28,20,42,.34);backdrop-filter:blur(4px)}.master-modal-v2{position:relative;width:min(430px,100%);padding:22px;border:1px solid rgba(78,55,111,.13);border-radius:16px;background:#fff;box-shadow:0 24px 70px rgba(31,21,49,.24)}.master-modal-v2 h3{margin:0 0 16px;color:#2c2437;font-size:15px}.master-modal-v2>label{display:flex;flex-direction:column;gap:6px;margin-top:11px;color:#5f586a;font-size:10px;font-weight:700}.master-modal-v2 input{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #dcd2e6;border-radius:9px;outline:none;font:inherit}.master-modal-v2 input:focus{border-color:rgba(113,53,232,.5);box-shadow:0 0 0 3px rgba(113,53,232,.07)}.master-modal-close-v2{position:absolute;top:10px;right:10px;width:30px;height:30px;border:0;border-radius:50%;background:#f6f2fa;color:#62596d;font-size:20px;cursor:pointer}.master-modal-v2 .master-primary-v2{margin:18px 0 0;width:100%}.master-checkbox-v2{flex-direction:row!important;align-items:center!important}.master-checkbox-v2 input{width:auto!important}.master-reviews-modal-v2{width:min(620px,100%);max-height:min(78vh,700px);overflow:hidden;display:flex;flex-direction:column}.master-all-reviews-list-v2{overflow:auto;scrollbar-width:none}.master-all-reviews-list-v2::-webkit-scrollbar{display:none}.master-all-reviews-list-v2 article{padding:13px 2px;border-top:1px solid #eee9f2}.master-all-reviews-list-v2 article>div{display:flex;justify-content:space-between;gap:12px}.master-all-reviews-list-v2 b{font-size:10.5px}.master-all-reviews-list-v2 span{color:#97909d;font-size:9px}.master-all-reviews-list-v2 strong{display:block;margin-top:5px;color:#e5a21a;font-size:10px}.master-all-reviews-list-v2 p{margin:5px 0 0;color:#655e6f;font-size:10px;line-height:1.5}
+.master-card-head-v2 button:disabled{opacity:.45;cursor:not-allowed}
+.master-profile-top-v2 input[type=file]{display:none}
+@media(max-width:900px){.master-services-list-v2 article{grid-template-columns:minmax(0,1fr) auto auto}.master-services-list-v2 article>button{grid-row:2}.master-notifications-menu-v2{width:min(320px,80vw)}}
+
+/* ==========================================================
+   MASTER FUNCTIONAL V2 — booking details + actionable notifications
+   ========================================================== */
+.master-slot-v2[role="button"] {
+  cursor: pointer;
+}
+
+.master-slot-v2[role="button"]:hover {
+  background: #fbf9ff;
+}
+
+.master-slot-v2[role="button"]:focus-visible {
+  outline: 2px solid rgba(113, 53, 232, 0.28);
+  outline-offset: -2px;
+}
+
+.master-notification-item-v2 {
+  width: 100%;
+  display: block;
+  padding: 11px 12px;
+  border: 0;
+  border-top: 1px solid #f0edf4;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.master-notification-item-v2:hover {
+  background: #faf7ff;
+}
+
+.master-notification-item-v2 b,
+.master-notification-item-v2 p,
+.master-notification-item-v2 span {
+  display: block;
+}
+
+.master-notification-item-v2 b {
+  color: #2d2438;
+  font-size: 10.5px;
+}
+
+.master-notification-item-v2 p {
+  margin: 3px 0 5px;
+  color: #6f6879;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.master-notification-item-v2 span {
+  color: #aaa3b0;
+  font-size: 8.5px;
+}
+
+.master-booking-detail-v2 {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.master-booking-detail-head-v2 {
+  padding-right: 34px;
+}
+
+.master-booking-detail-head-v2 h3 {
+  margin: 10px 0 4px;
+  color: #211a2e;
+  font-size: 18px;
+}
+
+.master-booking-detail-head-v2 p {
+  margin: 0;
+  color: #777080;
+  font-size: 11px;
+}
+
+.master-booking-detail-grid-v2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.master-booking-detail-grid-v2 > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #eee9f3;
+  border-radius: 10px;
+  background: #fbf9fd;
+}
+
+.master-booking-detail-grid-v2 span,
+.master-booking-review-v2 > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #928a9b;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .035em;
+}
+
+.master-booking-detail-grid-v2 strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #332b3e;
+  font-size: 11px;
+}
+
+.master-booking-review-v2 {
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid #ece5f4;
+  border-radius: 11px;
+  background: #fcfaff;
+}
+
+.master-booking-review-v2 strong {
+  color: #e5a21a;
+  font-size: 11px;
+}
+
+.master-booking-review-v2 p {
+  margin: 7px 0 0;
+  color: #5f586a;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.master-booking-detail-actions-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.master-booking-detail-actions-v2 .master-primary-v2 {
+  margin: 0;
+}
+
+.master-danger-outline-v2 {
+  padding: 10px 14px;
+  border: 1px solid #edcbd0;
+  border-radius: 9px;
+  background: #fff;
+  color: #a64e5c;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.master-danger-outline-v2:hover {
+  background: #fff7f8;
+}
+
+@media (max-width: 560px) {
+  .master-booking-detail-grid-v2,
+  .master-booking-detail-actions-v2 {
+    grid-template-columns: 1fr;
+  }
 }

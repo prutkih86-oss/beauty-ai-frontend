@@ -113,7 +113,7 @@ const dict = {
       soloMasters: { title: "Майстри для вас", subtitle: "Персональні рекомендації майстрів під ваш запит" },
       partners: { title: "Пропозиції від партнерів", subtitle: "Ексклюзивні знижки та акції" },
       nearby: { title: "Найкращі в Києві", subtitle: "Салони та майстри з найвищими показниками" },
-      topRated: { title: "Варто спробувати", subtitle: "Щось нове, що може вас зацікавити" },
+      topRated: { title: "Варто спробувати", subtitle: "Цеможе вас зацікавити" },
       fresh: { title: "Новинки на платформі", subtitle: "Нові майстри та салони для вас" },
     },
     cta: "Записатися",
@@ -126,6 +126,8 @@ const dict = {
       close: "Закрити",
       reviews: "відгуків",
       reviewsTitle: "Відгуки клієнтів",
+      showMoreReviews: "Показати ще",
+      hideReviews: "Згорнути відгуки",
       shownReviews: "Показано",
       ofReviews: "з",
       aboutTitle: "Про місце",
@@ -197,6 +199,8 @@ const dict = {
       close: "Close",
       reviews: "reviews",
       reviewsTitle: "Client reviews",
+      showMoreReviews: "Show more",
+      hideReviews: "Hide reviews",
       shownReviews: "Showing",
       ofReviews: "of",
       aboutTitle: "About",
@@ -263,6 +267,108 @@ const roleAvatars: Record<AuthRole, string> = {
 const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiservice.polandcentral.cloudapp.azure.com";
 
 const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
+
+const CLIENT_STATE_KEY = "beautyai_client_state";
+const STORED_USER_KEY = "beautyai_session_user";
+const MASTER_STATE_PREFIX = "beautyai_master_state:";
+
+function readStoredMasterProfile(email: string): { displayName?: string; avatar?: string } | null {
+  try {
+    const raw = localStorage.getItem(`${MASTER_STATE_PREFIX}${email.trim().toLowerCase()}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.profile ?? null;
+  } catch {
+    return null;
+  }
+}
+
+
+
+type StoredMasterService = { id: string; name: string; price: number; duration: number; active: boolean };
+type StoredMasterWindow = { id: string; date: string; time: string; duration: number };
+type StoredMasterState = {
+  profile?: { displayName?: string; specialization?: string; city?: string; salon?: string; about?: string; phone?: string; email?: string; avatar?: string };
+  services?: StoredMasterService[];
+  windows?: StoredMasterWindow[];
+};
+
+function findStoredMasterState(displayName: string): StoredMasterState | null {
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(MASTER_STATE_PREFIX)) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as StoredMasterState;
+      if (parsed.profile?.displayName === displayName) return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+type ClientFavorite = {
+  title: string; type: string; image: string; rating: number; reviews: number; district: string; distance: string; priceFrom: string; variant?: "solo";
+};
+type ClientBooking = {
+  id: string; title: string; type: string; image: string; service: string; date: string; time: string; phone: string; district: string; priceFrom: string; status: "confirmed" | "completed" | "cancelled"; code: string; createdAt: string; reviewSubmitted?: boolean; pointsAwarded?: boolean;
+};
+type ClientNotification = { id: string; title: string; text: string; createdAt: string; read: boolean };
+type ClientState = { favorites: ClientFavorite[]; bookings: ClientBooking[]; notifications: ClientNotification[]; points: number; registrationBonusAwarded: boolean; profileAvatar?: string };
+
+const emptyClientState = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
+
+function readClientState(): ClientState {
+  try {
+    const raw = localStorage.getItem(CLIENT_STATE_KEY);
+    return raw ? { ...emptyClientState(), ...JSON.parse(raw) } : emptyClientState();
+  } catch { return emptyClientState(); }
+}
+
+function writeClientState(next: ClientState) {
+  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
+}
+
+function readStoredUser(): MockUser | null {
+  try { const raw = sessionStorage.getItem(STORED_USER_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+function awardRegistrationBonus() {
+  const state = readClientState();
+  if (state.registrationBonusAwarded) return;
+  const notification: ClientNotification = {
+    id: `registration-${Date.now()}`,
+    title: "+100 Beauty AI балів",
+    text: "Бонус за першу реєстрацію",
+    createdAt: new Date().toISOString(),
+    read: false,
+  };
+  writeClientState({ ...state, points: state.points + 100, registrationBonusAwarded: true, notifications: [notification, ...state.notifications] });
+}
+
+function toggleClientFavorite(data: CardData) {
+  const state = readClientState();
+  const exists = state.favorites.some((item) => item.title === data.title);
+  const favorites = exists
+    ? state.favorites.filter((item) => item.title !== data.title)
+    : [{ title: data.title, type: data.type, image: data.image, rating: data.rating, reviews: data.reviews, district: data.district, distance: data.distance, priceFrom: data.priceFrom, variant: data.variant }, ...state.favorites];
+  writeClientState({ ...state, favorites });
+  return !exists;
+}
+
+function saveClientBooking(data: CardData, service: string, date: string, time: string, phone: string, code: string) {
+  const state = readClientState();
+  const booking: ClientBooking = {
+    id: `${code}-${Date.now()}`, title: data.title, type: data.type, image: data.image, service, date, time, phone, district: data.district, priceFrom: data.priceFrom, status: "confirmed", code, createdAt: new Date().toISOString(),
+  };
+  const notification: ClientNotification = {
+    id: `booking-${booking.id}`, title: "Запис підтверджено", text: `${data.title} · ${service} · ${date} ${time}`, createdAt: new Date().toISOString(), read: false,
+  };
+  writeClientState({ ...state, bookings: [booking, ...state.bookings], notifications: [notification, ...state.notifications] });
+}
 
 type AuthTokens = { access: string; refresh: string };
 
@@ -386,9 +492,11 @@ function AuthModal({
     }
   };
 
+  const currentClientAvatar = readClientState().profileAvatar || roleAvatars.client;
+  const storedDemoMaster = readStoredMasterProfile("beauty.master@gmail.com");
   const fakeGoogleAccounts: { role: AuthRole; name: string; email: string; avatar: string }[] = [
-    { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: roleAvatars.client },
-    { role: "master", name: ua ? "Майстер Beauty" : "Beauty Master", email: "beauty.master@gmail.com", avatar: roleAvatars.master },
+    { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: currentClientAvatar },
+    { role: "master", name: storedDemoMaster?.displayName || (ua ? "Майстер Beauty" : "Beauty Master"), email: "beauty.master@gmail.com", avatar: storedDemoMaster?.avatar || roleAvatars.master },
     { role: "admin", name: ua ? "Адмін Beauty AI" : "Beauty AI Admin", email: "admin.beautyai@gmail.com", avatar: roleAvatars.admin },
   ];
 
@@ -398,11 +506,17 @@ function AuthModal({
     setTimeout(() => {
       setGooglePickerOpen(false);
       setGooglePickingRole(null);
+      const storedMaster = account.role === "master" ? readStoredMasterProfile(account.email) : null;
+      const latestAvatar = account.role === "client"
+        ? (readClientState().profileAvatar || account.avatar)
+        : account.role === "master"
+          ? (storedMaster?.avatar || account.avatar)
+          : account.avatar;
       onAuthenticated({
-        name: account.name,
+        name: account.role === "master" ? (storedMaster?.displayName || account.name) : account.name,
         email: account.email,
         role: account.role,
-        avatar: account.avatar,
+        avatar: latestAvatar,
       });
     }, 700);
   };
@@ -621,16 +735,29 @@ function AuthModal({
   );
 }
 
-function FavButton() {
-  const [active, setActive] = useState(false);
+function FavButton({ data }: { data: CardData }) {
+  const [active, setActive] = useState(() => Boolean(readStoredUser()) && readClientState().favorites.some((item) => item.title === data.title));
+
+  useEffect(() => {
+    const sync = () => setActive(Boolean(readStoredUser()) && readClientState().favorites.some((item) => item.title === data.title));
+    window.addEventListener("beautyai:client-state", sync as EventListener);
+    window.addEventListener("beautyai:auth-changed", sync as EventListener);
+    window.addEventListener("storage", sync);
+    return () => { window.removeEventListener("beautyai:client-state", sync as EventListener); window.removeEventListener("beautyai:auth-changed", sync as EventListener); window.removeEventListener("storage", sync); };
+  }, [data.title]);
+
   return (
     <button
       className={`fav-btn ${active ? "active" : ""}`}
-      aria-label="Додати в обране"
+      aria-label={active ? "Прибрати з обраного" : "Додати в обране"}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        setActive((prev) => !prev);
+        if (!readStoredUser()) {
+          window.dispatchEvent(new CustomEvent("beautyai:auth-required", { detail: { data, action: "favorite" } }));
+          return;
+        }
+        setActive(toggleClientFavorite(data));
       }}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -639,6 +766,7 @@ function FavButton() {
     </button>
   );
 }
+
 
 
 const SALON_WEBSITES: Record<string, string> = {
@@ -693,13 +821,18 @@ function BookingModal({
   onClose: () => void;
 }) {
   const dates = getBookingDates();
-  const services = data.tags.length ? data.tags : [data.type];
+  const storedMaster = data.variant === "solo" ? findStoredMasterState(data.title) : null;
+  const storedServices = (storedMaster?.services ?? []).filter((item) => item.active);
+  const services = storedServices.length ? storedServices.map((item) => item.name) : (data.tags.length ? data.tags : [data.type]);
   const [service, setService] = useState(services[0]);
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [time, setTime] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const times = getAvailableTimes(data.title, date);
+  const storedTimes = (storedMaster?.windows ?? []).filter((slot) => slot.date === date).map((slot) => slot.time);
+  const times = storedTimes.length ? storedTimes : getAvailableTimes(data.title, date);
+  const selectedStoredService = storedServices.find((item) => item.name === service);
+  const selectedPriceFrom = selectedStoredService ? String(selectedStoredService.price) : data.priceFrom;
   const bookingCode = `BA-${data.title.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, "").slice(0, 3).toUpperCase()}-${date.replace(/-/g, "").slice(4)}-${time.replace(":", "")}`;
 
   useEffect(() => {
@@ -770,10 +903,10 @@ function BookingModal({
                 <span>{service}</span>
                 <span>{dates.find((item) => item.value === date)?.label} {time ? `· ${time}` : ""}</span>
                 <span>{data.title} · {data.district}</span>
-                <b>{data.priceFrom} грн+</b>
+                <b>{selectedPriceFrom} грн+</b>
               </div>
 
-              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => setConfirmed(true)}>
+              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => { saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode); setConfirmed(true); }}>
                 {t.bookingModal.confirm}
               </button>
             </div>
@@ -913,17 +1046,10 @@ function PlaceDetailsModal({
         </button>
 
         <div
-          className="place-modal-hero"
+          className={`place-modal-hero ${isSolo ? "place-modal-hero-solo" : "place-modal-hero-salon"}`}
           style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
         >
           <div className="place-modal-hero-shade" />
-          <div className="place-modal-badges">
-            {data.badges.map((badge) => (
-              <span key={badge.text} className={`badge ${badge.kind}`}>
-                {badge.text}
-              </span>
-            ))}
-          </div>
 
           <div className="place-modal-hero-copy">
             <p>{data.type}</p>
@@ -1026,61 +1152,56 @@ function PlaceDetailsModal({
                 </div>
               )}
 
-              <div>
-                <span>{t.placeModal.status}</span>
-                <strong className="place-modal-status">
-                  ● {isSolo ? t.available : t.open}
-                </strong>
-              </div>
             </div>
           </section>
 
           <section className="place-modal-section place-modal-reviews">
-            <button
-              type="button"
-              className="place-modal-reviews-toggle"
-              onClick={() => setReviewsOpen((prev) => !prev)}
-              aria-expanded={reviewsOpen}
-            >
-              <div>
-                <h3>{t.placeModal.reviewsTitle}</h3>
-                <span className="place-modal-reviews-summary">
-                  {data.rating.toFixed(1)} ★ · {data.reviews} {t.placeModal.reviews}
-                </span>
-              </div>
-              <span className={`place-modal-reviews-arrow ${reviewsOpen ? "open" : ""}`} aria-hidden="true">⌄</span>
-            </button>
+            <h3>{t.placeModal.reviewsTitle}</h3>
 
-            {reviewsOpen && (
-              <div className="place-modal-review-list">
-                {reviews.slice(0, 3).map((review, index) => (
-                  <article
-                    className="place-modal-review"
-                    key={`${review.author}-${review.date ?? index}`}
+            <div className="place-modal-review-list">
+              {reviews.slice(0, reviewsOpen ? 3 : 1).map((review, index) => (
+                <article
+                  className="place-modal-review"
+                  key={`${review.author}-${review.date ?? index}`}
+                >
+                  <div className="place-modal-review-head">
+                    <strong>{review.author}</strong>
+                    {review.date && <span>{review.date}</span>}
+                  </div>
+
+                  <div
+                    className="place-modal-review-stars"
+                    aria-label={`${review.rating} / 5`}
                   >
-                    <div className="place-modal-review-head">
-                      <strong>{review.author}</strong>
-                      {review.date && <span>{review.date}</span>}
-                    </div>
+                    {Array.from({ length: 5 }, (_, starIndex) => (
+                      <span
+                        key={starIndex}
+                        className={starIndex < review.rating ? "active" : ""}
+                      >
+                        ★
+                      </span>
+                    ))}
+                  </div>
 
-                    <div
-                      className="place-modal-review-stars"
-                      aria-label={`${review.rating} / 5`}
-                    >
-                      {Array.from({ length: 5 }, (_, starIndex) => (
-                        <span
-                          key={starIndex}
-                          className={starIndex < review.rating ? "active" : ""}
-                        >
-                          ★
-                        </span>
-                      ))}
-                    </div>
+                  <p>{review.text}</p>
+                </article>
+              ))}
+            </div>
 
-                    <p>{review.text}</p>
-                  </article>
-                ))}
-              </div>
+            {reviews.length > 1 && (
+              <button
+                type="button"
+                className="place-modal-reviews-toggle"
+                onClick={() => setReviewsOpen((prev) => !prev)}
+                aria-expanded={reviewsOpen}
+              >
+                <span>
+                  {reviewsOpen
+                    ? t.placeModal.hideReviews
+                    : `${t.placeModal.showMoreReviews} ${Math.min(2, reviews.length - 1)}`}
+                </span>
+                <span className={`place-modal-reviews-arrow ${reviewsOpen ? "open" : ""}`} aria-hidden="true">⌄</span>
+              </button>
             )}
           </section>
 
@@ -1115,6 +1236,10 @@ function Card({
   const handleBook = () => {
     if (isSolo) {
       setShowProfile(false);
+      if (!readStoredUser()) {
+        window.dispatchEvent(new CustomEvent("beautyai:auth-required", { detail: { data, action: "booking" } }));
+        return;
+      }
       setShowBooking(true);
       return;
     }
@@ -1134,7 +1259,7 @@ function Card({
             </span>
           ))}
         </div>
-        <FavButton />
+        <FavButton data={data} />
       </div>
 
       <div className="card-body">
@@ -1972,17 +2097,7 @@ function PartnerOffersCarousel({
                 {offer.discount}
               </span>
 
-              <span className="partner-valid">
-                {offer.validUntil}
-              </span>
-
-              {offer.gift && (
-                <span className="partner-gift">
-                  🎁 {offer.gift}
-                </span>
-              )}
-
-              <FavButton />
+              <FavButton data={{ image: offer.image, badges: [], title: offer.partner, type: offer.title, rating: offer.rating, reviews: offer.reviews, district: offer.district, distance: offer.distance, tags: [], priceFrom: offer.newPrice.replace(/[^0-9]/g, "") || offer.newPrice }} />
             </div>
 
             <div className="partner-offer-body">
@@ -2044,6 +2159,8 @@ function PartnerOffersCarousel({
                 <strong>
                   {offer.newPrice} грн
                 </strong>
+
+                <span className="partner-valid-inline">{offer.validUntil}</span>
               </div>
 
               <button
@@ -2140,9 +2257,9 @@ function PartnerOffersSection({
   return (
     <section className="section partner-offers-section" id="promotions">
       <div className="section-head partner-section-head">
-        <div className="partner-section-copy">
-          <h2 className="section-title">
-            <span className="accent">
+        <div className="partner-section-copy section-heading-copy">
+          <div className="section-title-anchor">
+            <span className="section-title-floating-icon accent" aria-hidden="true">
               <svg
                 className="section-icon"
                 width="60"
@@ -2159,8 +2276,8 @@ function PartnerOffersSection({
                 <path d="M2 9h20" />
               </svg>
             </span>
-            {title}
-          </h2>
+            <h2 className="section-title section-title-centered">{title}</h2>
+          </div>
 
           <p className="section-sub">{subtitle}</p>
         </div>
@@ -2219,9 +2336,9 @@ function KyivTopSection({
   return (
     <section className="section kyiv-top-section" id="nearby">
       <div className="section-head kyiv-top-head">
-        <div>
-          <h2 className="section-title kyiv-top-title">
-            <span className="kyiv-top-crown" aria-hidden="true">
+        <div className="section-heading-copy">
+          <div className="section-title-anchor">
+            <span className="section-title-floating-icon kyiv-top-crown" aria-hidden="true">
               <svg
                 width="28"
                 height="28"
@@ -2233,8 +2350,10 @@ function KyivTopSection({
                 <circle cx="12" cy="5.5" r="1.05" fill="#f7f4fb" />
               </svg>
             </span>
-            {ua ? "Найкращі в Києві" : "Best in Kyiv"}
-          </h2>
+            <h2 className="section-title section-title-centered kyiv-top-title">
+              {ua ? "Найкращі в Києві" : "Best in Kyiv"}
+            </h2>
+          </div>
         </div>
       </div>
 
@@ -2263,7 +2382,7 @@ function KyivTopSection({
                     )}
                     <span className="kyiv-cover-award-rank">{i + 1}</span>
                   </div>
-                  <FavButton />
+                  <FavButton data={card} />
                 </div>
 
                 <div className="kyiv-cover-glass-title">
@@ -2358,6 +2477,11 @@ function KyivTopSection({
           onLocationClick={onLocationClick}
           onBook={() => {
             if (activeCard.variant === "solo") {
+              if (!readStoredUser()) {
+                window.dispatchEvent(new CustomEvent("beautyai:auth-required", { detail: { data: activeCard, action: "booking" } }));
+                setActiveCard(null);
+                return;
+              }
               setBookingCard(activeCard);
               setActiveCard(null);
             } else {
@@ -2400,11 +2524,12 @@ function PanelCarouselSection({
 }) {
   return (
     <section className="section subtle-panel-section" id={id}>
-      <div className="section-head">
-        <div>
-          <h2 className="section-title">
-            <span className="accent">{icon}</span> {title}
-          </h2>
+      <div className="section-head section-head-centered">
+        <div className="section-heading-copy">
+          <div className="section-title-anchor">
+            <span className="section-title-floating-icon accent" aria-hidden="true">{icon}</span>
+            <h2 className="section-title section-title-centered">{title}</h2>
+          </div>
           <p className="section-sub">{subtitle}</p>
         </div>
       </div>
@@ -2412,7 +2537,31 @@ function PanelCarouselSection({
     </section>
   );
 }
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  manicure: ["манікюр", "гель-лак", "дизайн нігтів"],
+  pedicure: ["педикюр"],
+  haircut: ["стрижка"],
+  coloring: ["фарбування"],
+  botox: ["ботокс"],
+  massage: ["масаж"],
+  eyelashes: ["нарощування вій", "нарощування", "вії"],
+  brows: ["брови"],
+  makeup: ["макіяж"],
+  cosmetology: ["косметологія"],
+  depilation: ["депіляція"],
+  solarium: ["солярій"],
+  facial: ["чистка обличчя"],
+  spa: ["spa"],
+};
 
+function filterByCategory(cards: CardData[], category: string): CardData[] {
+  const keywords = CATEGORY_KEYWORDS[category] ?? [];
+  return cards.filter((card) =>
+    card.tags.some((tag) =>
+      keywords.some((keyword) => tag.toLowerCase().includes(keyword))
+    )
+  );
+}
 export default function App() {
   const [lang, setLang] = useState<Lang>("ua");
   const [authOpen, setAuthOpen] = useState(false);
@@ -2429,8 +2578,79 @@ export default function App() {
   const [view, setView] = useState<AppView>("home");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("manicure");
   const [selectedMapLocation, setSelectedMapLocation] = useState<SelectedMapLocation | null>(null);
+  const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
+  const [pendingClientAction, setPendingClientAction] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
+  const [bookingCard, setBookingCard] = useState<CardData | null>(null);
   const t = dict[lang];
+  const filteredSalons = filterByCategory(recommendations, activeCategory);
+
+  useEffect(() => {
+    const onAuthRequired = (event: Event) => {
+      const detail = (event as CustomEvent<{ data?: CardData; action?: "booking" | "favorite" }>).detail;
+      if (detail?.data) setClientAuthGate({ data: detail.data, action: detail.action ?? "booking" });
+    };
+    window.addEventListener("beautyai:auth-required", onAuthRequired as EventListener);
+    return () => window.removeEventListener("beautyai:auth-required", onAuthRequired as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const onProfileAvatar = (event: Event) => {
+      const avatar = (event as CustomEvent<string>).detail;
+      if (!avatar) return;
+      const state = readClientState();
+      if (state.profileAvatar !== avatar) writeClientState({ ...state, profileAvatar: avatar });
+      setUser((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, avatar };
+        sessionStorage.setItem(STORED_USER_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    window.addEventListener("beautyai:profile-avatar", onProfileAvatar as EventListener);
+    return () => window.removeEventListener("beautyai:profile-avatar", onProfileAvatar as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const onMasterProfile = (event: Event) => {
+      const profile = (event as CustomEvent<{ displayName?: string; avatar?: string }>).detail;
+      if (!profile) return;
+      setUser((prev) => {
+        if (!prev || prev.role !== "master") return prev;
+        const next = { ...prev, name: profile.displayName || prev.name, avatar: profile.avatar || prev.avatar };
+        sessionStorage.setItem(STORED_USER_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    window.addEventListener("beautyai:master-profile", onMasterProfile as EventListener);
+    return () => window.removeEventListener("beautyai:master-profile", onMasterProfile as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const onRebook = (event: Event) => {
+      const booking = (event as CustomEvent<ClientBooking>).detail;
+      if (!booking) return;
+      const card: CardData = {
+        image: booking.image,
+        badges: [],
+        title: booking.title,
+        type: booking.type,
+        rating: 5,
+        reviews: 0,
+        district: booking.district,
+        distance: "",
+        openNow: true,
+        tags: [booking.service],
+        priceFrom: booking.priceFrom,
+        variant: "solo",
+      };
+      setView("home");
+      window.setTimeout(() => setBookingCard(card), 0);
+    };
+    window.addEventListener("beautyai:rebook", onRebook as EventListener);
+    return () => window.removeEventListener("beautyai:rebook", onRebook as EventListener);
+  }, []);
 
   const handleLocationClick = (name: string, district: string, distance: string) => {
     const coords = LOCATION_COORDINATES[name] ?? DISTRICT_FALLBACKS[district] ?? [50.4412, 30.5390];
@@ -2445,8 +2665,30 @@ export default function App() {
   };
 
   const handleAuthenticated = (nextUser: MockUser) => {
-    setUser(nextUser);
+    const clientAvatar = nextUser.role === "client" ? readClientState().profileAvatar : undefined;
+    const masterProfile = nextUser.role === "master" ? readStoredMasterProfile(nextUser.email) : null;
+    const hydratedUser = nextUser.role === "master"
+      ? { ...nextUser, name: masterProfile?.displayName || nextUser.name, avatar: masterProfile?.avatar || nextUser.avatar }
+      : clientAvatar
+        ? { ...nextUser, avatar: clientAvatar }
+        : nextUser;
+    setUser(hydratedUser);
+    sessionStorage.setItem(STORED_USER_KEY, JSON.stringify(hydratedUser));
+    window.dispatchEvent(new CustomEvent("beautyai:auth-changed"));
+    if (nextUser.role === "client" && authIntent.mode === "register") awardRegistrationBonus();
     setAuthOpen(false);
+
+    if (pendingClientAction) {
+      if (pendingClientAction.action === "booking") {
+        setBookingCard(pendingClientAction.data);
+      } else {
+        toggleClientFavorite(pendingClientAction.data);
+      }
+      setPendingClientAction(null);
+      setView("home");
+      return;
+    }
+
     setView("dashboard");
   };
 
@@ -2455,6 +2697,9 @@ export default function App() {
     setUser(null);
     setView("home");
     clearAuthTokens();
+    sessionStorage.removeItem(STORED_USER_KEY);
+    // Keep favourites in the account data, but immediately clear their active UI state on the public site.
+    window.dispatchEvent(new CustomEvent("beautyai:auth-changed"));
   };
 
   if (view === "dashboard" && user) {
@@ -2464,6 +2709,7 @@ export default function App() {
           user={user}
           lang={lang}
           onHome={() => setView("home")}
+          onLogout={handleLogout}
           onRoleChange={(role) => setUser((prev) => prev ? { ...prev, role, avatar: roleAvatars[role] } : prev)}
         />
       </div>
@@ -2578,7 +2824,7 @@ export default function App() {
           </div>
 
           <div className="hero-categories">
-            <CategoryFilters lang={lang} />
+            <CategoryFilters lang={lang} activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
           </div>
         </div>
       </section>
@@ -2591,15 +2837,20 @@ export default function App() {
           }`}
         >
           <div className="recommendation-intro-head">
-            <h2>
+            <div className="recommendation-title-anchor">
               <img
                 src={beautyAISparkles}
                 alt=""
                 aria-hidden="true"
-                className="recommendation-heading-spark"
+                className="recommendation-heading-spark recommendation-heading-spark-floating"
               />
-              {t.sections.recommendations.title}
-            </h2>
+              <h2>{t.sections.recommendations.title}</h2>
+              {filteredSalons.length === 0 && (
+                <span className="recommendations-empty-note">
+                  {lang === "ua" ? "Салонів не знайдено" : "No salons found"}
+                </span>
+              )}
+            </div>
 
               <div className="recommendations-filter-menu recommendations-filter-menu-inline">
                 <button
@@ -2627,21 +2878,21 @@ export default function App() {
             )}
            
           </div>
-          <RecommendationCarousel cards={recommendations} t={t} variant="salons" onLocationClick={handleLocationClick} />
+          <RecommendationCarousel cards={filteredSalons} t={t} variant="salons" onLocationClick={handleLocationClick} />
         </div>
 
         <div className="recommendation-row recommendation-row-masters" id="masters">
           <div className="recommendation-intro">
             <div className="recommendation-intro-head">
-              <h2>
+              <div className="recommendation-title-anchor">
                 <img
                   src={beautyAISparkles}
                   alt=""
                   aria-hidden="true"
-                  className="recommendation-heading-spark"
+                  className="recommendation-heading-spark recommendation-heading-spark-floating"
                 />
-                {t.sections.soloMasters.title}
-              </h2>
+                <h2>{t.sections.soloMasters.title}</h2>
+              </div>
             </div>
             
           </div>
@@ -2674,9 +2925,8 @@ export default function App() {
             width="20"
             height="20"
             viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
+            fill="currentColor"
+            stroke="none"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
@@ -2788,6 +3038,23 @@ export default function App() {
         </div>
       )}
 
+      {clientAuthGate && !authOpen && (
+        <div className="booking-auth-gate-overlay" role="presentation" onMouseDown={() => setClientAuthGate(null)}>
+          <div className="booking-auth-gate" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="booking-auth-gate-close" type="button" onClick={() => setClientAuthGate(null)}>×</button>
+            <span className="booking-auth-gate-kicker">BEAUTY AI</span>
+            <h3>{clientAuthGate.action === "booking" ? (lang === "ua" ? "Увійдіть, щоб записатися" : "Sign in to book") : (lang === "ua" ? "Увійдіть, щоб зберегти" : "Sign in to save")}</h3>
+            <p>{clientAuthGate.action === "booking" ? (lang === "ua" ? `Щоб забронювати час у ${clientAuthGate.data.title}, увійдіть у свій акаунт або зареєструйтесь.` : `Sign in or create an account to book ${clientAuthGate.data.title}.`) : (lang === "ua" ? `Щоб додати ${clientAuthGate.data.title} у «Сподобалось», увійдіть або зареєструйтесь.` : `Sign in or create an account to save ${clientAuthGate.data.title}.`)}</p>
+            <button type="button" className="cta-btn" onClick={() => { setPendingClientAction(clientAuthGate); setClientAuthGate(null); setAuthIntent({ mode: "login", role: "client" }); setAuthOpen(true); }}>
+              {lang === "ua" ? "Увійти" : "Sign in"}
+            </button>
+            <button type="button" className="booking-auth-register" onClick={() => { setPendingClientAction(clientAuthGate); setClientAuthGate(null); setAuthIntent({ mode: "register", role: "client" }); setAuthOpen(true); }}>
+              {lang === "ua" ? "Зареєструватися" : "Create account"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {authOpen && (
         <AuthModal
           lang={lang}
@@ -2797,6 +3064,10 @@ export default function App() {
           initialRole={authIntent.role}
           initialPartnerKind={authIntent.partnerKind}
         />
+      )}
+
+      {bookingCard && (
+        <BookingModal data={bookingCard} t={t} onClose={() => setBookingCard(null)} />
       )}
 
       {selectedMapLocation && (
