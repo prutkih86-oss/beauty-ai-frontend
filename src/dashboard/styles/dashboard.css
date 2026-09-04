@@ -858,7 +858,7 @@
 
 .recommendation-row {
   display: block;
-  margin-bottom: 14px;
+  margin-bottom: 0px;
   padding: 14px 16px 16px;
   border: 1px solid rgba(36, 26, 61, 0.07);
   border-radius: 22px;
@@ -1333,7 +1333,13 @@
 
   margin: 0px auto 22px;
 }
+.section-divider-idle {
+  margin-top: 0;
+}
 
+.section-divider-results {
+  margin-top: 8px;
+}
 .section-divider::before,
 .section-divider::after {
   content: "";
@@ -1348,8 +1354,10 @@
 }
 
 .section-divider span {
-  color: #241a3d;
-  font-size: 22px;
+   color: #241a3d;
+  font-size: 12px;
+  letter-spacing: 5px;
+  opacity: 0.75;
 }
 .partner-card-meta {
   display: flex;
@@ -1415,8 +1423,8 @@
 /* ---------- Kyiv Top: reference redesign v4 ---------- */
 .kyiv-top-section {
   position: relative;
-  margin-top: 12px;
-  padding: 18px 16px 20px;
+  margin-top: 0px;
+  padding: 24px 16px 20px;
   border: 1px solid rgba(81, 53, 155, 0.10);
   border-radius: 22px;
   background: linear-gradient(135deg, rgba(247, 244, 251, 0.96) 0%, rgba(238, 233, 247, 0.72) 100%);

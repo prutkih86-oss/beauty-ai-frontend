@@ -132,8 +132,8 @@ const Icons = {
 
 interface CategoryFiltersProps {
   lang?: "ua" | "en";
-  activeCategory: string;
-  onCategoryChange: (id: string) => void;
+  activeCategory: string | null;
+  onCategoryChange: (id: string, label: string) => void;
 }
 
 export default function CategoryFilters({ lang = "ua", activeCategory, onCategoryChange }: CategoryFiltersProps) {
@@ -166,7 +166,7 @@ export default function CategoryFilters({ lang = "ua", activeCategory, onCategor
       <button
         key={cat.id}
         className={`category-chip ${activeCategory === cat.id ? "active" : ""}`}
-        onClick={() => onCategoryChange(cat.id)}
+        onClick={() => onCategoryChange(cat.id, cat.label)}
       >
         <span className="chip-icon">
           <IconComponent />

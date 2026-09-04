@@ -5,6 +5,7 @@ import MapSection from "./MapSection";
 import CategoryFilters from "./CategoryFilters";
 import FilterBar from './FilterBar';
 import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
+import settingsIcon from "./assets/settings.png";
 import DashboardShell from "./dashboard/DashboardShell";
 
 type CardReview = {
@@ -1362,12 +1363,14 @@ function Card({
   t,
   hideTags = false,
   hideReason = false,
+  hideAiMatch = false,
   onLocationClick,
 }: {
   data: CardData;
   t: Translations;
   hideTags?: boolean;
   hideReason?: boolean;
+  hideAiMatch?: boolean;
   onLocationClick?: (name: string, district: string, distance: string) => void;
 }) {
   const [showReason, setShowReason] = useState(false);
@@ -1395,11 +1398,13 @@ function Card({
         style={{ ['--card-photo' as string]: `url(${data.image})` }}
       >
         <div className="card-badges">
-          {data.badges.map((b) => (
-            <span key={b.text} className={`badge ${b.kind}`}>
-              {b.text}
-            </span>
-          ))}
+          {data.badges
+            .filter((b) => !(hideAiMatch && b.kind === "ai-match"))
+            .map((b) => (
+              <span key={b.text} className={`badge ${b.kind}`}>
+                {b.text}
+              </span>
+            ))}
         </div>
         <FavButton data={data} />
       </div>
@@ -2042,11 +2047,13 @@ function RecommendationCarousel({
   t,
   variant,
   onLocationClick,
+  hasSearch = true,
 }: {
   cards: CardData[];
   t: Translations;
   variant: "salons" | "masters" | "nearby" | "worth-trying" | "fresh";
   onLocationClick?: (name: string, district: string, distance: string) => void;
+  hasSearch?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -2123,6 +2130,7 @@ function RecommendationCarousel({
             t={t}
             hideTags
             hideReason
+            hideAiMatch={!hasSearch}
             onLocationClick={onLocationClick}
           />
         ))}
@@ -2480,7 +2488,10 @@ function KyivTopSection({
       <div className="section-head kyiv-top-head">
         <div className="section-heading-copy">
           <div className="section-title-anchor">
-            <span className="section-title-floating-icon kyiv-top-crown" aria-hidden="true">
+            <span
+              className="section-title-floating-icon kyiv-top-crown"
+              aria-hidden="true"
+            >
               <svg
                 width="28"
                 height="28"
@@ -2492,10 +2503,17 @@ function KyivTopSection({
                 <circle cx="12" cy="5.5" r="1.05" fill="#f7f4fb" />
               </svg>
             </span>
+
             <h2 className="section-title section-title-centered kyiv-top-title">
               {ua ? "Найкращі в Києві" : "Best in Kyiv"}
             </h2>
           </div>
+
+          <p className="section-sub kyiv-top-subtitle">
+            {ua
+              ? "Топ за рейтингом і бронюваннями"
+              : "Top by rating and bookings"}
+          </p>
         </div>
       </div>
 
@@ -2720,15 +2738,56 @@ export default function App() {
   const [view, setView] = useState<AppView>("home");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("manicure");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<number | null>(null);
   const [selectedMapLocation, setSelectedMapLocation] = useState<SelectedMapLocation | null>(null);
   const [masterRegistryVersion, setMasterRegistryVersion] = useState(0);
   const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [pendingClientAction, setPendingClientAction] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [bookingCard, setBookingCard] = useState<CardData | null>(null);
   const t = dict[lang];
-  const filteredSalons = filterByCategory(recommendations, activeCategory);
+    const filteredSalons = appliedSearch.trim()
+    ? recommendations.filter((card) =>
+        card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
+      )
+    : recommendations;
+  const hasSearch = appliedSearch.trim().length > 0;
+  const runSearch = () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    if (searchTimeoutRef.current !== null) {
+      window.clearTimeout(searchTimeoutRef.current);
+    }
+
+    setIsSearching(true);
+    searchTimeoutRef.current = window.setTimeout(() => {
+      setAppliedSearch(query);
+      setIsSearching(false);
+      searchTimeoutRef.current = null;
+    }, 900);
+  };
+
+  const resetSearch = () => {
+    if (searchTimeoutRef.current !== null) {
+      window.clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+
+    setSearchQuery("");
+    setAppliedSearch("");
+    setIsSearching(false);
+    setActiveCategory(null);
+  };
   const liveMasterRecommendations = buildStoredMasterCards(soloMastersRecommendations);
+  const filteredMasters = appliedSearch.trim()
+    ? liveMasterRecommendations.filter((card) =>
+        card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
+      )
+    : liveMasterRecommendations;
   void masterRegistryVersion;
 
   useEffect(() => {
@@ -2977,8 +3036,26 @@ export default function App() {
             </p>
 
             <div className="search-bar">
-              <input type="text" placeholder={t.searchPlaceholder} />
-              <button className="search-btn">
+              <input
+                type="text"
+                placeholder={t.searchPlaceholder}
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") runSearch();
+                }}
+              />
+              {(searchQuery || appliedSearch) && (
+                <button
+                  type="button"
+                  className="search-reset-btn"
+                  onClick={resetSearch}
+                  aria-label={lang === "ua" ? "Скинути пошук" : "Reset search"}
+                >
+                  ×
+                </button>
+              )}
+              <button className="search-btn" onClick={runSearch}>
                 <img
                   src={beautyAISparkles}
                   alt=""
@@ -2994,12 +3071,66 @@ export default function App() {
           </div>
 
           <div className="hero-categories">
-            <CategoryFilters lang={lang} activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
+            <CategoryFilters
+              lang={lang}
+              activeCategory={activeCategory}
+              onCategoryChange={(id, label) => {
+                setActiveCategory(id);
+                setSearchQuery(label);
+              }}
+            />
           </div>
         </div>
       </section>
 
     <section className="section ai-recommendations" id="salons">
+      {isSearching ? (
+        <div
+          className="recommendations-loading-panel"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="ai-sparkle-loader" aria-hidden="true">
+            <span className="ai-sparkle" />
+            <span className="ai-sparkle" />
+            <span className="ai-sparkle" />
+            <span className="ai-sparkle" />
+          </div>
+          <div className="recommendations-idle-copy">
+            <strong>
+              {lang === "ua"
+                ? "AI підбирає найкращі варіанти…"
+                : "AI is finding the best matches…"}
+            </strong>
+            <span>
+              {lang === "ua"
+                ? "Це може зайняти кілька секунд"
+                : "This may take a few seconds"}
+            </span>
+          </div>
+        </div>
+      ) : !hasSearch ? (
+        <div className="recommendations-idle-panel">
+          <div className="recommendations-idle-icon" aria-hidden="true">
+            <img
+              src={beautyAISparkles}
+              alt=""
+              className="recommendations-idle-sparkles"
+            />
+          </div>
+          <div className="recommendations-idle-copy">
+            <strong>
+              {lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request"}
+            </strong>
+            <span>
+              {lang === "ua"
+                ? "Результати з'являться тут після пошуку"
+                : "Results will appear here after you search"}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <>
       <div className="recommendation-row recommendation-row-salons">
         <div
           className={`recommendation-intro ${
@@ -3015,40 +3146,77 @@ export default function App() {
                 className="recommendation-heading-spark recommendation-heading-spark-floating"
               />
               <h2>{t.sections.recommendations.title}</h2>
-              {filteredSalons.length === 0 && (
-                <span className="recommendations-empty-note">
-                  {lang === "ua" ? "Салонів не знайдено" : "No salons found"}
-                </span>
-              )}
             </div>
 
               <div className="recommendations-filter-menu recommendations-filter-menu-inline">
                 <button
-                  className={`recommendations-filter-toggle ${recommendationFiltersOpen ? "is-open" : ""}`}
+                  className={`recommendations-filter-toggle recommendations-ai-settings-toggle ${
+                    recommendationFiltersOpen ? "is-open" : ""
+                  }`}
                   type="button"
                   aria-expanded={recommendationFiltersOpen}
+                  aria-label={
+                    lang === "ua"
+                      ? "Налаштувати AI-підбір"
+                      : "Customize AI recommendations"
+                  }
+                  data-tooltip={
+                    lang === "ua"
+                      ? "Налаштувати AI-підбір"
+                      : "Customize AI recommendations"
+                  }
                   onClick={() => setRecommendationFiltersOpen((open) => !open)}
                 >
-                  
-                  {lang === "ua" ? "Фільтри" : "Filters"}
-                  <span
-                    className={`recommendations-filter-chevron ${recommendationFiltersOpen ? "rotated" : ""}`}
+                  <img
+                    src={settingsIcon}
+                    alt=""
                     aria-hidden="true"
-                  >
-                    ˅
-                  </span>
+                    className="recommendations-ai-settings-icon"
+                  />
                 </button>
               </div>
             </div>
 
+            <p className="section-sub">
+              {filteredSalons.length > 0
+                ? (lang === "ua" ? "Найкращі збіги за вашим запитом" : "Best matches for your request")
+                : (lang === "ua" ? "Салонів не знайдено" : "No salons found")}
+            </p>
+
             {recommendationFiltersOpen && (
               <div className="recommendations-filter-panel recommendations-filter-panel-inline">
-                <FilterBar lang={lang} onFilterChange={(filters: any) => console.log(filters)} />
+                <div className="recommendations-filter-panel-heading">
+                  <strong>
+                    {lang === "ua" ? (
+                      <>
+                        НАЛАШТУВАННЯ{" "}
+                        <span className="recommendations-filter-ai">AI</span>
+                        {" "}ПІДБОРУ
+                      </>
+                    ) : (
+                      <>
+                        <span className="recommendations-filter-ai">AI</span>
+                        {" "}MATCH SETTINGS
+                      </>
+                    )}
+                  </strong>
+
+                  <span>
+                    {lang === "ua"
+                      ? "Уточніть параметри для точніших рекомендацій"
+                      : "Refine the parameters for more accurate recommendations"}
+                  </span>
+                </div>
+
+                <FilterBar
+                  lang={lang}
+                  onFilterChange={(filters: any) => console.log(filters)}
+                />
               </div>
             )}
            
           </div>
-          <RecommendationCarousel cards={filteredSalons} t={t} variant="salons" onLocationClick={handleLocationClick} />
+          <RecommendationCarousel cards={filteredSalons} t={t} variant="salons" onLocationClick={handleLocationClick} hasSearch={hasSearch} />
         </div>
 
         <div className="recommendation-row recommendation-row-masters" id="masters">
@@ -3064,13 +3232,23 @@ export default function App() {
                 <h2>{t.sections.soloMasters.title}</h2>
               </div>
             </div>
-            
+
+            <p className="section-sub">
+              {filteredMasters.length > 0
+                ? (lang === "ua" ? "Найкращі майстри за вашим запитом" : "Best masters for your request")
+                : (lang === "ua" ? "Майстрів не знайдено" : "No masters found")}
+            </p>
           </div>
-          <RecommendationCarousel cards={liveMasterRecommendations} t={t} variant="masters" onLocationClick={handleLocationClick} />
+          <RecommendationCarousel cards={filteredMasters} t={t} variant="masters" onLocationClick={handleLocationClick} hasSearch={hasSearch} />
         </div>
-      </section>
-      <div className="section-divider" aria-hidden="true">
-        <span>✦</span>
+        </>
+      )}
+    </section>
+      <div
+        className={`section-divider ${hasSearch && !isSearching ? "section-divider-results" : "section-divider-idle"}`}
+        aria-hidden="true"
+      >
+        <span>✦✦✦</span>
       </div>
       <KyivTopSection
         cards={nearby}
