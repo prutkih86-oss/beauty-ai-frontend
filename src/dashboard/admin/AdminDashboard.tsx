@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { getToken, login } from "./api/client";
 import type { AuthRole, Lang, MockUser } from "../types";
 import AdminLayout, { type AdminSection } from "./AdminLayout";
 import AdminHome from "./AdminHome";
@@ -40,14 +39,7 @@ export default function AdminDashboard({
 }) {
   const [section, setSection] = useState<AdminSection>("dashboard");
   const { title, subtitle } = SECTION_TITLES[section];
-  useEffect(() => {
-      if (!getToken()) {
-        login(
-          import.meta.env.VITE_API_EMAIL,
-          import.meta.env.VITE_API_PASSWORD
-        ).catch((e) => console.error("Admin auto-login failed:", e));
-      }
-    }, []);
+  
   const page = {
     dashboard: <AdminHome onHome={onHome} />,
     analytics: <AdminAnalytics />,

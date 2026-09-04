@@ -3,20 +3,36 @@ const API_BASE_URL = import.meta.env.DEV
   : import.meta.env.VITE_API_BASE_URL ||
     "https://beautyaiservice.polandcentral.cloudapp.azure.com";
 
-const TOKEN_KEY = "beauty_ai_admin_token";
+const ADMIN_TOKEN_KEY = "beauty_ai_admin_token";
+const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
 
 class ApiAuthError extends Error {}
 
 function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    const sharedAuth = localStorage.getItem(AUTH_TOKENS_KEY);
+
+    if (sharedAuth) {
+      const tokens = JSON.parse(sharedAuth);
+
+      if (tokens?.access) {
+        return tokens.access;
+      }
+    }
+  } catch {
+    // Якщо shared token пошкоджений — пробуємо старий admin token.
+  }
+
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
 }
 
 function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(ADMIN_TOKEN_KEY, token);
 }
 
 function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(AUTH_TOKENS_KEY);
 }
 
 async function login(email: string, password: string): Promise<string> {
