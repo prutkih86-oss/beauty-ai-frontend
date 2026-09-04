@@ -5012,3 +5012,94 @@ button .place-modal-reviews-summary {
 .partner-section-head {
   padding-top: 11px;
 }
+/* ---------- Booking auth gate ---------- */
+
+.booking-auth-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(24, 15, 43, 0.58);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.booking-auth-gate {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 30px 28px 26px;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(24, 15, 43, 0.32);
+  text-align: center;
+}
+
+.booking-auth-gate-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #5f566b;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.booking-auth-gate-close:hover {
+  background: #f4f0fa;
+  color: #241a3d;
+}
+
+.booking-auth-gate-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: #9840f0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.booking-auth-gate h3 {
+  margin: 0 0 10px;
+  color: #241a3d;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.booking-auth-gate p {
+  margin: 0 0 22px;
+  color: #6f6878;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.booking-auth-gate .cta-btn {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.booking-auth-register {
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: #7651b8;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.booking-auth-register:hover {
+  text-decoration: underline;
+}

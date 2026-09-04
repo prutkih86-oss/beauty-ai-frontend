@@ -2605,7 +2605,32 @@ function KyivTopSection({
                 </div>
 
                 <div className="kyiv-cover-actions">
-                  <button className="kyiv-cover-book" type="button">
+                 <button
+                    className="kyiv-cover-book"
+                    type="button"
+                    onClick={() => {
+                      const currentUser = readStoredUser();
+
+                      if (!currentUser || currentUser.role !== "client") {
+                        window.dispatchEvent(
+                          new CustomEvent("beautyai:auth-required", {
+                            detail: {
+                              data: card,
+                              action: "booking",
+                            },
+                          })
+                        );
+                        return;
+                      }
+
+                      if (card.variant === "solo") {
+                        setBookingCard(card);
+                        return;
+                      }
+
+                      openSalonWebsite(card.title, card.website);
+                    }}
+                  >
                     {ua ? "Записатися" : "Book now"}
                   </button>
                   <button
