@@ -1,75 +1,118 @@
 # Beauty AI Frontend
 
-Frontend application for **Beauty AI** — a beauty services booking platform with personalized recommendations and salon discovery.
+Frontend application for **Beauty AI** — a beauty services booking platform with personalized recommendations, salon discovery, booking workflows, role-based dashboards, and analytics.
 
 ## Overview
 
-Beauty AI is a team project focused on simplifying the process of finding and booking beauty services.
+Beauty AI is a team project focused on simplifying the process of finding, booking, and managing beauty services.
 
-The frontend provides a modern responsive interface where users can:
+The frontend includes interfaces for:
 
-* search for beauty services and salons;
-* browse service categories;
-* view personalized recommendation sections;
-* explore nearby beauty locations on an interactive map;
-* discover partner offers and top-rated services;
-* use a responsive interface across desktop and mobile devices.
-  
+- customers;
+- beauty masters;
+- administrators.
+
+The platform combines service discovery, booking functionality, personalized recommendations, dashboards, analytics, and administrative tools in one web application.
+
 ## Preview
 
-### Desktop
+### Home Page
 
-<img src="docs/frontend-desktop.jpg" width="100%" alt="Beauty AI Frontend Desktop">
+<img src="docs/home.jpg" width="100%" alt="Beauty AI Home Page">
 
-### Mobile
+### User Dashboard
 
-<p align="center">
-  <img src="docs/frontend-mobile.jpg" width="320" alt="Beauty AI Frontend Mobile">
-</p>
+<img src="docs/user-dashboard.jpg" width="100%" alt="Beauty AI User Dashboard">
+
+### Master Dashboard
+
+<img src="docs/master-dashboard.jpg" width="100%" alt="Beauty AI Master Dashboard">
+
+### Admin Dashboard
+
+<img src="docs/admin-dashboard.jpg" width="100%" alt="Beauty AI Admin Dashboard">
+
+### Admin Analytics
+
+<img src="docs/admin-analytics.jpg" width="100%" alt="Beauty AI Admin Analytics">
 
 ## My Contribution
 
-As part of the project, I worked on the frontend implementation and UI development.
+As part of the project, I worked on frontend implementation, interface development, dashboards, analytics modules, and platform integration.
 
 My contribution includes:
 
-* implementing the main frontend interface;
-* building reusable React components;
-* implementing responsive layouts;
-* developing search and category filtering UI;
-* integrating the salon map section;
-* adapting the interface to the product and UX requirements;
-* organizing the frontend project structure.
+- implementing and updating the main frontend interface;
+- building reusable React components;
+- developing search and category filtering;
+- integrating the salon map;
+- developing role-based dashboards for customers, masters, and administrators;
+- implementing dashboard and analytics interfaces;
+- working with platform data and API integration;
+- adapting the UI to product and UX requirements;
+- organizing and maintaining the frontend project structure.
 
 ## Tech Stack
 
-* **React**
-* **TypeScript**
-* **Vite**
-* **CSS**
-* **OpenStreetMap**
+- **React**
+- **TypeScript**
+- **Vite**
+- **CSS**
+- **REST API**
+- **JWT Authentication**
+- **OpenStreetMap**
 
 ## Main Features
 
 ### Search & Navigation
 
-Users can search for beauty services and navigate through the main sections of the platform.
+Users can search for beauty services, salons, and navigate through the main sections of the platform.
 
 ### Category Filters
 
-The interface includes category-based filtering to help users quickly find relevant beauty services.
+The interface includes category-based filtering to help users find relevant beauty services.
 
-### Beauty AI Recommendations
+### Personalized Recommendations
 
-The product concept is based on AI-powered, personalized recommendations that prioritize the most relevant beauty services for each user.
+The platform includes personalized recommendation sections based on the Beauty AI product concept.
 
 ### Salon Map
 
-The frontend includes an interactive map section for discovering beauty locations.
+The frontend includes an interactive map for discovering beauty locations.
 
-### Responsive Design
+### User Dashboard
 
-The interface is designed to work across desktop and mobile screen sizes.
+Customers can view and manage appointments, reviews, recommendations, and loyalty information.
+
+### Master Dashboard
+
+Masters can manage appointments, availability, schedules, client activity, reviews, and service-related information.
+
+### Admin Dashboard
+
+Administrators have access to platform-level information including bookings, clients, masters, salons, services, payments, and reviews.
+
+### Analytics
+
+The admin interface includes analytics modules for:
+
+- booking value;
+- booking volume;
+- average booking value;
+- cancellation rate;
+- no-show rate;
+- repeat clients;
+- revenue trends;
+- payment methods;
+- revenue by period.
+
+### Authentication & Roles
+
+The frontend uses JWT-based authentication and supports role-based access for:
+
+- customer;
+- master;
+- admin.
 
 ## Project Structure
 
@@ -78,54 +121,14 @@ beauty-ai-frontend/
 ├── public/
 ├── src/
 │   ├── assets/
+│   ├── components/
+│   ├── admin/
+│   ├── dashboards/
 │   ├── App.tsx
-│   ├── CategoryFilters.tsx
-│   ├── FilterBar.tsx
-│   ├── MapSection.tsx
 │   ├── App.css
 │   ├── index.css
-│   ├── styles.css
 │   └── main.tsx
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json
 └── README.md
-```
-
-## Getting Started
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/prutkih86-oss/beauty-ai-frontend.git
-```
-
-### 2. Navigate to the project
-
-```bash
-cd beauty-ai-frontend
-```
-
-### 3. Install dependencies
-
-```bash
-npm install
-```
-
-### 4. Start the development server
-
-```bash
-npm run dev
-```
-
-The application will be available at the local Vite development URL shown in the terminal.
-
-## Project Type
-
-**Team Project — Beauty AI Platform**
-
-The project is being developed as a cross-functional product involving product management, backend, frontend, Python development, UI/UX and data analytics.
-
-## Repository
-
-[GitHub Repository](https://github.com/prutkih86-oss/beauty-ai-frontend)
