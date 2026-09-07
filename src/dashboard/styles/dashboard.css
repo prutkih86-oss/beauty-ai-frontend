@@ -5819,3 +5819,15 @@
     grid-row: 1;
   }
 }
+.admin-table-scroll-v3,
+.admin-schedule-list-v3 {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.admin-table-scroll-v3::-webkit-scrollbar,
+.admin-schedule-list-v3::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}

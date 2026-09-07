@@ -6,6 +6,8 @@ export interface AnalyticsBooking {
   id: number | string;
   client: string;
   master: string;
+  salon: string;
+  city: string;
   service: string;
   date: Date;
   status: string;
@@ -105,11 +107,19 @@ function cityName(value: unknown): string {
 }
 
 export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
-  const [appointments, mastersRaw, paymentsRaw] = await Promise.all([
+  const [appointments, mastersRaw, salonsRaw, paymentsRaw] = await Promise.all([
     getAllPages<Raw>("/api/appointments/"),
     getAllPages<Raw>("/api/users/masters/"),
+    getAllPages<Raw>("/api/salons/"),
     getAllPages<Raw>("/api/payments/").catch(() => [] as Raw[]),
   ]);
+
+  const salonCities = new Map(
+    salonsRaw.map((item) => [
+      text(item.name),
+      cityName(item.location),
+    ])
+  );
 
   const bookings = appointments.flatMap((item): AnalyticsBooking[] => {
     const parsedDate = bookingDate(item);
@@ -117,10 +127,14 @@ export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
       return [];
     }
 
+    const salon = text(item.salon_name);
+
     return [{
       id: (item.id ?? item.appointment_id ?? "N/A") as number | string,
       client: text(item.client_name),
       master: text(item.master_name),
+      salon,
+      city: salonCities.get(salon) || "N/A",
       service: text(item.service_name),
       date: parsedDate,
       status: text(item.appointment_status ?? item.status, "Pending"),

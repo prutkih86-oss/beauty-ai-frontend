@@ -301,10 +301,9 @@ export default function AdminAnalytics() {
       periodRevenue.set(key, (periodRevenue.get(key) || 0) + amount);
     });
 
-    const masterCity = new Map(source.masters.map((row) => [row.name, row.city]));
     const revenueByCity = new Map<string, number>();
     bookings.forEach((row) => {
-      const city = masterCity.get(row.master) || "N/A";
+      const city = row.city || "N/A";
       revenueByCity.set(city, (revenueByCity.get(city) || 0) + row.price);
     });
 
