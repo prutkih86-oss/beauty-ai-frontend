@@ -34,7 +34,9 @@ The platform combines service discovery, booking functionality, personalized rec
 
 ### Admin Analytics
 
-<img src="docs/admin-analytics.jpg" width="100%" alt="Beauty AI Admin Analytics">
+<img src="docs/admin-analytics.jpg" width="100%" alt="Beauty AI Admin Analytics Overview">
+
+<img src="docs/admin-analytics-details.jpg" width="100%" alt="Beauty AI Admin Analytics Details">
 
 ## My Contribution
 
