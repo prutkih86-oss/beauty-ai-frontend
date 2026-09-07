@@ -3855,13 +3855,24 @@ more-filters-text-btn {
 }
 
 .place-modal-hero-shade {
-  position: absolute;
+    position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(20, 15, 33, 0.05) 28%,
-    rgba(20, 15, 33, 0.76) 100%
-  );
+  background:
+    linear-gradient(
+      90deg,
+      rgba(20, 15, 33, 0.46) 0%,
+      rgba(20, 15, 33, 0.18) 28%,
+      rgba(20, 15, 33, 0) 48%,
+      rgba(20, 15, 33, 0) 52%,
+      rgba(20, 15, 33, 0.18) 72%,
+      rgba(20, 15, 33, 0.46) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(20, 15, 33, 0.16) 0%,
+      rgba(20, 15, 33, 0.04) 48%,
+      rgba(20, 15, 33, 0.72) 100%
+    );
 }
 
 .place-modal-badges,
@@ -4504,12 +4515,12 @@ button .place-modal-reviews-summary {
 /* Modal: narrower proportions, clean hero, premium information layout. */
 .place-modal {
   width: min(620px, 100%);
-  max-height: min(90vh, 860px);
+  max-height: min(88vh, 760px);
 }
 
 .place-modal-hero {
-  min-height: 250px;
-  padding: 18px 20px 20px;
+  min-height: 200px;
+  padding: 14px 18px 16px;
 }
 
 .place-modal-hero-salon {
@@ -4517,9 +4528,8 @@ button .place-modal-reviews-summary {
   background-position: center;
 }
 
-/* Portrait/master photos stay fully visible so faces/heads are not cropped. */
 .place-modal-hero-solo {
-  min-height: 280px;
+  min-height: 300px;
   background-size: contain;
   background-position: center top;
   background-color: #f3f0f7;
@@ -4530,8 +4540,8 @@ button .place-modal-reviews-summary {
 }
 
 .place-modal-body {
-  gap: 16px;
-  padding: 18px 22px 22px;
+  gap: 12px;
+  padding: 14px 22px 16px;
 }
 
 .place-modal-section h3 {
@@ -4848,6 +4858,7 @@ button .place-modal-reviews-summary {
   align-items: center;
   gap: 7px;
   flex: 0 0 auto;
+  transform: translateY(3px);
 }
 
 .ai-sparkle {
@@ -5102,4 +5113,328 @@ button .place-modal-reviews-summary {
 
 .booking-auth-register:hover {
   text-decoration: underline;
+}
+
+/* ==========================================================
+   PLACE DETAILS MODAL V4 — profile layout
+   Photo stays clean; identity and rating live below the image.
+   ========================================================== */
+
+.place-modal-profile-v4 {
+  width: min(620px, 100%);
+  max-height: min(90vh, 820px);
+  background: #fff;
+}
+
+.place-modal-profile-v4 .place-modal-hero {
+  min-height: 220px;
+  padding: 0;
+  border-radius: 24px 24px 0 0;
+  background-repeat: no-repeat;
+  background-color: #f3f0f7;
+}
+
+.place-modal-profile-v4 .place-modal-hero-solo {
+  min-height: 230px;
+  background-size: 50% auto;
+  background-position: center 20%;
+}
+
+.place-modal-profile-v4 .place-modal-hero-salon {
+  min-height: 220px;
+  background-size: cover;
+  background-position: center;
+}
+
+.place-modal-profile-v4 .place-modal-hero-shade,
+.place-modal-profile-v4 .place-modal-hero-copy {
+  display: none;
+}
+
+.place-modal-profile-v4 .place-modal-close {
+  top: 14px;
+  right: 14px;
+}
+
+.place-modal-profile-v4 .place-modal-body {
+  gap: 16px;
+  padding: 18px 24px 22px;
+}
+.place-modal-facts-v4 > div:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.place-modal-profile-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(81, 53, 155, 0.12);
+}
+
+.place-modal-role-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  margin-bottom: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f3edff;
+  color: #7135e8;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.place-modal-profile-head h2 {
+  margin: 0 0 8px;
+  color: var(--indigo-800);
+  font-size: clamp(25px, 3vw, 31px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.place-modal-rating-v4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 11px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-gray);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.place-modal-rating-v4 strong {
+  color: var(--indigo-800);
+  font-size: 13px;
+}
+
+.place-modal-rating-v4 > span:last-child {
+  color: var(--text-light);
+}
+
+.place-modal-rating-stars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.place-modal-rating-stars span {
+  color: #ddd7e3;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.place-modal-rating-stars span.active {
+  color: #e7ad35;
+}
+
+.place-modal-primary-meta-v4 {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+.place-modal-primary-meta-v4 .place-modal-location-link {
+  width: auto;
+  padding: 0;
+  color: #6f6878;
+}
+
+.place-modal-primary-meta-v4 .district-pin {
+  color: #7135e8;
+}
+
+.place-modal-primary-meta-v4 .place-modal-distance {
+  color: var(--text-gray);
+}
+
+.place-modal-primary-meta-v4 .place-modal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--green);
+  font-weight: 700;
+}
+
+.place-modal-primary-meta-v4 .place-modal-status > span {
+  font-size: 9px;
+}
+
+.place-modal-about-v4 {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(81, 53, 155, 0.10);
+}
+
+.place-modal-about-v4 h3,
+.place-modal-info-v4 h3,
+.place-modal-reviews-heading-v4 h3 {
+  margin: 0 0 8px;
+  color: var(--indigo-800);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.place-modal-profile-v4 .place-modal-description {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.place-modal-facts-v4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  border: 0;
+}
+
+.place-modal-facts-v4 > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(113, 53, 232, 0.08);
+  border-radius: 13px;
+  background: linear-gradient(135deg, #faf7ff 0%, #f5f0ff 100%);
+}
+
+.place-modal-facts-v4 > div + div {
+  border-left: 1px solid rgba(113, 53, 232, 0.08);
+}
+
+.place-modal-facts-v4 span {
+  margin-bottom: 4px;
+  color: #766e80;
+  font-size: 10.5px;
+}
+
+.place-modal-facts-v4 strong {
+  color: var(--indigo-800);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.place-modal-reviews-heading-v4 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 9px;
+}
+
+.place-modal-reviews-heading-v4 h3 {
+  margin: 0;
+}
+
+.place-modal-show-all-v4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7135e8;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.place-modal-show-all-v4 span {
+  font-size: 19px;
+  line-height: 0.8;
+}
+
+.place-modal-profile-v4 .place-modal-review {
+  padding: 12px 14px;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.place-modal-profile-v4 .place-modal-review-stars {
+  margin: 4px 0 5px;
+}
+
+.place-modal-profile-v4 .place-modal-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  margin-top: 0;
+  border-radius: 12px;
+}
+
+.place-modal-cta-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 {
+    width: 100%;
+    max-height: 94vh;
+  }
+
+  .place-modal-profile-v4 .place-modal-hero-solo,
+  .place-modal-profile-v4 .place-modal-hero-salon {
+    min-height: 210px;
+  }
+
+  .place-modal-profile-v4 .place-modal-body {
+    padding: 16px 16px 20px;
+  }
+
+  .place-modal-profile-head h2 {
+    font-size: 25px;
+  }
+
+  .place-modal-facts-v4 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .place-modal-facts-v4 > div + div {
+    border-left: 1px solid rgba(113, 53, 232, 0.08);
+    border-top: 1px solid rgba(113, 53, 232, 0.08);
+  }
+}
+
+@media (max-width: 420px) {
+  .place-modal-facts-v4 {
+    grid-template-columns: 1fr;
+  }
+}
+@media (min-width: 601px) {
+  .recommendations-idle-copy strong {
+    transform: translateX(26px);
+  }
+}
+@media (min-width: 601px) {
+  .recommendations-idle-panel {
+    padding-left: 0px;
+  }
+}
+@media (min-width: 601px) {
+  .recommendations-loading-panel {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .ai-sparkle-loader {
+    order: 2;
+    justify-content: center;
+  }
+
+  .recommendations-loading-panel .recommendations-idle-copy {
+    order: 1;
+    align-items: center;
+    text-align: center;
+  }
+}
+@media (min-width: 601px) {
+  .recommendations-loading-panel .recommendations-idle-copy strong {
+    transform: translateX(8px);
+  }
 }

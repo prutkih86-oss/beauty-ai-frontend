@@ -57,9 +57,36 @@ type ClientState = {
 type ReviewDraft = { master: number; salon: number; comment: string };
 type BookingFilter = "upcoming" | "completed" | "cancelled";
 
+type StoredMasterState = {
+  profile?: {
+    displayName?: string;
+    avatar?: string;
+  };
+};
+
+function findStoredMasterState(displayName: string): StoredMasterState | null {
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(MASTER_STATE_PREFIX)) continue;
+
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+
+      const parsed = JSON.parse(raw) as StoredMasterState;
+      if (parsed.profile?.displayName === displayName) return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 const CLIENT_STATE_KEY = "beautyai_client_state";
 const CLIENT_FAVORITES_PREFIX = "beautyai_client_favorites:";
 const CLIENT_PROFILE_PREFIX = "beautyai_client_profile:";
+const MASTER_STATE_PREFIX = "beautyai_master_state:";
 const STORED_USER_KEY = "beautyai_session_user";
 const emptyState = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
 
@@ -202,6 +229,7 @@ export default function ClientDashboard({
   const [allBookingsOpen, setAllBookingsOpen] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("upcoming");
   const [showAllFavorites, setShowAllFavorites] = useState(false);
+  const [showAllReviews, setShowAllReviews] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<ClientBooking | null>(null);
   const [reviewBookingId, setReviewBookingId] = useState<string | null>(null);
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft>({ master: 0, salon: 0, comment: "" });
@@ -218,6 +246,7 @@ export default function ClientDashboard({
   const [now, setNow] = useState(() => new Date());
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyPush, setNotifyPush] = useState(true);
+  const [, setMasterProfileRevision] = useState(0);
 
   useEffect(() => {
     const sync = () => {
@@ -235,6 +264,20 @@ export default function ClientDashboard({
       window.removeEventListener("storage", sync);
     };
   }, [user.email, user.avatar]);
+
+  useEffect(() => {
+    const syncMasterProfiles = () => {
+      setMasterProfileRevision((revision) => revision + 1);
+    };
+
+    window.addEventListener("beautyai:master-state", syncMasterProfiles as EventListener);
+    window.addEventListener("storage", syncMasterProfiles);
+
+    return () => {
+      window.removeEventListener("beautyai:master-state", syncMasterProfiles as EventListener);
+      window.removeEventListener("storage", syncMasterProfiles);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -297,6 +340,8 @@ export default function ClientDashboard({
   const firstName = useMemo(() => profileName?.trim().split(/\s+/)[0] || (ua ? "Клієнт" : "Client"), [profileName, ua]);
   const unreadCount = clientState.notifications.filter((item) => !item.read).length;
   const completedBookings = clientState.bookings.filter((booking) => booking.status === "completed");
+  const reviewBookings = completedBookings.filter((booking) => booking.reviewSubmitted);
+  const visibleReviewBookings = reviewBookings.slice(0, 1);
   const upcomingBookings = clientState.bookings.filter((booking) => booking.status === "confirmed");
   const visibleBookings = upcomingBookings.slice(0, 1);
   const visibleFavorites = showAllFavorites ? clientState.favorites : clientState.favorites.slice(0, 4);
@@ -535,7 +580,20 @@ export default function ClientDashboard({
         <div className="client-sidebar-bottom">
           <div className="client-loyalty-card">
             <div className="client-loyalty-copy">
-              <b>{ua ? "Beauty AI бали" : "Beauty AI points"}</b>
+              <b className="client-loyalty-title">
+                <svg
+                  className="client-loyalty-title-crown"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M4 8.5 8.2 12 12 5.5 15.8 12 20 8.5 18.4 17H5.6L4 8.5Z" />
+                  <rect x="6" y="18.15" width="12" height="1.7" rx="0.85" />
+                </svg>
+                <span>
+                  Beauty <em>AI</em> {ua ? "бали" : "points"}
+                </span>
+              </b>
               <div className="client-loyalty-balance"><span>{ua ? "Твій баланс" : "Your balance"}</span><strong>{clientState.points}</strong></div>
               <span>{ua ? "+100 за реєстрацію · +50 за завершений запис" : "+100 for registration · +50 for a completed booking"}</span>
             </div>
@@ -583,57 +641,306 @@ export default function ClientDashboard({
             <section className="client-section client-upcoming-section client-surface-panel">
               <div className="client-section-head">
                 <h2>{ua ? "Мої записи" : "My bookings"}</h2>
-                {clientState.bookings.length > 0 && <button type="button" onClick={() => { setBookingFilter("upcoming"); setAllBookingsOpen(true); }}>{ua ? "Переглянути всі" : "View all"}</button>}
+                {clientState.bookings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookingFilter("upcoming");
+                      setAllBookingsOpen(true);
+                    }}
+                  >
+                    <span>{ua ? "Переглянути всі" : "View all"}</span>
+                    <span className="client-section-link-arrow" aria-hidden="true">→</span>
+                  </button>
+                )}
               </div>
+
               <div className="client-bookings-list">
-                {visibleBookings.length ? visibleBookings.map((booking) => bookingCard(booking)) : (
-                  <div className="client-empty-state"><b>{ua ? "Немає майбутніх записів" : "No upcoming bookings"}</b><p>{ua ? "Знайдіть майстра на головній і забронюйте зручний час." : "Find a specialist on the home page and book a time."}</p><button type="button" className="cta-btn" onClick={onHome}>{ua ? "Знайти майстра" : "Find a master"}</button></div>
+                {visibleBookings.length ? (
+                  visibleBookings.map((booking) => bookingCard(booking))
+                ) : (
+                  <div className="client-empty-state">
+                    <b>{ua ? "Немає майбутніх записів" : "No upcoming bookings"}</b>
+                    <p>
+                      {ua
+                        ? "Знайдіть майстра на головній і забронюйте зручний час."
+                        : "Find a specialist on the home page and book a time."}
+                    </p>
+                    <button type="button" className="cta-btn" onClick={onHome}>
+                      {ua ? "Знайти майстра" : "Find a master"}
+                    </button>
+                  </div>
                 )}
               </div>
             </section>
 
-            <section id="client-reviews" className="client-section client-reviews-section client-surface-panel client-dashboard-reviews-panel">
-              <div className="client-section-head"><h2>{ua ? "Відгуки" : "Reviews"}</h2></div>
-              {completedBookings.length ? completedBookings.map((booking) => (
-                <article className="client-review-card" key={booking.id}>
-                  <div className="client-review-mainline">
-                    <div className="client-review-author"><img src={profileAvatar} alt={profileName} /><div><b>{profileName}</b><span className="client-review-datetime">{formatBookingDateTime(booking.date, booking.time, ua)}</span></div></div>
-                    {booking.reviewSubmitted && reviewBookingId !== booking.id ? (
-                      <button type="button" className="client-review-pencil-btn" onClick={() => startReview(booking)} aria-label={ua ? "Редагувати відгук" : "Edit review"}>✎ <span>{ua ? "Редагувати" : "Edit"}</span></button>
-                    ) : !booking.reviewSubmitted ? (
-                      <span className="status-pill neutral">{ua ? "Очікує відгуку" : "Review available"}</span>
-                    ) : null}
-                  </div>
-                  {!booking.reviewSubmitted && reviewBookingId !== booking.id && <button type="button" className="client-review-edit-btn" onClick={() => startReview(booking)}>{ua ? "Залишити відгук" : "Leave a review"}</button>}
-                  {booking.reviewSubmitted && reviewBookingId !== booking.id && (
-                    <>
-                      <div className="client-review-saved">
-                        <div className="client-review-saved-copy">
-                          {booking.reviewComment && <p>{booking.reviewComment}</p>}
-                        </div>
-                        <aside className="client-review-saved-ratings" aria-label={ua ? "Оцінки відгуку" : "Review ratings"}>
-                          <div><span>{ua ? "Майстер" : "Master"}</span><Stars value={booking.reviewMasterRating ?? 0} label={ua ? "Оцінка майстра" : "Master rating"} readonly /></div>
-                          <div><span>{ua ? "Сервіс" : "Service"}</span><Stars value={booking.reviewSalonRating ?? 0} label={ua ? "Оцінка сервісу" : "Service rating"} readonly /></div>
-                        </aside>
+            <section className="client-section client-liked-section client-surface-panel">
+              <div className="client-section-head">
+                <h2>{ua ? "Вам сподобалось" : "You liked"}</h2>
+                {clientState.favorites.length > 4 && (
+                  <button type="button" onClick={() => setShowAllFavorites((value) => !value)}>
+                    <span>
+                      {showAllFavorites
+                        ? ua
+                          ? "Згорнути"
+                          : "Show less"
+                        : ua
+                          ? "Переглянути всі"
+                          : "View all"}
+                    </span>
+                    {!showAllFavorites && (
+                      <span className="client-section-link-arrow" aria-hidden="true">→</span>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {visibleFavorites.length ? (
+                <div className="client-liked-grid">
+                  {visibleFavorites.map((item) => (
+                    <article className="client-liked-card" key={item.title}>
+                      <div className="client-liked-image-wrap">
+                        <img src={item.image} alt={item.title} />
+                        <button
+                          className="client-heart-btn active"
+                          type="button"
+                          onClick={() => removeFavorite(item.title)}
+                          aria-label={ua ? "Прибрати з обраного" : "Remove from favourites"}
+                        >
+                          ♥
+                        </button>
                       </div>
-                    </>
-                  )}
-                  {reviewBookingId === booking.id && (
-                    <div className="client-review-form review-form-card">
-                      <div className="review-rating-grid"><div className="review-rating-block"><span>{ua ? "Майстер" : "Master"}</span><Stars value={reviewDraft.master} onChange={(master) => setReviewDraft((d) => ({ ...d, master }))} label={ua ? "Рейтинг майстра" : "Master rating"} /></div><div className="review-rating-block"><span>{ua ? "Салон / сервіс" : "Salon / service"}</span><Stars value={reviewDraft.salon} onChange={(salon) => setReviewDraft((d) => ({ ...d, salon }))} label={ua ? "Рейтинг сервісу" : "Service rating"} /></div></div>
-                      <label className="review-comment"><span>{ua ? "Коментар" : "Comment"}</span><textarea rows={3} value={reviewDraft.comment} onChange={(event) => setReviewDraft((d) => ({ ...d, comment: event.target.value }))} /></label>
-                      <div className="review-submit-row"><button type="button" className="booking-action-btn ghost" onClick={() => setReviewBookingId(null)}>{ua ? "Скасувати" : "Cancel"}</button><button type="button" className="review-submit-btn" disabled={!reviewDraft.master || !reviewDraft.salon} onClick={() => submitReview(booking)}>{booking.reviewSubmitted ? (ua ? "Зберегти зміни" : "Save changes") : (ua ? "Надіслати відгук" : "Submit review")}</button></div>
-                    </div>
-                  )}
-                </article>
-              )) : <div className="client-empty-state compact"><p>{ua ? "Відгук можна залишити після завершеного бронювання." : "Reviews become available after a completed booking."}</p></div>}
+
+                      <div className="client-liked-body">
+                        <div className="client-liked-title-row">
+                          <h3>{item.title}</h3>
+                          <span className="client-liked-rating">
+                            ★ {item.rating.toFixed(1)} <small>({item.reviews})</small>
+                          </span>
+                        </div>
+
+                        <div className="client-liked-meta">
+                          <span>⌖ {item.distance}</span>
+                          <i>•</i>
+                          <span>{item.district}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="client-empty-state compact">
+                  <p>
+                    {ua
+                      ? "Натискайте ♡ на майстрах і салонах — вони з'являться тут."
+                      : "Tap ♡ on masters and salons to save them here."}
+                  </p>
+                </div>
+              )}
             </section>
 
-            <section className="client-section client-liked-section client-surface-panel">
-              <div className="client-section-head"><h2>{ua ? "Вам сподобалось" : "You liked"}</h2>{clientState.favorites.length > 4 && <button type="button" onClick={() => setShowAllFavorites((v) => !v)}>{showAllFavorites ? (ua ? "Згорнути" : "Show less") : (ua ? "Переглянути всі" : "View all")}</button>}</div>
-              {visibleFavorites.length ? <div className="client-liked-grid">{visibleFavorites.map((item) => (
-                <article className="client-liked-card" key={item.title}><div className="client-liked-image-wrap"><img src={item.image} alt={item.title} /><button className="client-heart-btn active" type="button" onClick={() => removeFavorite(item.title)} aria-label={ua ? "Прибрати з обраного" : "Remove from favourites"}>♥</button></div><div className="client-liked-body"><div className="client-liked-title-row"><h3>{item.title}</h3><span className="client-liked-rating">★ {item.rating.toFixed(1)} <small>({item.reviews})</small></span></div><div className="client-liked-meta"><span>⌖ {item.distance}</span><i>•</i><span>{item.district}</span></div></div></article>
-              ))}</div> : <div className="client-empty-state compact"><p>{ua ? "Натискайте ♡ на майстрах і салонах — вони з'являться тут." : "Tap ♡ on masters and salons to save them here."}</p></div>}
+            <section
+              id="client-reviews"
+              className="client-section client-reviews-section client-surface-panel client-dashboard-reviews-panel client-my-reviews-v2"
+            >
+              <div className="client-section-head client-reviews-head-v2">
+                <div>
+                  <h2>{ua ? "Мої відгуки" : "My reviews"}</h2>
+                </div>
+
+                <button
+                  type="button"
+                  className="client-reviews-view-all"
+                  onClick={() => setShowAllReviews(true)}
+                >
+                  <span>{ua ? "Переглянути всі" : "View all"}</span>
+                  <span className="client-section-link-arrow" aria-hidden="true">→</span>
+                </button>
+              </div>
+
+              {reviewBookings.length ? (
+                <div className="client-my-reviews-list-v2">
+                  {visibleReviewBookings.map((booking) => (
+                    <article className="client-review-card client-review-card-v2" key={booking.id}>
+                      <div className="client-review-visit-v2 client-review-header-v4">
+                        <div className="client-review-author-v4">
+                          <img src={profileAvatar} alt={profileName} />
+                        </div>
+
+                        <div className="client-review-master-v4">
+                          <img
+                            src={findStoredMasterState(booking.title)?.profile?.avatar || booking.image}
+                            alt={findStoredMasterState(booking.title)?.profile?.displayName || booking.title}
+                          />
+                          <div className="client-review-master-copy-v4">
+                            <strong>
+                              {findStoredMasterState(booking.title)?.profile?.displayName || booking.title}
+                            </strong>
+                            <span>{ua ? "Майстер" : "Master"}</span>
+                          </div>
+                        </div>
+
+                        <div className="client-review-detail-v4">
+                          <strong>{ua ? "Послуга" : "Service"}</strong>
+                          <span>{booking.service.replace(/^Майстер\s+/i, "")}</span>
+                        </div>
+
+                        <div className="client-review-detail-v4 client-review-date-v4">
+                          <strong>{ua ? "Дата візиту" : "Visit date"}</strong>
+                          <span>{formatBookingDateTime(booking.date, booking.time, ua)}</span>
+                        </div>
+
+                        {reviewBookingId === booking.id ? (
+                          <button
+                            type="button"
+                            className="client-review-card-close client-review-action-v4"
+                            onClick={() => setReviewBookingId(null)}
+                            aria-label={ua ? "Закрити форму відгуку" : "Close review form"}
+                          >
+                            ×
+                          </button>
+                        ) : booking.reviewSubmitted ? (
+                          <button
+                            type="button"
+                            className="client-review-pencil-btn client-review-action-v4"
+                            onClick={() => startReview(booking)}
+                            aria-label={ua ? "Редагувати відгук" : "Edit review"}
+                          >
+                            ✎ <span>{ua ? "Редагувати" : "Edit"}</span>
+                          </button>
+                        ) : (
+                          <span className="status-pill neutral client-review-action-v4">
+                            {ua ? "Очікує відгуку" : "Review available"}
+                          </span>
+                        )}
+                      </div>
+
+                      {!booking.reviewSubmitted && reviewBookingId !== booking.id && (
+                        <div className="client-review-empty-v2">
+                          <div>
+                            <b>{ua ? "Візит завершено" : "Visit completed"}</b>
+                            <p>
+                              {ua
+                                ? "Поділіться враженням про майстра та сервіс."
+                                : "Share your experience with the master and service."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="client-review-edit-btn"
+                            onClick={() => startReview(booking)}
+                          >
+                            {ua ? "Залишити відгук" : "Leave a review"}
+                          </button>
+                        </div>
+                      )}
+
+                      {booking.reviewSubmitted && reviewBookingId !== booking.id && (
+                        <div className="client-review-saved client-review-saved-v2">
+                          <div className="client-review-saved-copy">
+                            {booking.reviewComment ? (
+                              <p>{booking.reviewComment}</p>
+                            ) : (
+                              <p className="client-review-no-comment-v2">
+                                {ua ? "Без текстового коментаря" : "No written comment"}
+                              </p>
+                            )}
+                          </div>
+
+                          <aside
+                            className="client-review-saved-ratings"
+                            aria-label={ua ? "Оцінки відгуку" : "Review ratings"}
+                          >
+                            <div>
+                              <span>{ua ? "Майстер" : "Master"}</span>
+                              <Stars
+                                value={booking.reviewMasterRating ?? 0}
+                                label={ua ? "Оцінка майстра" : "Master rating"}
+                                readonly
+                              />
+                            </div>
+                            <div>
+                              <span>{ua ? "Сервіс" : "Service"}</span>
+                              <Stars
+                                value={booking.reviewSalonRating ?? 0}
+                                label={ua ? "Оцінка сервісу" : "Service rating"}
+                                readonly
+                              />
+                            </div>
+                          </aside>
+                        </div>
+                      )}
+
+                      {reviewBookingId === booking.id && (
+                        <div className="client-review-form review-form-card">
+                          <div className="review-rating-grid">
+                            <div className="review-rating-block">
+                              <span>{ua ? "Майстер" : "Master"}</span>
+                              <Stars
+                                value={reviewDraft.master}
+                                onChange={(master) =>
+                                  setReviewDraft((draft) => ({ ...draft, master }))
+                                }
+                                label={ua ? "Рейтинг майстра" : "Master rating"}
+                              />
+                            </div>
+
+                            <div className="review-rating-block">
+                              <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
+                              <Stars
+                                value={reviewDraft.salon}
+                                onChange={(salon) =>
+                                  setReviewDraft((draft) => ({ ...draft, salon }))
+                                }
+                                label={ua ? "Рейтинг сервісу" : "Service rating"}
+                              />
+                            </div>
+                          </div>
+
+                          <label className="review-comment">
+                            <span>{ua ? "Коментар" : "Comment"}</span>
+                            <textarea
+                              rows={3}
+                              value={reviewDraft.comment}
+                              onChange={(event) =>
+                                setReviewDraft((draft) => ({
+                                  ...draft,
+                                  comment: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+
+                          <div className="review-submit-row client-review-submit-row-v2">
+                            <button
+                              type="button"
+                              className="review-submit-btn"
+                              disabled={!reviewDraft.master || !reviewDraft.salon}
+                              onClick={() => submitReview(booking)}
+                            >
+                              {booking.reviewSubmitted
+                                ? ua
+                                  ? "Зберегти зміни"
+                                  : "Save changes"
+                                : ua
+                                  ? "Надіслати відгук"
+                                  : "Submit review"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="client-empty-state compact">
+                  <p>
+                    {ua
+                      ? "Відгук можна залишити після завершеного бронювання."
+                      : "Reviews become available after a completed booking."}
+                  </p>
+                </div>
+              )}
             </section>
           </div>
         ) : (
@@ -668,6 +975,224 @@ export default function ClientDashboard({
             </div>
           </div>
         </>,
+        document.body,
+      )}
+
+      {showAllReviews && createPortal(
+        <div
+          className="client-booking-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setShowAllReviews(false)}
+        >
+          <div
+            className="client-all-reviews-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={ua ? "Усі відгуки" : "All reviews"}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="client-booking-modal-close"
+              onClick={() => setShowAllReviews(false)}
+              aria-label={ua ? "Закрити" : "Close"}
+            >
+              ×
+            </button>
+
+            <div className="client-all-reviews-head">
+              <span>{ua ? "Історія відгуків" : "Review history"}</span>
+              <h2>{ua ? "Усі відгуки" : "All reviews"}</h2>
+            </div>
+
+            <div className="client-all-reviews-list">
+              {reviewBookings.length ? (
+                reviewBookings.map((booking) => (
+                    <article className="client-review-card client-review-card-v2" key={booking.id}>
+                      <div className="client-review-visit-v2 client-review-header-v4">
+                        <div className="client-review-author-v4">
+                          <img src={profileAvatar} alt={profileName} />
+                        </div>
+
+                        <div className="client-review-master-v4">
+                          <img
+                            src={findStoredMasterState(booking.title)?.profile?.avatar || booking.image}
+                            alt={findStoredMasterState(booking.title)?.profile?.displayName || booking.title}
+                          />
+                          <div className="client-review-master-copy-v4">
+                            <strong>
+                              {findStoredMasterState(booking.title)?.profile?.displayName || booking.title}
+                            </strong>
+                            <span>{ua ? "Майстер" : "Master"}</span>
+                          </div>
+                        </div>
+
+                        <div className="client-review-detail-v4">
+                          <strong>{ua ? "Послуга" : "Service"}</strong>
+                          <span>{booking.service.replace(/^Майстер\s+/i, "")}</span>
+                        </div>
+
+                        <div className="client-review-detail-v4 client-review-date-v4">
+                          <strong>{ua ? "Дата візиту" : "Visit date"}</strong>
+                          <span>{formatBookingDateTime(booking.date, booking.time, ua)}</span>
+                        </div>
+
+                        {reviewBookingId === booking.id ? (
+                          <button
+                            type="button"
+                            className="client-review-card-close client-review-action-v4"
+                            onClick={() => setReviewBookingId(null)}
+                            aria-label={ua ? "Закрити форму відгуку" : "Close review form"}
+                          >
+                            ×
+                          </button>
+                        ) : booking.reviewSubmitted ? (
+                          <button
+                            type="button"
+                            className="client-review-pencil-btn client-review-action-v4"
+                            onClick={() => startReview(booking)}
+                            aria-label={ua ? "Редагувати відгук" : "Edit review"}
+                          >
+                            ✎ <span>{ua ? "Редагувати" : "Edit"}</span>
+                          </button>
+                        ) : (
+                          <span className="status-pill neutral client-review-action-v4">
+                            {ua ? "Очікує відгуку" : "Review available"}
+                          </span>
+                        )}
+                      </div>
+
+                      {!booking.reviewSubmitted && reviewBookingId !== booking.id && (
+                        <div className="client-review-empty-v2">
+                          <div>
+                            <b>{ua ? "Візит завершено" : "Visit completed"}</b>
+                            <p>
+                              {ua
+                                ? "Поділіться враженням про майстра та сервіс."
+                                : "Share your experience with the master and service."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="client-review-edit-btn"
+                            onClick={() => startReview(booking)}
+                          >
+                            {ua ? "Залишити відгук" : "Leave a review"}
+                          </button>
+                        </div>
+                      )}
+
+                      {booking.reviewSubmitted && reviewBookingId !== booking.id && (
+                        <div className="client-review-saved client-review-saved-v2">
+                          <div className="client-review-saved-copy">
+                            {booking.reviewComment ? (
+                              <p>{booking.reviewComment}</p>
+                            ) : (
+                              <p className="client-review-no-comment-v2">
+                                {ua ? "Без текстового коментаря" : "No written comment"}
+                              </p>
+                            )}
+                          </div>
+
+                          <aside
+                            className="client-review-saved-ratings"
+                            aria-label={ua ? "Оцінки відгуку" : "Review ratings"}
+                          >
+                            <div>
+                              <span>{ua ? "Майстер" : "Master"}</span>
+                              <Stars
+                                value={booking.reviewMasterRating ?? 0}
+                                label={ua ? "Оцінка майстра" : "Master rating"}
+                                readonly
+                              />
+                            </div>
+                            <div>
+                              <span>{ua ? "Сервіс" : "Service"}</span>
+                              <Stars
+                                value={booking.reviewSalonRating ?? 0}
+                                label={ua ? "Оцінка сервісу" : "Service rating"}
+                                readonly
+                              />
+                            </div>
+                          </aside>
+                        </div>
+                      )}
+
+                      {reviewBookingId === booking.id && (
+                        <div className="client-review-form review-form-card">
+                          <div className="review-rating-grid">
+                            <div className="review-rating-block">
+                              <span>{ua ? "Майстер" : "Master"}</span>
+                              <Stars
+                                value={reviewDraft.master}
+                                onChange={(master) =>
+                                  setReviewDraft((draft) => ({ ...draft, master }))
+                                }
+                                label={ua ? "Рейтинг майстра" : "Master rating"}
+                              />
+                            </div>
+
+                            <div className="review-rating-block">
+                              <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
+                              <Stars
+                                value={reviewDraft.salon}
+                                onChange={(salon) =>
+                                  setReviewDraft((draft) => ({ ...draft, salon }))
+                                }
+                                label={ua ? "Рейтинг сервісу" : "Service rating"}
+                              />
+                            </div>
+                          </div>
+
+                          <label className="review-comment">
+                            <span>{ua ? "Коментар" : "Comment"}</span>
+                            <textarea
+                              rows={3}
+                              value={reviewDraft.comment}
+                              onChange={(event) =>
+                                setReviewDraft((draft) => ({
+                                  ...draft,
+                                  comment: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+
+                          <div className="review-submit-row client-review-submit-row-v2">
+                            <button
+                              type="button"
+                              className="review-submit-btn"
+                              disabled={!reviewDraft.master || !reviewDraft.salon}
+                              onClick={() => submitReview(booking)}
+                            >
+                              {booking.reviewSubmitted
+                                ? ua
+                                  ? "Зберегти зміни"
+                                  : "Save changes"
+                                : ua
+                                  ? "Надіслати відгук"
+                                  : "Submit review"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                ))
+              ) : (
+                <div className="client-review-empty-v2">
+                  <div>
+                    <b>{ua ? "Відгуків ще немає" : "No reviews yet"}</b>
+                    <p>
+                      {ua
+                        ? "Після завершених візитів ваші відгуки з’являться тут."
+                        : "Your reviews will appear here after completed visits."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
         document.body,
       )}
 

@@ -1155,6 +1155,17 @@ function PlaceDetailsModal({
     };
   }, [onClose]);
 
+  const aboutText =
+    data.description ??
+    (isSolo && data.locationNote
+      ? ua
+        ? `${data.title} — ${data.type.toLowerCase()}. ${data.locationNote}.`
+        : `${data.title} — ${data.type.toLowerCase()}. ${data.locationNote}.`
+      : data.why ??
+        (isSolo
+          ? `${data.title} — ${data.type.toLowerCase()}.`
+          : `${data.title} — ${data.type.toLowerCase()} у районі ${data.district}.`));
+
   return createPortal(
     <div
       className="place-modal-overlay"
@@ -1162,7 +1173,7 @@ function PlaceDetailsModal({
       onMouseDown={onClose}
     >
       <div
-        className="place-modal"
+        className="place-modal place-modal-profile-v4"
         role="dialog"
         aria-modal="true"
         aria-labelledby="place-modal-title"
@@ -1180,15 +1191,18 @@ function PlaceDetailsModal({
         <div
           className={`place-modal-hero ${isSolo ? "place-modal-hero-solo" : "place-modal-hero-salon"}`}
           style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
-        >
-          <div className="place-modal-hero-shade" />
+          aria-hidden="true"
+        />
 
-          <div className="place-modal-hero-copy">
-            <p>{data.type}</p>
+        <div className="place-modal-body">
+          <section className="place-modal-profile-head">
+            <span className="place-modal-role-pill">{data.type}</span>
+
             <h2 id="place-modal-title">{data.title}</h2>
+
             <button
               type="button"
-              className="place-modal-rating"
+              className="place-modal-rating-v4"
               aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
               onClick={() => {
                 setReviewsOpen(true);
@@ -1199,54 +1213,54 @@ function PlaceDetailsModal({
                 });
               }}
             >
-              <span className="star">★</span>
+              <span className="place-modal-rating-stars" aria-hidden="true">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <span key={index} className={index < Math.round(data.rating) ? "active" : ""}>
+                    ★
+                  </span>
+                ))}
+              </span>
               <strong>{data.rating.toFixed(1)}</strong>
               <span>({data.reviews} {t.placeModal.reviews})</span>
             </button>
-          </div>
-        </div>
 
-        <div className="place-modal-body">
-          <div className="place-modal-primary-meta">
-            <button
-              type="button"
-              className="card-location-link place-modal-location-link"
-              onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
-              title={t.placeModal.location}
-            >
-              <span className="district-pin">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#a855f7"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                {data.district}
+            <div className="place-modal-primary-meta place-modal-primary-meta-v4">
+              <button
+                type="button"
+                className="card-location-link place-modal-location-link"
+                onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
+                title={t.placeModal.location}
+              >
+                <span className="district-pin">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  {data.district}
+                </span>
+                {data.distance && <span className="place-modal-distance">· {data.distance}</span>}
+              </button>
+
+              <span className="place-modal-status">
+                <span aria-hidden="true">●</span>
+                {isSolo ? t.available : t.open}
               </span>
-              <span>· {data.distance}</span>
-            </button>
-            <span className="open-now">
-              ● {isSolo ? t.available : t.open}
-            </span>
-          </div>
+            </div>
+          </section>
 
-          <section className="place-modal-section">
+          <section className="place-modal-section place-modal-about-v4">
             <h3>{t.placeModal.aboutTitle}</h3>
-            <p className="place-modal-description">
-              {data.description ??
-                data.why ??
-                (isSolo
-                  ? `${data.title} — ${data.type.toLowerCase()}.`
-                  : `${data.title} — ${data.type.toLowerCase()} у районі ${data.district}.`)}
-            </p>
+            <p className="place-modal-description">{aboutText}</p>
           </section>
 
           {!!data.gallery?.length && (
@@ -1273,33 +1287,57 @@ function PlaceDetailsModal({
             </section>
           )}
 
-          <section className="place-modal-section">
+          <section className="place-modal-section place-modal-info-v4">
             <h3>{t.placeModal.detailsTitle}</h3>
-            <div className="place-modal-facts">
+
+            <div className="place-modal-facts place-modal-facts-v4">
               <div>
                 <span>{t.placeModal.priceFrom}</span>
                 <strong>{data.priceFrom} грн</strong>
               </div>
 
-              {data.avgCheck && (
+              {(data.experience ?? data.mastersCount) && (
+                <div>
+                  <span>{isSolo ? (ua ? "Стаж" : "Experience") : t.placeModal.experience}</span>
+                  <strong>{data.experience ?? data.mastersCount}</strong>
+                </div>
+              )}
+
+              {isSolo && data.locationNote && (
+                <div>
+                  <span>{ua ? "Формат" : "Format"}</span>
+                  <strong>{data.locationNote}</strong>
+                </div>
+              )}
+
+              {!isSolo && data.avgCheck && (
                 <div>
                   <span>{t.placeModal.averageCheck}</span>
                   <strong>{data.avgCheck}</strong>
                 </div>
               )}
-
-              {(data.experience ?? data.mastersCount) && (
-                <div>
-                  <span>{t.placeModal.experience}</span>
-                  <strong>{data.experience ?? data.mastersCount}</strong>
-                </div>
-              )}
-
             </div>
           </section>
 
           <section className="place-modal-section place-modal-reviews">
-            <h3>{t.placeModal.reviewsTitle}</h3>
+            <div className="place-modal-reviews-heading-v4">
+              <h3>{t.placeModal.reviewsTitle}</h3>
+              {reviews.length > 1 && (
+                <button
+                  type="button"
+                  className="place-modal-show-all-v4"
+                  onClick={() => setReviewsOpen((prev) => !prev)}
+                  aria-expanded={reviewsOpen}
+                >
+                  {reviewsOpen
+                    ? t.placeModal.hideReviews
+                    : ua
+                      ? `Показати ще ${Math.min(2, reviews.length - 1)}`
+                      : `Show ${Math.min(2, reviews.length - 1)} more`}
+                  <span aria-hidden="true">›</span>
+                </button>
+              )}
+            </div>
 
             <div className="place-modal-review-list">
               {reviews.slice(0, reviewsOpen ? 3 : 1).map((review, index) => (
@@ -1330,26 +1368,11 @@ function PlaceDetailsModal({
                 </article>
               ))}
             </div>
-
-            {reviews.length > 1 && (
-              <button
-                type="button"
-                className="place-modal-reviews-toggle"
-                onClick={() => setReviewsOpen((prev) => !prev)}
-                aria-expanded={reviewsOpen}
-              >
-                <span>
-                  {reviewsOpen
-                    ? t.placeModal.hideReviews
-                    : `${t.placeModal.showMoreReviews} ${Math.min(2, reviews.length - 1)}`}
-                </span>
-                <span className={`place-modal-reviews-arrow ${reviewsOpen ? "open" : ""}`} aria-hidden="true">⌄</span>
-              </button>
-            )}
           </section>
 
           <button type="button" className="cta-btn place-modal-cta" onClick={onBook}>
             {isSolo ? t.placeModal.book : t.bookingModal.salonWebsite}
+            <span className="place-modal-cta-arrow" aria-hidden="true">→</span>
           </button>
         </div>
       </div>
@@ -1847,6 +1870,10 @@ const nearby: CardData[] = [
     openNow: true,
     tags: [],
     priceFrom: "500",
+    experience: "6 років",
+    locationNote: "У своїй студії",
+    description:
+      "Світла студія в Печерському районі з окремим кабінетом для манікюру. Зручне робоче місце та комфортний простір для клієнтів.",
     variant: "solo",
   },
 
@@ -3127,11 +3154,7 @@ export default function App() {
                 ? "AI підбирає найкращі варіанти…"
                 : "AI is finding the best matches…"}
             </strong>
-            <span>
-              {lang === "ua"
-                ? "Це може зайняти кілька секунд"
-                : "This may take a few seconds"}
-            </span>
+            
           </div>
         </div>
       ) : !hasSearch ? (
@@ -3149,8 +3172,8 @@ export default function App() {
             </strong>
             <span>
               {lang === "ua"
-                ? "Результати з'являться тут після пошуку"
-                : "Results will appear here after you search"}
+              ? "Тут з’являться результати пошуку"
+              : "Search results will appear here"}
             </span>
           </div>
         </div>

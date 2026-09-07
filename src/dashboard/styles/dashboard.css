@@ -4823,3 +4823,999 @@
   padding: 6px 6px;
   box-sizing: border-box;
 }
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2 — home information hierarchy
+   Bookings → liked → my reviews
+   ========================================================== */
+
+.client-dashboard-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.client-liked-section {
+  order: 2;
+  padding: 24px 22px 22px;
+}
+
+.client-dashboard-reviews-panel {
+  order: 3;
+}
+
+.client-reviews-head-v2 {
+  align-items: flex-end;
+  margin-bottom: 14px;
+}
+
+.client-reviews-head-v2 > div {
+  min-width: 0;
+}
+
+.client-reviews-head-v2 p {
+  margin: 5px 0 0;
+  color: #8b8296;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.client-my-reviews-list-v2 {
+  display: grid;
+  gap: 14px;
+}
+
+.client-review-card-v2 {
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(113, 53, 232, 0.10);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 7px 24px rgba(36, 26, 61, 0.035);
+}
+
+.client-review-visit-v2 {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(81, 53, 155, 0.09);
+}
+
+.client-review-visit-v2 > img {
+  width: 58px;
+  height: 58px;
+  display: block;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.client-review-visit-copy-v2 {
+  min-width: 0;
+}
+
+.client-review-kicker-v2 {
+  display: block;
+  margin-bottom: 3px;
+  color: #9840f0;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.client-review-visit-copy-v2 h3 {
+  margin: 0;
+  overflow: hidden;
+  color: #211630;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-review-visit-meta-v2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+  color: #766d81;
+  font-size: 11px;
+}
+
+.client-review-visit-meta-v2 i {
+  color: #c7becf;
+  font-style: normal;
+}
+
+.client-review-card-v2 .client-review-pencil-btn {
+  position: static !important;
+  align-self: center;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.client-review-empty-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 16px 16px;
+}
+
+.client-review-empty-v2 b {
+  display: block;
+  margin-bottom: 3px;
+  color: #2b2037;
+  font-size: 12.5px;
+}
+
+.client-review-empty-v2 p {
+  margin: 0;
+  color: #807687;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.client-review-empty-v2 .client-review-edit-btn {
+  position: static;
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 8px 13px;
+}
+
+.client-review-saved-v2 {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 22px !important;
+  margin-top: 0 !important;
+  padding: 14px 16px 16px !important;
+  border-top: 0 !important;
+}
+
+.client-review-your-copy-v2 {
+  display: block;
+  margin-bottom: 6px;
+  color: #8c8298;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.client-review-saved-v2 .client-review-saved-copy p {
+  margin: 0 !important;
+  color: #544b5e;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.client-review-no-comment-v2 {
+  color: #9a92a1 !important;
+  font-style: italic;
+}
+
+.client-review-saved-v2 .client-review-saved-ratings {
+  min-width: 168px;
+}
+
+.client-review-card-v2 .review-form-card {
+  margin-top: 0;
+  border-top: 0;
+}
+
+@media (max-width: 760px) {
+  .client-liked-section {
+    padding: 20px 16px;
+  }
+
+  .client-review-visit-v2 {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+
+  .client-review-visit-v2 > img {
+    width: 50px;
+    height: 50px;
+  }
+
+  .client-review-card-v2 .client-review-pencil-btn,
+  .client-review-visit-v2 > .status-pill {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+  }
+
+  .client-review-empty-v2 {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .client-review-saved-v2 {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .client-review-saved-v2 .client-review-saved-ratings {
+    min-width: 0;
+    padding: 12px 0 0;
+    border-left: 0;
+    border-top: 1px solid rgba(81, 53, 155, 0.12);
+  }
+}
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2.1 — unified purple accent + review UX
+   ========================================================== */
+
+.client-section-head > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7135e8 !important;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.client-section-head > button:hover {
+  color: #5b21d8 !important;
+}
+
+.client-section-link-arrow {
+  display: inline-block;
+  color: currentColor;
+  font-size: 15px;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
+
+.client-review-kicker-v2 {
+  color: #7135e8 !important;
+}
+
+.client-review-pencil-btn {
+  color: #7135e8 !important;
+}
+
+.client-review-pencil-btn:hover {
+  color: #5b21d8 !important;
+}
+
+.client-booking-soon {
+  background: rgba(113, 53, 232, 0.92) !important;
+  color: #fff !important;
+}
+
+.client-review-card-v2 .status-pill.neutral {
+  background: #f1eaff !important;
+  color: #7135e8 !important;
+}
+
+.client-review-form.review-form-card {
+  position: relative;
+  padding-top: 22px;
+}
+
+.client-review-form-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #7b7185;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.client-review-form-close:hover {
+  background: #f3edff;
+  color: #7135e8;
+}
+
+.client-review-submit-row-v2 {
+  justify-content: flex-end;
+}
+
+.client-review-submit-row-v2 .review-submit-btn {
+  margin-left: auto;
+}
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2.2 — review identity + close placement
+   ========================================================== */
+
+.client-reviews-head-v2 {
+  margin-bottom: 14px;
+}
+
+.client-reviews-head-v2 p {
+  display: none;
+}
+
+.client-review-card-v2 {
+  position: relative;
+}
+
+.client-review-visit-v2 > img {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.client-review-card-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 4;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #7b7185;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.client-review-card-close:hover {
+  background: #f3edff;
+  color: #7135e8;
+}
+
+.client-review-form.review-form-card {
+  padding-top: 18px;
+}
+
+.client-review-form-close {
+  display: none !important;
+}
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2.3 — final agreed fixes
+   ========================================================== */
+
+/* Confirmed booking badge: same Beauty AI purple as the rest of the UI. */
+.client-booking-card.status-confirmed .client-booking-soon,
+.client-booking-soon {
+  background: #7135e8 !important;
+  color: #fff !important;
+}
+
+/* Review header: client | master | service | visit date. */
+.client-review-header-v3 {
+  display: grid !important;
+  grid-template-columns: 78px minmax(190px, 1.35fr) minmax(120px, 0.8fr) minmax(190px, 1fr);
+  align-items: center;
+  gap: 0 !important;
+  padding: 14px 52px 14px 14px !important;
+}
+
+.client-review-header-v3 > * {
+  min-width: 0;
+}
+
+.client-review-author-v3 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-right: 14px;
+}
+
+.client-review-author-v3 > img {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.client-review-author-v3 > span {
+  color: #81788c;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.client-review-detail-v3 {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-height: 50px;
+  padding: 0 18px;
+  border-left: 1px solid rgba(81, 53, 155, 0.10);
+}
+
+.client-review-detail-label-v3 {
+  color: #392c49;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.client-review-detail-value-v3 {
+  overflow: hidden;
+  color: #81788c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-review-master-value-v3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.client-review-master-value-v3 > img {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.client-review-master-value-v3 > span {
+  overflow: hidden;
+  color: #81788c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-review-date-v3 .client-review-detail-value-v3 {
+  white-space: normal;
+}
+
+/* Old v2 header styles must not interfere with the new hierarchy. */
+.client-review-header-v3 .client-review-visit-copy-v2,
+.client-review-header-v3 > img {
+  display: none !important;
+}
+
+/* Primary save actions: one Beauty AI purple treatment everywhere. */
+.profile-save-btn,
+.client-review-form .review-submit-btn {
+  border-color: #7135e8 !important;
+  background: #7135e8 !important;
+  color: #fff !important;
+  box-shadow: 0 8px 18px rgba(113, 53, 232, 0.18);
+}
+
+.profile-save-btn:hover,
+.client-review-form .review-submit-btn:hover:not(:disabled) {
+  border-color: #5b21d8 !important;
+  background: #5b21d8 !important;
+  color: #fff !important;
+  box-shadow: 0 10px 22px rgba(113, 53, 232, 0.24);
+}
+
+.client-review-form .review-submit-btn:disabled {
+  border-color: rgba(113, 53, 232, 0.22) !important;
+  background: rgba(113, 53, 232, 0.30) !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: none;
+}
+
+/* Loyalty heading only: preserve the existing coin and card internals. */
+.client-loyalty-title {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.client-loyalty-title-crown {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  color: #7135e8;
+}
+
+.client-loyalty-title > span {
+  display: inline !important;
+  color: #24153f !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+.client-loyalty-title em {
+  color: #7135e8;
+  font-style: normal;
+  font-weight: 800;
+}
+
+/* Keep the edit/close action aligned with the full review card. */
+.client-review-card-close,
+.client-review-pencil-btn {
+  z-index: 5;
+}
+
+@media (max-width: 920px) {
+  .client-review-header-v3 {
+    grid-template-columns: 68px 1fr 1fr;
+    row-gap: 12px !important;
+  }
+
+  .client-review-date-v3 {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .client-review-header-v3 {
+    grid-template-columns: 58px 1fr;
+    padding-right: 44px !important;
+  }
+
+  .client-review-detail-v3 {
+    padding: 0 12px;
+  }
+
+  .client-review-detail-v3:not(.client-review-master-v3) {
+    grid-column: 2;
+  }
+
+  .client-review-date-v3 {
+    grid-column: 2;
+  }
+}
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2.4 — agreed review fixes
+   ========================================================== */
+
+:root {
+  --beautyai-ai-purple: #8b3dff;
+  --beautyai-ai-purple-hover: #7427e8;
+}
+
+/* Use the exact AI wordmark purple everywhere requested. */
+.client-booking-soon,
+.client-booking-card.status-confirmed .client-booking-soon,
+.profile-save-btn,
+.client-review-form .review-submit-btn {
+  background: var(--beautyai-ai-purple) !important;
+  border-color: var(--beautyai-ai-purple) !important;
+  color: #fff !important;
+}
+
+.client-loyalty-title-crown,
+.client-loyalty-title em,
+.client-review-pencil-btn,
+.client-reviews-view-all {
+  color: var(--beautyai-ai-purple) !important;
+}
+
+.profile-save-btn:hover,
+.client-review-form .review-submit-btn:hover:not(:disabled) {
+  background: var(--beautyai-ai-purple-hover) !important;
+  border-color: var(--beautyai-ai-purple-hover) !important;
+}
+
+.client-review-pencil-btn:hover,
+.client-reviews-view-all:hover {
+  color: var(--beautyai-ai-purple-hover) !important;
+}
+
+/* Reviews section title + "View all" on the right. */
+.client-reviews-head-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.client-reviews-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Review header:
+   client photo | master photo + name/role | service | visit date | action */
+.client-review-header-v4 {
+  display: grid !important;
+  grid-template-columns: 62px minmax(220px, 1.35fr) minmax(130px, 0.8fr) minmax(190px, 1fr) auto;
+  align-items: center;
+  gap: 0 !important;
+  padding: 14px 14px !important;
+}
+
+.client-review-header-v4 > * {
+  min-width: 0;
+}
+
+.client-review-author-v4 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 14px;
+}
+
+.client-review-author-v4 > img,
+.client-review-master-v4 > img {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.client-review-master-v4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 18px;
+  border-left: 1px solid rgba(81, 53, 155, 0.10);
+}
+
+.client-review-master-copy-v4 {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.client-review-master-copy-v4 strong {
+  overflow: hidden;
+  color: #2f2440;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-review-master-copy-v4 span {
+  color: #8d8497;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.client-review-detail-v4 {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 50px;
+  padding: 0 18px;
+  border-left: 1px solid rgba(81, 53, 155, 0.10);
+}
+
+.client-review-detail-v4 strong {
+  color: #392c49;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.client-review-detail-v4 span {
+  overflow: hidden;
+  color: #81788c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-review-date-v4 span {
+  white-space: normal;
+}
+
+/* Edit / close stays in the upper-right after visit date. */
+.client-review-action-v4 {
+  position: static !important;
+  align-self: start;
+  justify-self: end;
+  margin: 0 0 0 16px !important;
+  white-space: nowrap;
+}
+
+.client-review-pencil-btn.client-review-action-v4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Disable old v3 structural styling inside the new header. */
+.client-review-header-v4 .client-review-author-v3,
+.client-review-header-v4 .client-review-master-v3,
+.client-review-header-v4 .client-review-detail-v3 {
+  display: none !important;
+}
+
+@media (max-width: 920px) {
+  .client-review-header-v4 {
+    grid-template-columns: 62px 1fr 1fr auto;
+    row-gap: 12px !important;
+  }
+
+  .client-review-date-v4 {
+    grid-column: 2 / 4;
+  }
+
+  .client-review-action-v4 {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .client-review-header-v4 {
+    grid-template-columns: 56px 1fr auto;
+  }
+
+  .client-review-master-v4,
+  .client-review-detail-v4 {
+    padding: 0 12px;
+  }
+
+  .client-review-detail-v4 {
+    grid-column: 2;
+  }
+
+  .client-review-date-v4 {
+    grid-column: 2;
+  }
+
+  .client-review-action-v4 {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+
+/* ==========================================================
+   CLIENT DASHBOARD V2.5 — reviews polish + all reviews modal
+   ========================================================== */
+
+:root {
+  --beautyai-ai-purple: #8b3dff;
+  --beautyai-ai-purple-hover: #7427e8;
+}
+
+/* Loyalty title: larger crown, aligned with text, AI exactly matches crown. */
+.client-loyalty-title {
+  gap: 8px !important;
+}
+
+.client-loyalty-title-crown {
+  width: 23px !important;
+  height: 23px !important;
+  flex: 0 0 23px !important;
+  color: var(--beautyai-ai-purple) !important;
+  transform: translateY(-2px);
+}
+
+.client-loyalty-title em {
+  color: var(--beautyai-ai-purple) !important;
+}
+
+/* One preview on home, all reviews live in the modal. */
+.client-my-reviews-list-v2 {
+  display: grid;
+  gap: 14px;
+}
+
+/* Even visual rhythm across review-header columns. */
+.client-review-header-v4 {
+  grid-template-columns: 62px repeat(3, minmax(0, 1fr)) 112px !important;
+  align-items: center !important;
+}
+
+.client-review-author-v4,
+.client-review-master-v4,
+.client-review-detail-v4,
+.client-review-action-v4 {
+  min-height: 52px;
+}
+
+.client-review-author-v4 {
+  padding: 0 18px 0 0 !important;
+}
+
+.client-review-master-v4,
+.client-review-detail-v4 {
+  padding: 0 18px !important;
+  border-left: 1px solid rgba(65, 44, 91, 0.14) !important;
+}
+
+.client-review-action-v4 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: center !important;
+  margin-left: 18px !important;
+  padding-left: 18px !important;
+}
+
+/* Stronger hierarchy and contrast in review metadata. */
+.client-review-master-copy-v4 strong,
+.client-review-detail-v4 strong {
+  color: #2c2137 !important;
+}
+
+.client-review-master-copy-v4 strong {
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.client-review-master-copy-v4 span,
+.client-review-detail-v4 span {
+  color: #665d70 !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.client-review-detail-v4 strong {
+  font-size: 11.8px !important;
+  font-weight: 750 !important;
+}
+
+/* Comment: larger, darker, easier to read. */
+.client-review-saved-v2 .client-review-saved-copy p {
+  color: #3d3448 !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.55 !important;
+}
+
+/* Ratings: stronger labels and stronger stars. */
+.client-review-saved-v2 .client-review-saved-ratings {
+  border-left-color: rgba(65, 44, 91, 0.16) !important;
+}
+
+.client-review-saved-v2 .client-review-saved-ratings > div > span {
+  color: #51465f !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.045em !important;
+}
+
+.client-review-saved-v2 .review-stars.readonly span {
+  color: #d2c9db !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+}
+
+.client-review-saved-v2 .review-stars.readonly span.active {
+  color: #b4873f !important;
+}
+
+/* All reviews modal. */
+.client-all-reviews-modal {
+  position: relative;
+  width: min(980px, calc(100vw - 40px));
+  max-height: min(820px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+  padding: 26px;
+  border: 1px solid rgba(81, 53, 155, 0.12);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(36, 26, 61, 0.22);
+}
+
+.client-all-reviews-head {
+  padding-right: 50px;
+  margin-bottom: 18px;
+}
+
+.client-all-reviews-head span {
+  color: #71667d;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.client-all-reviews-head h2 {
+  margin: 4px 0 0;
+  color: #21172d;
+  font-size: 24px !important;
+}
+
+.client-all-reviews-list {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.client-all-reviews-list .client-review-card-v2 {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 920px) {
+  .client-review-header-v4 {
+    grid-template-columns: 58px 1fr 1fr auto !important;
+  }
+
+  .client-review-date-v4 {
+    grid-column: 2 / 4;
+  }
+
+  .client-review-action-v4 {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .client-all-reviews-modal {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .client-review-header-v4 {
+    grid-template-columns: 54px 1fr auto !important;
+  }
+
+  .client-review-master-v4,
+  .client-review-detail-v4 {
+    padding: 0 12px !important;
+  }
+
+  .client-review-detail-v4 {
+    grid-column: 2;
+  }
+
+  .client-review-date-v4 {
+    grid-column: 2;
+  }
+
+  .client-review-action-v4 {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
