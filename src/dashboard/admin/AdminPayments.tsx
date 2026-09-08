@@ -13,18 +13,20 @@ import {
 import {
   addPayment,
   deletePayment,
-  getPayments,
+  getPaymentsPage,
 } from "./api/payments";
 import type { PaymentRow } from "./api/payments";
 
 export default function AdminPayments() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [totalPayments, setTotalPayments] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [method, setMethod] = useState("All");
   const [date, setDate] = useState("");
   const [sel, setSel] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
   const [reload, setReload] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
@@ -38,10 +40,11 @@ export default function AdminPayments() {
     setLoading(true);
     setError(null);
 
-    getPayments()
-      .then((data) => {
+    getPaymentsPage(page, 15)
+      .then(({ payments: pageItems, count }) => {
         if (active) {
-          setPayments(data);
+          setPayments(pageItems);
+          setTotalPayments(count);
         }
       })
       .catch((e: unknown) => {
@@ -58,7 +61,7 @@ export default function AdminPayments() {
     return () => {
       active = false;
     };
-  }, [reload]);
+  }, [reload, page]);
 
   const filteredPayments = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -79,6 +82,9 @@ export default function AdminPayments() {
       return matchesSearch && matchesMethod && matchesDate;
     });
   }, [payments, q, method, date]);
+
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(totalPayments / pageSize));
 
   const rows = useMemo(
     () =>
@@ -187,6 +193,34 @@ export default function AdminPayments() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalPayments > pageSize && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setSel(null);
+            }}
+          >
+            ← Prev
+          </button>
+          <span>
+            {page * pageSize + 1}–{Math.min(totalPayments, page * pageSize + payments.length)} of {totalPayments}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() => {
+              setPage((value) => Math.min(pageCount - 1, value + 1));
+              setSel(null);
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

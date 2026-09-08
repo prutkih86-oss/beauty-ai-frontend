@@ -40,6 +40,8 @@ interface Page<T> {
 
 type Raw = Record<string, unknown>;
 
+let analyticsSourcePromise: Promise<AnalyticsSourceData> | null = null;
+
 async function getAllPages<T>(path: string): Promise<T[]> {
   const rows: T[] = [];
 
@@ -98,6 +100,23 @@ function fullName(item: Raw): string {
   return combined || text(item.name ?? item.master_name ?? item.email);
 }
 
+function masterSpecialization(item: Raw): string {
+  const direct = text(item.specialization ?? item.category, "");
+  if (direct) {
+    return direct;
+  }
+
+  const services = Array.isArray(item.services) ? item.services : [];
+  const firstService = services[0];
+
+  if (firstService && typeof firstService === "object") {
+    const row = firstService as Raw;
+    return text(row.category ?? row.name, "—");
+  }
+
+  return "—";
+}
+
 function cityName(value: unknown): string {
   if (value && typeof value === "object") {
     const row = value as Raw;
@@ -107,6 +126,11 @@ function cityName(value: unknown): string {
 }
 
 export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
+  if (analyticsSourcePromise) {
+    return analyticsSourcePromise;
+  }
+
+  analyticsSourcePromise = (async () => {
   const [appointments, mastersRaw, salonsRaw, paymentsRaw] = await Promise.all([
     getAllPages<Raw>("/api/appointments/"),
     getAllPages<Raw>("/api/users/masters/"),
@@ -144,7 +168,7 @@ export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
 
   const masters = mastersRaw.map((item): AnalyticsMaster => ({
     name: fullName(item),
-    specialization: text(item.specialization ?? item.category, "—"),
+    specialization: masterSpecialization(item),
     city: cityName(item.city ?? item.location),
     rating: number(item.average_rating ?? item.rating),
   }));
@@ -163,4 +187,10 @@ export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
   });
 
   return { bookings, masters, payments };
+  })().catch((error) => {
+    analyticsSourcePromise = null;
+    throw error;
+  });
+
+  return analyticsSourcePromise;
 }

@@ -5438,3 +5438,6 @@ button .place-modal-reviews-summary {
     transform: translateX(8px);
   }
 }
+.beauty-ai-marker .beauty-ai-pin {
+  background: #9840F0 !important;
+}

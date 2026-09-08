@@ -7,16 +7,18 @@ import {
   Select,
   Toolbar,
 } from "./AdminUI";
-import { deleteReview, getReviews } from "./api/reviews";
+import { deleteReview, getReviewsPage } from "./api/reviews";
 import type { ReviewRow } from "./api/reviews";
 
 export default function AdminReviews() {
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
+  const [totalReviews, setTotalReviews] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [rating, setRating] = useState("All");
   const [sel, setSel] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
   const [reload, setReload] = useState(0);
   const [viewOpen, setViewOpen] = useState(false);
 
@@ -25,10 +27,11 @@ export default function AdminReviews() {
     setLoading(true);
     setError(null);
 
-    getReviews()
-      .then((data) => {
+    getReviewsPage(page, 15)
+      .then(({ reviews: pageItems, count }) => {
         if (active) {
-          setReviews(data);
+          setReviews(pageItems);
+          setTotalReviews(count);
         }
       })
       .catch((e: unknown) => {
@@ -45,7 +48,7 @@ export default function AdminReviews() {
     return () => {
       active = false;
     };
-  }, [reload]);
+  }, [reload, page]);
 
   const filteredReviews = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -64,6 +67,9 @@ export default function AdminReviews() {
       return matchesSearch && matchesRating;
     });
   }, [reviews, q, rating]);
+
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(totalReviews / pageSize));
 
   const rows = useMemo(
     () =>
@@ -134,6 +140,34 @@ export default function AdminReviews() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalReviews > pageSize && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setSel(null);
+            }}
+          >
+            ← Prev
+          </button>
+          <span>
+            {page * pageSize + 1}–{Math.min(totalReviews, page * pageSize + reviews.length)} of {totalReviews}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() => {
+              setPage((value) => Math.min(pageCount - 1, value + 1));
+              setSel(null);
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

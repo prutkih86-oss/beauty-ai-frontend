@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGetPageSlice } from "./client";
 
 export interface BookingRow {
   id: number | string;
@@ -26,43 +26,40 @@ interface RawBooking {
   price?: number | string;
 }
 
-function unwrap<T>(data: T[] | { results?: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results || [];
+export type BookingsPage = {
+  bookings: BookingRow[];
+  count: number;
+};
+
+function mapBooking(item: RawBooking): BookingRow {
+  return {
+    id: item.id ?? item.appointment_id ?? "N/A",
+    clientName: item.client_name || "—",
+    masterName: item.master_name || "—",
+    serviceName: item.service_name || "—",
+    salonName: item.salon_name || "—",
+    dateTime:
+      `${item.appointment_date || ""} ${item.appointment_time || ""}`.trim() ||
+      "—",
+    status: item.appointment_status || item.status || "Pending",
+    price: Number(item.total_price ?? item.price ?? 0) || 0,
+  };
 }
 
-export async function getBookings(
-  search = "",
-  status = "All"
-): Promise<BookingRow[]> {
-  const data = await apiGet<RawBooking[] | { results?: RawBooking[] }>(
-    "/api/appointments/"
+export async function getBookingsPage(
+  page: number,
+  pageSize = 15
+): Promise<BookingsPage> {
+  const data = await apiGetPageSlice<RawBooking>(
+    "/api/appointments/",
+    page,
+    pageSize
   );
 
-  const q = search.toLowerCase();
-
-  return unwrap(data)
-    .map(
-      (item): BookingRow => ({
-        id: item.id ?? item.appointment_id ?? "N/A",
-        clientName: item.client_name || "—",
-        masterName: item.master_name || "—",
-        serviceName: item.service_name || "—",
-        salonName: item.salon_name || "—",
-        dateTime:
-          `${item.appointment_date || ""} ${item.appointment_time || ""}`.trim() ||
-          "—",
-        status: item.appointment_status || item.status || "Pending",
-        price: Number(item.total_price ?? item.price ?? 0) || 0,
-      })
-    )
-    .filter(
-      (b: BookingRow) =>
-        (!q ||
-          b.clientName.toLowerCase().includes(q) ||
-          b.masterName.toLowerCase().includes(q) ||
-          b.serviceName.toLowerCase().includes(q)) &&
-        (status === "All" || b.status === status)
-    );
+  return {
+    bookings: data.items.map(mapBooking),
+    count: data.count,
+  };
 }
 
 /*

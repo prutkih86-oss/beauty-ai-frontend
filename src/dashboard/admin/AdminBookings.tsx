@@ -7,16 +7,18 @@ import {
   Select,
   Toolbar,
 } from "./AdminUI";
-import { getBookings } from "./api/bookings";
+import { getBookingsPage } from "./api/bookings";
 import type { BookingRow } from "./api/bookings";
 
 export default function AdminBookings() {
   const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [totalBookings, setTotalBookings] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [sel, setSel] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
   const [viewOpen, setViewOpen] = useState(false);
 
   useEffect(() => {
@@ -24,10 +26,11 @@ export default function AdminBookings() {
     setLoading(true);
     setError(null);
 
-    getBookings()
-      .then((data) => {
+    getBookingsPage(page, 15)
+      .then(({ bookings: pageItems, count }) => {
         if (active) {
-          setBookings(data);
+          setBookings(pageItems);
+          setTotalBookings(count);
         }
       })
       .catch((e: unknown) => {
@@ -44,7 +47,7 @@ export default function AdminBookings() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page]);
 
   const filteredBookings = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -65,6 +68,9 @@ export default function AdminBookings() {
       return matchesSearch && matchesStatus;
     });
   }, [bookings, q, status]);
+
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(totalBookings / pageSize));
 
   const rows = useMemo(
     () =>
@@ -127,6 +133,34 @@ export default function AdminBookings() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalBookings > pageSize && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setSel(null);
+            }}
+          >
+            ← Prev
+          </button>
+          <span>
+            {page * pageSize + 1}–{Math.min(totalBookings, page * pageSize + bookings.length)} of {totalBookings}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() => {
+              setPage((value) => Math.min(pageCount - 1, value + 1));
+              setSel(null);
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

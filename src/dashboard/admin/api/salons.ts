@@ -1,4 +1,10 @@
-import { apiDelete, apiGet, apiPost, apiPut } from "./client";
+import {
+  apiDelete,
+  apiGetAllPages,
+  apiGetPageSlice,
+  apiPost,
+  apiPut,
+} from "./client";
 
 export interface SalonRow {
   id: number | string;
@@ -8,41 +14,51 @@ export interface SalonRow {
   popularityScore: number;
 }
 
+interface RawSalonLocation {
+  city_name?: string;
+  address?: string | null;
+}
+
 interface RawSalon {
   id?: number | string;
   name?: string;
-  city?: string;
-  address?: string;
+  location?: RawSalonLocation | null;
 }
 
-function unwrap<T>(data: T[] | { results?: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results || [];
+export type SalonsPage = {
+  salons: SalonRow[];
+  count: number;
+};
+
+function mapSalon(item: RawSalon): SalonRow {
+  return {
+    id: item.id ?? "N/A",
+    name: item.name || "",
+    city: item.location?.city_name || "N/A",
+    address: item.location?.address || "",
+    popularityScore: 0,
+  };
 }
 
-export async function getSalons(search = ""): Promise<SalonRow[]> {
-  const data = await apiGet<RawSalon[] | { results?: RawSalon[] }>(
-    "/api/salons/"
+export async function getSalons(): Promise<SalonRow[]> {
+  const results = await apiGetAllPages<RawSalon>("/api/salons/");
+  return results.map(mapSalon);
+}
+
+export async function getSalonsPage(
+  page: number,
+  pageSize = 15
+): Promise<SalonsPage> {
+  const data = await apiGetPageSlice<RawSalon>(
+    "/api/salons/",
+    page,
+    pageSize
   );
 
-  const q = search.toLowerCase();
-
-  return unwrap(data)
-    .map(
-      (item): SalonRow => ({
-        id: item.id ?? "N/A",
-        name: item.name || "",
-        city: item.city || "",
-        address: item.address || "",
-        // Original API adapter sets this to 0 because backend does not expose it.
-        popularityScore: 0,
-      })
-    )
-    .filter(
-      (s: SalonRow) =>
-        !q ||
-        s.name.toLowerCase().includes(q) ||
-        s.city.toLowerCase().includes(q)
-    );
+  return {
+    salons: data.items.map(mapSalon),
+    count: data.count,
+  };
 }
 
 export function addSalon(name: string, city: string, address: string) {

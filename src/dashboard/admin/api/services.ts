@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGetPageSlice } from "./client";
 
 export interface ServiceRow {
   id: number | string;
@@ -6,7 +6,8 @@ export interface ServiceRow {
   category: string;
   duration: number;
   price: number;
-  masters: string;
+  mastersCount: number;
+  mastersDetail: string;
   bookings: number;
 }
 
@@ -25,47 +26,57 @@ interface RawService {
   masters?: RawMaster[] | Array<number | string> | string;
 }
 
-function unwrap<T>(data: T[] | { results?: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results || [];
+export type ServicesPage = {
+  services: ServiceRow[];
+  count: number;
+};
+
+function mapService(item: RawService): ServiceRow {
+  let mastersCount = 0;
+  let mastersDetail = "—";
+
+  if (Array.isArray(item.masters)) {
+    const masters = item.masters
+      .map((master) => {
+        if (typeof master === "object" && master) {
+          return master.name || master.full_name || String(master.id ?? "");
+        }
+
+        return String(master);
+      })
+      .filter(Boolean);
+
+    mastersCount = masters.length;
+    mastersDetail = masters.join(", ") || "—";
+  } else if (item.masters) {
+    mastersCount = 1;
+    mastersDetail = String(item.masters);
+  }
+
+  return {
+    id: item.id ?? "N/A",
+    name: item.name || "Unknown Service",
+    category: item.category || "—",
+    duration: Number(item.duration_minutes ?? 0) || 0,
+    price: Number(item.price ?? 0) || 0,
+    mastersCount,
+    mastersDetail,
+    bookings: 0,
+  };
 }
 
-export async function getServices(
-  search = "",
-  category = "All"
-): Promise<ServiceRow[]> {
-  const params = new URLSearchParams();
-  if (search) params.set("service_name", search);
-  if (category !== "All") params.set("category", category);
-
-  const qs = params.toString();
-  const data = await apiGet<RawService[] | { results?: RawService[] }>(
-    `/api/services/${qs ? `?${qs}` : ""}`
+export async function getServicesPage(
+  page: number,
+  pageSize = 15
+): Promise<ServicesPage> {
+  const data = await apiGetPageSlice<RawService>(
+    "/api/services/",
+    page,
+    pageSize
   );
 
-  return unwrap(data).map((item): ServiceRow => {
-    let masters = "—";
-
-    if (Array.isArray(item.masters)) {
-      const names = item.masters.map((m) => {
-        if (typeof m === "object" && m) {
-          return m.name || m.full_name || String(m.id ?? "");
-        }
-        return String(m);
-      });
-      masters = names.filter(Boolean).join(", ") || "—";
-    } else if (item.masters) {
-      masters = String(item.masters);
-    }
-
-    return {
-      id: item.id ?? "N/A",
-      name: item.name || "Unknown Service",
-      category: item.category || "—",
-      duration: Number(item.duration_minutes ?? 0) || 0,
-      price: Number(item.price ?? 0) || 0,
-      masters,
-      // Original API adapter cannot derive bookings count from this endpoint.
-      bookings: 0,
-    };
-  });
+  return {
+    services: data.items.map(mapService),
+    count: data.count,
+  };
 }

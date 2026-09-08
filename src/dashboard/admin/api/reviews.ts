@@ -1,4 +1,4 @@
-import { apiDelete, apiGet } from "./client";
+import { apiDelete, apiGetPageSlice } from "./client";
 
 export interface ReviewRow {
   id: number | string;
@@ -44,9 +44,10 @@ interface RawReview {
   date?: string;
 }
 
-function unwrap<T>(data: T[] | { results?: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results || [];
-}
+export type ReviewsPage = {
+  reviews: ReviewRow[];
+  count: number;
+};
 
 function personName(
   data: RawPerson | string | undefined,
@@ -63,50 +64,48 @@ function personName(
   return fallback || (data ? String(data) : "N/A");
 }
 
-export async function getReviews(
-  search = "",
-  rating = "All"
-): Promise<ReviewRow[]> {
-  const data = await apiGet<RawReview[] | { results?: RawReview[] }>(
-    "/api/reviews/"
+function mapReview(item: RawReview): ReviewRow {
+  const appointment = item.appointment || item.booking;
+  let service = item.service_name || item.service || "N/A";
+
+  if (appointment) {
+    const serviceObj = appointment.service || appointment.service_name;
+    if (typeof serviceObj === "object" && serviceObj) {
+      service = serviceObj.name || serviceObj.service_name || "N/A";
+    } else if (serviceObj) {
+      service = String(serviceObj);
+    }
+  }
+
+  const dateRaw = item.created_at || item.review_date || item.date;
+
+  return {
+    id: item.id ?? "N/A",
+    client: personName(
+      item.client || item.user || item.author,
+      item.client_name
+    ),
+    master: personName(item.master, item.master_name),
+    service: String(service),
+    rating: Number(item.rating ?? item.stars ?? 0) || 0,
+    date: dateRaw ? String(dateRaw).slice(0, 10) : "—",
+  };
+}
+
+export async function getReviewsPage(
+  page: number,
+  pageSize = 15
+): Promise<ReviewsPage> {
+  const data = await apiGetPageSlice<RawReview>(
+    "/api/reviews/",
+    page,
+    pageSize
   );
 
-  const q = search.toLowerCase();
-
-  return unwrap(data)
-    .map((item): ReviewRow => {
-      const appointment = item.appointment || item.booking;
-      let service = item.service_name || item.service || "N/A";
-
-      if (appointment) {
-        const serviceObj = appointment.service || appointment.service_name;
-        if (typeof serviceObj === "object" && serviceObj) {
-          service = serviceObj.name || serviceObj.service_name || "N/A";
-        } else if (serviceObj) {
-          service = String(serviceObj);
-        }
-      }
-
-      const dateRaw = item.created_at || item.review_date || item.date;
-
-      return {
-        id: item.id ?? "N/A",
-        client: personName(
-          item.client || item.user || item.author,
-          item.client_name
-        ),
-        master: personName(item.master, item.master_name),
-        service: String(service),
-        rating: Number(item.rating ?? item.stars ?? 0) || 0,
-        date: dateRaw ? String(dateRaw).slice(0, 10) : "—",
-      };
-    })
-    .filter(
-      (r: ReviewRow) =>
-        (!q ||
-          `${r.client} ${r.master} ${r.service}`.toLowerCase().includes(q)) &&
-        (rating === "All" || r.rating === Number(rating))
-    );
+  return {
+    reviews: data.items.map(mapReview),
+    count: data.count,
+  };
 }
 
 export function deleteReview(id: number | string) {

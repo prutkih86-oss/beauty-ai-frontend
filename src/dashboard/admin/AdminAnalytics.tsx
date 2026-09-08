@@ -214,7 +214,7 @@ export default function AdminAnalytics() {
   const [masterSearch, setMasterSearch] = useState("");
   const [masterCategory, setMasterCategory] = useState("All");
   const [masterPage, setMasterPage] = useState(0);
-  const MASTERS_PAGE_SIZE = 30;
+  const MASTERS_PAGE_SIZE = 10;
 
   useEffect(() => {
     let alive = true;
@@ -303,7 +303,7 @@ export default function AdminAnalytics() {
 
     const revenueByCity = new Map<string, number>();
     bookings.forEach((row) => {
-      const city = row.city || "N/A";
+      const city = row.city && row.city !== "N/A" ? row.city : "Solo / No salon";
       revenueByCity.set(city, (revenueByCity.get(city) || 0) + row.price);
     });
 
@@ -357,7 +357,7 @@ export default function AdminAnalytics() {
       revenueTrend,
       paymentMethods,
       revenueByPeriod: [...periodRevenue.entries()],
-      revenueByCity: [...revenueByCity.entries()].sort((a, b) => b[1] - a[1]),
+      revenueByCity: [...revenueByCity.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
       topMasters,
       popularServices,
       bookingStatus,

@@ -8,27 +8,34 @@ import {
   Select,
   Toolbar,
 } from "./AdminUI";
-import { getClients } from "./api/clients";
+import { getClientsPage } from "./api/clients";
 import type { ClientRow } from "./api/clients";
+
+const PAGE_SIZE = 15;
 
 export default function AdminClients() {
   const [clients, setClients] = useState<ClientRow[]>([]);
+  const [totalClients, setTotalClients] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [sel, setSel] = useState<number | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let active = true;
+
     setLoading(true);
     setError(null);
+    setSel(null);
 
-    getClients()
-      .then((data) => {
+    getClientsPage(page, PAGE_SIZE)
+      .then(({ clients: pageClients, count }) => {
         if (active) {
-          setClients(data);
+          setClients(pageClients);
+          setTotalClients(count);
         }
       })
       .catch((e: unknown) => {
@@ -45,7 +52,7 @@ export default function AdminClients() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [page]);
 
   const filteredClients = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -64,6 +71,8 @@ export default function AdminClients() {
       return matchesSearch && matchesStatus;
     });
   }, [clients, q, status]);
+
+  const pageCount = Math.max(1, Math.ceil(totalClients / PAGE_SIZE));
 
   const rows = useMemo(
     () =>
@@ -115,6 +124,7 @@ export default function AdminClients() {
       </Toolbar>
 
       {loading && <p className="admin-info">Loading clients…</p>}
+      {error && <p className="admin-info">{error}</p>}
 
       <DataTable
         columns={[
@@ -130,6 +140,34 @@ export default function AdminClients() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalClients > PAGE_SIZE && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => setPage((value) => Math.max(0, value - 1))}
+          >
+            ← Prev
+          </button>
+
+          <span>
+            {page * PAGE_SIZE + 1}–
+            {Math.min(totalClients, page * PAGE_SIZE + clients.length)} of{" "}
+            {totalClients}
+          </span>
+
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() =>
+              setPage((value) => Math.min(pageCount - 1, value + 1))
+            }
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

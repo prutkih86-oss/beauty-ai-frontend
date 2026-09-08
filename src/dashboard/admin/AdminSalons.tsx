@@ -12,13 +12,14 @@ import {
 import {
   addSalon,
   deleteSalon,
-  getSalons,
+  getSalonsPage,
   updateSalon,
 } from "./api/salons";
 import type { SalonRow } from "./api/salons";
 
 export default function AdminSalons() {
   const [salons, setSalons] = useState<SalonRow[]>([]);
+  const [totalSalons, setTotalSalons] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -26,6 +27,7 @@ export default function AdminSalons() {
   const [reload, setReload] = useState(0);
   const [mode, setMode] = useState<"add" | "edit" | "view" | null>(null);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(0);
   const [name, setName] = useState("");
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
@@ -35,10 +37,11 @@ export default function AdminSalons() {
     setLoading(true);
     setError(null);
 
-    getSalons()
-      .then((data) => {
+    getSalonsPage(page, 15)
+      .then(({ salons: pageSalons, count }) => {
         if (active) {
-          setSalons(data);
+          setSalons(pageSalons);
+          setTotalSalons(count);
         }
       })
       .catch((e: unknown) => {
@@ -55,7 +58,7 @@ export default function AdminSalons() {
     return () => {
       active = false;
     };
-  }, [reload]);
+  }, [reload, page]);
 
   const filteredSalons = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -72,6 +75,9 @@ export default function AdminSalons() {
         String(salon.id).toLowerCase().includes(search)
     );
   }, [salons, q]);
+
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(totalSalons / pageSize));
 
   const rows = useMemo(
     () =>
@@ -159,6 +165,7 @@ export default function AdminSalons() {
           value={q}
           onChange={(event) => {
             setQ(event.target.value);
+            setPage(0);
             setSel(null);
           }}
         />
@@ -172,6 +179,34 @@ export default function AdminSalons() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalSalons > pageSize && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setSel(null);
+            }}
+          >
+            ← Prev
+          </button>
+          <span>
+            {page * pageSize + 1}–{Math.min(totalSalons, page * pageSize + salons.length)} of {totalSalons}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() => {
+              setPage((value) => Math.min(pageCount - 1, value + 1));
+              setSel(null);
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

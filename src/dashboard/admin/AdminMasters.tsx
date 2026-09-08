@@ -10,11 +10,12 @@ import {
   Select,
   Toolbar,
 } from "./AdminUI";
-import { addMaster, getMasters } from "./api/masters";
+import { addMaster, getMastersPage } from "./api/masters";
 import type { MasterRow } from "./api/masters";
 
 export default function AdminMasters() {
   const [masters, setMasters] = useState<MasterRow[]>([]);
+  const [totalMasters, setTotalMasters] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -24,6 +25,7 @@ export default function AdminMasters() {
   const [addOpen, setAddOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(0);
 
   const [name, setName] = useState("");
   const [specialization, setSpecialization] = useState("");
@@ -36,10 +38,11 @@ export default function AdminMasters() {
     setLoading(true);
     setError(null);
 
-    getMasters()
-      .then((data) => {
+    getMastersPage(page, 15)
+      .then(({ masters: pageMasters, count }) => {
         if (active) {
-          setMasters(data);
+          setMasters(pageMasters);
+          setTotalMasters(count);
         }
       })
       .catch((e: unknown) => {
@@ -56,7 +59,7 @@ export default function AdminMasters() {
     return () => {
       active = false;
     };
-  }, [reload]);
+  }, [reload, page]);
 
   const filteredMasters = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -75,6 +78,9 @@ export default function AdminMasters() {
       return matchesSearch && matchesCategory;
     });
   }, [masters, q, category]);
+
+  const pageSize = 15;
+  const pageCount = Math.max(1, Math.ceil(totalMasters / pageSize));
 
   const rows = useMemo(
     () =>
@@ -135,6 +141,7 @@ export default function AdminMasters() {
           value={q}
           onChange={(event) => {
             setQ(event.target.value);
+            setPage(0);
             setSel(null);
           }}
         />
@@ -142,6 +149,7 @@ export default function AdminMasters() {
           value={category}
           onChange={(event) => {
             setCategory(event.target.value);
+            setPage(0);
             setSel(null);
           }}
         >
@@ -170,6 +178,34 @@ export default function AdminMasters() {
         selectedIndex={sel}
         onSelect={setSel}
       />
+
+      {!loading && totalMasters > pageSize && (
+        <div className="admin-pagination">
+          <button
+            type="button"
+            disabled={page === 0}
+            onClick={() => {
+              setPage((value) => Math.max(0, value - 1));
+              setSel(null);
+            }}
+          >
+            ← Prev
+          </button>
+          <span>
+            {page * pageSize + 1}–{Math.min(totalMasters, page * pageSize + masters.length)} of {totalMasters}
+          </span>
+          <button
+            type="button"
+            disabled={page + 1 >= pageCount}
+            onClick={() => {
+              setPage((value) => Math.min(pageCount - 1, value + 1));
+              setSel(null);
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
 
       <div className="admin-actions">
         <ActionButton

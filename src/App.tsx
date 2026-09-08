@@ -7,6 +7,14 @@ import FilterBar from './FilterBar';
 import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
 import settingsIcon from "./assets/settings.png";
 import DashboardShell from "./dashboard/DashboardShell";
+import {
+  fetchMasters,
+  fetchSalons,
+  fetchServices,
+  type MasterApi,
+  type SalonApi,
+  type ServiceApi,
+} from "./api/beautyApi";
 
 type CardReview = {
   author: string;
@@ -1546,6 +1554,122 @@ function Card({
 }
 
 
+const FALLBACK_SALON_IMAGES = [
+  "https://images.pexels.com/photos/7750114/pexels-photo-7750114.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+  "https://images.pexels.com/photos/7750115/pexels-photo-7750115.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+  "https://images.pexels.com/photos/7750116/pexels-photo-7750116.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+  "https://images.pexels.com/photos/7750117/pexels-photo-7750117.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+  "https://images.pexels.com/photos/7195808/pexels-photo-7195808.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+  "https://images.pexels.com/photos/7750091/pexels-photo-7750091.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
+];
+
+function getSalonFallbackImage(salonId: number): string {
+  return FALLBACK_SALON_IMAGES[Math.abs(salonId) % FALLBACK_SALON_IMAGES.length];
+}
+
+const FALLBACK_MASTER_IMAGES = [
+  "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+  "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+  "https://images.pexels.com/photos/3992656/pexels-photo-3992656.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+  "https://images.pexels.com/photos/3993449/pexels-photo-3993449.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+  "https://images.pexels.com/photos/3764014/pexels-photo-3764014.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
+];
+
+function getMasterFallbackImage(masterId: number): string {
+  return FALLBACK_MASTER_IMAGES[Math.abs(masterId) % FALLBACK_MASTER_IMAGES.length];
+}
+
+function salonToCard(
+  salon: SalonApi,
+  tags: string[] = [],
+  prices: number[] = []
+): CardData {
+  const validPrices = prices.filter(
+    (price) => Number.isFinite(price) && price > 0
+  );
+
+  const priceFrom = validPrices.length
+    ? Math.min(...validPrices)
+    : null;
+
+  const avgPrice = validPrices.length
+    ? Math.round(
+        validPrices.reduce((sum, price) => sum + price, 0) /
+          validPrices.length
+      )
+    : null;
+
+  return {
+    image: salon.logo || getSalonFallbackImage(salon.id),
+    badges: [],
+    title: salon.name,
+    type: "Салон краси",
+    rating: salon.average_rating ?? 0,
+    reviews: salon.total_reviews ?? 0,
+    district: salon.location?.city_name || "",
+    distance: "",
+    openNow: salon.available_status === "available",
+    tags,
+    priceFrom: priceFrom !== null ? String(priceFrom) : "",
+    mastersCount:
+      salon.masters_count != null
+        ? `${salon.masters_count} майстрів`
+        : undefined,
+    avgCheck:
+      avgPrice !== null
+        ? `${avgPrice} грн`
+        : undefined,
+    description: salon.description ?? undefined,
+  };
+}
+
+function masterToCard(
+  master: MasterApi,
+  prices: number[] = []
+): CardData {
+  const name =
+    `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim();
+
+  const serviceNames =
+    master.services
+      ?.map((service) => service.name)
+      .filter(Boolean) ?? [];
+
+  const salonName = master.salons?.[0]?.name;
+  const yearsOfExperience = master.years_of_experience ?? 0;
+
+  const validPrices = prices.filter(
+    (price) => Number.isFinite(price) && price > 0
+  );
+
+  const priceFrom = validPrices.length
+    ? Math.min(...validPrices)
+    : null;
+
+  return {
+    image: master.photo || getMasterFallbackImage(master.id),
+    badges: [],
+    title: name || `Майстер #${master.id}`,
+    type: serviceNames.length
+      ? `Майстер · ${serviceNames[0]}`
+      : "Майстер",
+    rating: master.average_rating ?? 0,
+    reviews: 0,
+    district: salonName || "Соло-майстер",
+    distance: "",
+    openNow: true,
+    tags: serviceNames,
+    priceFrom: priceFrom !== null ? String(priceFrom) : "",
+    experience:
+      yearsOfExperience > 0
+        ? `${yearsOfExperience} років досвіду`
+        : undefined,
+    locationNote: salonName || "Соло-майстер",
+    profileLinkLabel: "Профіль майстра",
+    variant: "solo",
+  };
+}
+
 const recommendations: CardData[] = [
   {
     image: "https://images.pexels.com/photos/7750114/pexels-photo-7750114.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
@@ -2800,12 +2924,14 @@ export default function App() {
   const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [pendingClientAction, setPendingClientAction] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [bookingCard, setBookingCard] = useState<CardData | null>(null);
+  const [salonCards, setSalonCards] = useState<CardData[]>(recommendations);
+  const [masterCards, setMasterCards] = useState<CardData[]>(soloMastersRecommendations);
   const t = dict[lang];
     const filteredSalons = appliedSearch.trim()
-    ? recommendations.filter((card) =>
+    ? salonCards.filter((card) =>
         card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
       )
-    : recommendations;
+    : salonCards;
   const hasSearch = appliedSearch.trim().length > 0;
   const runSearch = () => {
     const query = searchQuery.trim();
@@ -2834,13 +2960,116 @@ export default function App() {
     setIsSearching(false);
     setActiveCategory(null);
   };
-  const liveMasterRecommendations = buildStoredMasterCards(soloMastersRecommendations);
+  const liveMasterRecommendations = buildStoredMasterCards(masterCards);
   const filteredMasters = appliedSearch.trim()
     ? liveMasterRecommendations.filter((card) =>
         card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
       )
     : liveMasterRecommendations;
   void masterRegistryVersion;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      fetchSalons(),
+      fetchMasters(),
+      fetchServices().catch((error) => {
+        console.warn("Service prices are unavailable", error);
+        return [] as ServiceApi[];
+      }),
+    ])
+      .then(([salons, masters, services]) => {
+        if (cancelled) return;
+
+        const salonTagsById = new Map<number, Set<string>>();
+        const masterPricesById = new Map<number, number[]>();
+
+        services.forEach((service: ServiceApi) => {
+          const price = Number(service.price);
+
+          if (!Number.isFinite(price) || price <= 0) return;
+
+          service.masters?.forEach((masterRef) => {
+            const rawId =
+              typeof masterRef === "object" && masterRef
+                ? masterRef.id
+                : masterRef;
+
+            const masterId = Number(rawId);
+
+            if (!Number.isFinite(masterId)) return;
+
+            const prices =
+              masterPricesById.get(masterId) ?? [];
+
+            prices.push(price);
+            masterPricesById.set(masterId, prices);
+          });
+        });
+
+        masters.forEach((master) => {
+          const serviceNames =
+            master.services
+              ?.map((service) => service.name)
+              .filter(Boolean) ?? [];
+
+          master.salons?.forEach((salon) => {
+            const tags =
+              salonTagsById.get(salon.id) ??
+              new Set<string>();
+
+            serviceNames.forEach((serviceName) =>
+              tags.add(serviceName)
+            );
+
+            salonTagsById.set(salon.id, tags);
+          });
+        });
+
+        setSalonCards(
+          salons.map((salon) => {
+            const salonMasterIds = masters
+              .filter((master) =>
+                master.salons?.some(
+                  (item) => item.id === salon.id
+                )
+              )
+              .map((master) => master.id);
+
+            const salonPrices =
+              salonMasterIds.flatMap(
+                (masterId) =>
+                  masterPricesById.get(masterId) ?? []
+              );
+
+            return salonToCard(
+              salon,
+              Array.from(
+                salonTagsById.get(salon.id) ?? []
+              ),
+              salonPrices
+            );
+          })
+        );
+
+        setMasterCards(
+          masters.map((master) =>
+            masterToCard(
+              master,
+              masterPricesById.get(master.id) ?? []
+            )
+          )
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to load marketplace cards from API", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const refreshMasters = () => setMasterRegistryVersion((value) => value + 1);
