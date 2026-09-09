@@ -11,7 +11,7 @@ export interface SalonRow {
   name: string;
   city: string;
   address: string;
-  popularityScore: number;
+  averageRating: number;
 }
 
 interface RawSalonLocation {
@@ -23,6 +23,7 @@ interface RawSalon {
   id?: number | string;
   name?: string;
   location?: RawSalonLocation | null;
+  average_rating?: number;
 }
 
 export type SalonsPage = {
@@ -36,7 +37,7 @@ function mapSalon(item: RawSalon): SalonRow {
     name: item.name || "",
     city: item.location?.city_name || "N/A",
     address: item.location?.address || "",
-    popularityScore: 0,
+    averageRating: Number(item.average_rating ?? 0),
   };
 }
 

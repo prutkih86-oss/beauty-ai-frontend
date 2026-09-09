@@ -25,23 +25,50 @@ const NAV: Array<{ id?: AdminSection; label?: string; icon?: AdminIconName; divi
 ];
 
 export default function AdminLayout({
-  user, lang, active, onNavigate, onHome, children, title, subtitle,
+  user, lang, active, onNavigate, onHome, onLogout, children, title, subtitle,
 }: {
   user: MockUser;
   lang: Lang;
   active: AdminSection;
   onNavigate: (section: AdminSection) => void;
   onHome: () => void;
+  onLogout?: () => void;
   children: React.ReactNode;
   title?: string;
   subtitle?: string;
 }) {
   const [now, setNow] = React.useState(() => new Date());
+  const [accountOpen, setAccountOpen] = React.useState(false);
+  const accountRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  React.useEffect(() => {
+    if (!accountOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountOpen]);
 
   const today = new Intl.DateTimeFormat(lang === "ua" ? "uk-UA" : "en-GB", {
     day: "2-digit",
@@ -105,15 +132,56 @@ export default function AdminLayout({
               <strong>{currentTime}</strong>
             </div>
 
-            <div className="admin-topbar-user-v3">
-              <div className="admin-user-avatar-v3">
-                {user.avatar ? (
-                  <img src={user.avatar} alt={user.name || "Administrator"} />
-                ) : (
-                  initial
-                )}
-              </div>
-              <strong className="admin-user-name-v3">Administrator</strong>
+            <div className="admin-account-v3" ref={accountRef}>
+              <button
+                type="button"
+                className="admin-topbar-user-v3 admin-account-trigger-v3"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                <div className="admin-user-avatar-v3">
+                  {user.avatar ? (
+                    <img src={user.avatar} alt={user.name || "Administrator"} />
+                  ) : (
+                    initial
+                  )}
+                </div>
+                <strong className="admin-user-name-v3">Administrator</strong>
+                <span className={`admin-account-chevron-v3${accountOpen ? " open" : ""}`} aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+
+              {accountOpen ? (
+                <div className="admin-account-menu-v3" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      onHome();
+                    }}
+                  >
+                    <span aria-hidden="true">⌂</span>
+                    Website
+                  </button>
+                  <div className="admin-account-menu-separator-v3" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="admin-account-logout-v3"
+                    onClick={() => {
+                      setAccountOpen(false);
+                      onLogout?.();
+                    }}
+                    disabled={!onLogout}
+                  >
+                    <span aria-hidden="true">↪</span>
+                    Logout
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </header>

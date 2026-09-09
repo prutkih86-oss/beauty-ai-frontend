@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
+import { cancelMyAppointment, fetchMyAppointments, fetchMyProfile, updateMyProfile } from "../../api/beautyApi";
 
 type ClientFavorite = {
   title: string;
@@ -83,25 +84,42 @@ function findStoredMasterState(displayName: string): StoredMasterState | null {
   return null;
 }
 
-const CLIENT_STATE_KEY = "beautyai_client_state";
+const CLIENT_STATE_PREFIX = "beautyai_client_state:";
 const CLIENT_FAVORITES_PREFIX = "beautyai_client_favorites:";
 const CLIENT_PROFILE_PREFIX = "beautyai_client_profile:";
 const MASTER_STATE_PREFIX = "beautyai_master_state:";
 const STORED_USER_KEY = "beautyai_session_user";
 const emptyState = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
 
-function readClientState(): ClientState {
+function clientStateKey(email: string) {
+  return `${CLIENT_STATE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
+function readClientState(email: string): ClientState {
   try {
-    const raw = localStorage.getItem(CLIENT_STATE_KEY);
+    const raw = localStorage.getItem(clientStateKey(email));
     return raw ? { ...emptyState(), ...JSON.parse(raw) } : emptyState();
   } catch {
     return emptyState();
   }
 }
 
-function writeClientState(next: ClientState) {
-  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify({ ...next, favorites: [] }));
-  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
+function writeClientState(email: string, next: ClientState) {
+  localStorage.setItem(clientStateKey(email), JSON.stringify({ ...next, favorites: [] }));
+  window.dispatchEvent(new CustomEvent("beautyai:client-state", {
+    detail: { email: email.trim().toLowerCase(), state: next },
+  }));
+}
+
+function makeInitialsAvatar(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = (parts.length > 1
+    ? `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`
+    : parts[0]?.[0] ?? "I"
+  ).toUpperCase();
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="80" fill="#EDE7F6"/><text x="80" y="91" text-anchor="middle" font-family="Arial,sans-serif" font-size="54" font-weight="700" fill="#6F3CC3">${initials}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function clientFavoritesKey(email: string) {
@@ -114,12 +132,6 @@ function readAccountFavorites(email: string): ClientFavorite[] {
     const saved = localStorage.getItem(key);
     if (saved) return JSON.parse(saved) as ClientFavorite[];
 
-    const legacy = readClientState().favorites;
-    if (legacy.length) {
-      localStorage.setItem(key, JSON.stringify(legacy));
-      localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify({ ...readClientState(), favorites: [] }));
-      return legacy;
-    }
   } catch {
     return [];
   }
@@ -165,7 +177,17 @@ function formatBookingDate(value: string, ua: boolean) {
 function formatBookingDateTime(date: string, time: string, ua: boolean) {
   return `${formatBookingDate(date, ua)} · ${time}`;
 }
+function splitName(fullName: string): { first_name: string; last_name: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return { first_name: parts[0] ?? "", last_name: parts.slice(1).join(" ") };
+}
 
+function clientBookingStatus(value: string): ClientBooking["status"] {
+  const status = value.trim().toLowerCase();
+  if (status === "completed") return "completed";
+  if (status === "cancelled" || status === "no_show" || status === "no-show") return "cancelled";
+  return "confirmed";
+}
 function formatNoticeTime(value: string, ua: boolean) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -218,7 +240,7 @@ export default function ClientDashboard({
   onRoleChange: (role: AuthRole) => void;
 }) {
   const ua = lang === "ua";
-  const initialClientState = readClientState();
+  const initialClientState = readClientState(user.email);
   const [tab, setTab] = useState<"home" | "profile">("home");
   const [clientState, setClientState] = useState<ClientState>(() => ({ ...initialClientState, favorites: readAccountFavorites(user.email) }));
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -238,7 +260,7 @@ export default function ClientDashboard({
   const [profileName, setProfileName] = useState(savedProfile.name || user.name);
   const [profilePhone, setProfilePhone] = useState(savedProfile.phone || "+380 67 123 45 67");
   const [profileEmail, setProfileEmail] = useState(savedProfile.email || user.email);
-  const [profileAvatar, setProfileAvatar] = useState(savedProfile.avatar || initialClientState.profileAvatar || user.avatar);
+  const [profileAvatar, setProfileAvatar] = useState(savedProfile.avatar || initialClientState.profileAvatar || makeInitialsAvatar(savedProfile.name || user.name));
   const [profileSaved, setProfileSaved] = useState(false);
   const [avatarDraft, setAvatarDraft] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState("");
@@ -250,10 +272,14 @@ export default function ClientDashboard({
 
   useEffect(() => {
     const sync = () => {
-      const next = { ...readClientState(), favorites: readAccountFavorites(user.email) };
+      const next = { ...readClientState(user.email), favorites: readAccountFavorites(user.email) };
       setClientState(next);
       const profile = readAccountProfile(user.email);
-      if (profile.avatar || next.profileAvatar) setProfileAvatar(profile.avatar || next.profileAvatar || user.avatar);
+      setProfileAvatar(
+        profile.avatar ||
+        next.profileAvatar ||
+        makeInitialsAvatar(profile.name || profileName || user.name)
+      );
     };
     window.addEventListener("beautyai:client-state", sync as EventListener);
     window.addEventListener("beautyai:client-favorites", sync as EventListener);
@@ -263,7 +289,7 @@ export default function ClientDashboard({
       window.removeEventListener("beautyai:client-favorites", sync as EventListener);
       window.removeEventListener("storage", sync);
     };
-  }, [user.email, user.avatar]);
+  }, [profileName, user.email, user.name]);
 
   useEffect(() => {
     const syncMasterProfiles = () => {
@@ -308,7 +334,87 @@ export default function ClientDashboard({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [profileMenuOpen]);
+useEffect(() => {
+  let cancelled = false;
+  (async () => {
+    try {
+      const apiProfile = await fetchMyProfile();
+      if (cancelled) return;
+      const fullName = `${apiProfile.first_name} ${apiProfile.last_name}`.trim();
+      if (fullName) setProfileName(fullName);
+      if (apiProfile.phone) setProfilePhone(apiProfile.phone);
+      if (apiProfile.email) setProfileEmail(apiProfile.email);
+      setProfileAvatar(apiProfile.photo || makeInitialsAvatar(fullName || user.name));
+    } catch {
+      // Бекенд недоступний — лишаємось на локальному кеші, як і решта застосунку.
+    }
+  })();
+  return () => { cancelled = true; };
+}, [user.email]);
+  useEffect(() => {
+    let cancelled = false;
 
+    (async () => {
+      try {
+        const apiBookings = await fetchMyAppointments();
+        if (cancelled) return;
+
+        const cachedById = new Map(
+          readClientState(user.email).bookings.map((booking) => [booking.id, booking])
+        );
+
+        const bookings: ClientBooking[] = apiBookings.map((appointment) => {
+          const id = String(appointment.id);
+          const cached = cachedById.get(id);
+          const masterName = appointment.master_name || (ua ? "Майстер" : "Master");
+          const salonName = appointment.salon_name || "";
+          const title = salonName || masterName;
+
+          return {
+            id,
+            title,
+            type: masterName,
+            image:
+              findStoredMasterState(masterName)?.profile?.avatar ||
+              cached?.image ||
+              user.avatar,
+            service: appointment.service_name || "—",
+            date: appointment.appointment_date,
+            time: appointment.appointment_time,
+            phone: cached?.phone || "",
+            district: appointment.salon_address || cached?.district || "—",
+            priceFrom: String(Number(appointment.service_price || 0)),
+            status: clientBookingStatus(
+              appointment.appointment_status || appointment.status
+            ),
+            code: cached?.code || String(appointment.id),
+            createdAt: appointment.created_at,
+            reviewSubmitted: cached?.reviewSubmitted,
+            reviewMasterRating: cached?.reviewMasterRating,
+            reviewSalonRating: cached?.reviewSalonRating,
+            reviewComment: cached?.reviewComment,
+            reviewSubmittedAt: cached?.reviewSubmittedAt,
+            pointsAwarded: cached?.pointsAwarded,
+          };
+        });
+
+        const current = {
+          ...readClientState(user.email),
+          favorites: readAccountFavorites(user.email),
+        };
+        const next = { ...current, bookings };
+
+        writeClientState(user.email, next);
+        setClientState(next);
+      } catch {
+        // If the API is temporarily unavailable, keep the cached bookings.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ua, user.avatar, user.email]);
   useEffect(() => {
     const completedWithoutPoints = clientState.bookings.filter((booking) => booking.status === "completed" && !booking.pointsAwarded);
     if (!completedWithoutPoints.length) return;
@@ -326,7 +432,7 @@ export default function ClientDashboard({
       bookings: clientState.bookings.map((booking) => ids.has(booking.id) ? { ...booking, pointsAwarded: true } : booking),
       notifications: [...notifications, ...clientState.notifications],
     };
-    writeClientState(next);
+    writeClientState(user.email, next);
   }, [clientState, ua]);
 
   const formattedDateTime = useMemo(() => {
@@ -340,8 +446,10 @@ export default function ClientDashboard({
   const firstName = useMemo(() => profileName?.trim().split(/\s+/)[0] || (ua ? "Клієнт" : "Client"), [profileName, ua]);
   const unreadCount = clientState.notifications.filter((item) => !item.read).length;
   const completedBookings = clientState.bookings.filter((booking) => booking.status === "completed");
-  const reviewBookings = completedBookings.filter((booking) => booking.reviewSubmitted);
-  const visibleReviewBookings = reviewBookings.slice(0, 1);
+  const reviewBookings = completedBookings;
+  const visibleReviewBookings = reviewBookingId
+  ? reviewBookings.filter((booking) => booking.id === reviewBookingId)
+  : reviewBookings.slice(0, 1);
   const upcomingBookings = clientState.bookings.filter((booking) => booking.status === "confirmed");
   const visibleBookings = upcomingBookings.slice(0, 1);
   const visibleFavorites = showAllFavorites ? clientState.favorites : clientState.favorites.slice(0, 4);
@@ -352,10 +460,10 @@ export default function ClientDashboard({
   });
 
   const commit = (updater: (state: ClientState) => ClientState) => {
-    const current = { ...readClientState(), favorites: readAccountFavorites(user.email) };
+    const current = { ...readClientState(user.email), favorites: readAccountFavorites(user.email) };
     const next = updater(current);
     writeAccountFavorites(user.email, next.favorites);
-    writeClientState(next);
+    writeClientState(user.email, next);
     setClientState(next);
     if (next.profileAvatar) setProfileAvatar(next.profileAvatar);
     return next;
@@ -372,10 +480,17 @@ export default function ClientDashboard({
 
   const removeFavorite = (title: string) => commit((state) => ({ ...state, favorites: state.favorites.filter((item) => item.title !== title) }));
 
-  const cancelBooking = (id: string) => {
+  const cancelBooking = async (id: string) => {
+    try {
+      await cancelMyAppointment(id);
+    } catch {
+      return;
+    }
+
     const next = commit((state) => {
       const booking = state.bookings.find((item) => item.id === id);
       if (!booking || booking.status !== "confirmed") return state;
+
       const notice: ClientNotification = {
         id: `cancel-${id}-${Date.now()}`,
         title: ua ? "Запис скасовано" : "Booking cancelled",
@@ -383,9 +498,18 @@ export default function ClientDashboard({
         createdAt: new Date().toISOString(),
         read: false,
       };
-      return { ...state, bookings: state.bookings.map((item) => item.id === id ? { ...item, status: "cancelled" } : item), notifications: [notice, ...state.notifications] };
+
+      return {
+        ...state,
+        bookings: state.bookings.map((item) =>
+          item.id === id ? { ...item, status: "cancelled" } : item
+        ),
+        notifications: [notice, ...state.notifications],
+      };
     });
-    const updated = next.bookings.find((booking) => booking.id === id) ?? null;
+
+    const updated =
+      next.bookings.find((booking) => booking.id === id) ?? null;
     setSelectedBooking(updated?.status === "cancelled" ? null : updated);
   };
 
@@ -474,7 +598,7 @@ export default function ClientDashboard({
     if (avatarInputRef.current) avatarInputRef.current.value = "";
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     const nextProfile = {
       name: profileName.trim() || user.name,
       phone: profilePhone.trim(),
@@ -492,6 +616,14 @@ export default function ClientDashboard({
     window.dispatchEvent(new CustomEvent("beautyai:auth-changed"));
     setProfileName(nextProfile.name);
     setProfileEmail(nextProfile.email);
+
+    try {
+      const { first_name, last_name } = splitName(nextProfile.name);
+      await updateMyProfile({ first_name, last_name, phone: nextProfile.phone, email: nextProfile.email });
+    } catch {
+      // Бекенд не прийняв зміни — локально вже збережено, спробуємо синхронізувати іншим разом.
+    }
+
     setProfileSaved(true);
     window.setTimeout(() => setProfileSaved(false), 1600);
   };
@@ -510,6 +642,7 @@ export default function ClientDashboard({
 
   const openReviewFromHistory = (booking: ClientBooking) => {
     setAllBookingsOpen(false);
+     setShowAllReviews(false);
     setTab("home");
     startReview(booking);
     window.setTimeout(() => {
@@ -547,8 +680,7 @@ export default function ClientDashboard({
         <div className="client-booking-inline-actions">
           {booking.status === "confirmed" && (
             <>
-              <button type="button" className="booking-action-btn ghost" onClick={() => completeBooking(booking.id)}>{ua ? "Завершити" : "Complete"}</button>
-              <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(booking.id)}>{ua ? "Скасувати" : "Cancel"}</button>
+              <button type="button" className="profile-delete-btn" onClick={() => { void cancelBooking(booking.id); }}>{ua ? "Скасувати" : "Cancel"}</button>
             </>
           )}
           {booking.status === "completed" && (
@@ -771,6 +903,10 @@ export default function ClientDashboard({
                           <img
                             src={findStoredMasterState(booking.title)?.profile?.avatar || booking.image}
                             alt={findStoredMasterState(booking.title)?.profile?.displayName || booking.title}
+                            onError={(event) => {
+                              const img = event.currentTarget;
+                              if (img.src !== booking.image) img.src = booking.image; // fallback 1: фото з бронювання
+                            }}
                           />
                           <div className="client-review-master-copy-v4">
                             <strong>
@@ -1050,7 +1186,7 @@ export default function ClientDashboard({
                           <button
                             type="button"
                             className="client-review-pencil-btn client-review-action-v4"
-                            onClick={() => startReview(booking)}
+                            onClick={() => openReviewFromHistory(booking)}
                             aria-label={ua ? "Редагувати відгук" : "Edit review"}
                           >
                             ✎ <span>{ua ? "Редагувати" : "Edit"}</span>

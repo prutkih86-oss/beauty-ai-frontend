@@ -13,11 +13,10 @@ import {
 } from "./api/analytics";
 import "../styles/admin-analytics.css";
 
-const PERIOD_DAYS: Record<AnalyticsPeriod, number> = {
+const PERIOD_DAYS: Record<Exclude<AnalyticsPeriod, "This year">, number> = {
   "Last 7 days": 7,
   "Last 30 days": 30,
   "Last 90 days": 90,
-  "This year": 365,
 };
 
 const EMPTY_DATA: AnalyticsSourceData = {
@@ -249,8 +248,14 @@ export default function AdminAnalytics() {
     const anchor = availableDates.length
       ? new Date(Math.max(...availableDates.map((row) => row.getTime())))
       : new Date();
-    const cutoff = new Date(anchor);
-    cutoff.setDate(cutoff.getDate() - PERIOD_DAYS[period]);
+    const cutoff =
+      period === "This year"
+        ? new Date(anchor.getFullYear(), 0, 1)
+        : new Date(anchor);
+
+    if (period !== "This year") {
+      cutoff.setDate(cutoff.getDate() - PERIOD_DAYS[period]);
+    }
 
     const bookings = source.bookings.filter((row) => row.date >= cutoff && row.date <= anchor);
     const payments = source.payments.filter((row) => row.date >= cutoff && row.date <= anchor);

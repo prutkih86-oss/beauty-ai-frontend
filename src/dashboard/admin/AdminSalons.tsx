@@ -86,7 +86,7 @@ export default function AdminSalons() {
         salon.name,
         salon.city,
         salon.address,
-        salon.popularityScore.toFixed(1),
+        salon.averageRating.toFixed(1),
       ]),
     [filteredSalons]
   );
@@ -174,7 +174,7 @@ export default function AdminSalons() {
       {loading && <p className="admin-info">Loading salons…</p>}
 
       <DataTable
-        columns={["ID", "Salon", "City", "Address", "Popularity"]}
+        columns={["ID", "Salon", "City", "Address", "Rating"]}
         rows={loading ? [] : rows}
         selectedIndex={sel}
         onSelect={setSel}

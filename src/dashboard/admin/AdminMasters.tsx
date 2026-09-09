@@ -220,12 +220,7 @@ export default function AdminMasters() {
         >
           ✎ Edit
         </ActionButton>
-        <ActionButton
-          disabled
-          title="Backend API does not expose master documents actions"
-        >
-          ▧ Documents
-        </ActionButton>
+        
         <ActionButton
           disabled
           tone="danger"

@@ -15,6 +15,15 @@ export default function DashboardShell({ user, lang, onHome, onLogout, onRoleCha
   onRoleChange: (role: AuthRole) => void;
 }) {
   if (user.role === "master") return <MasterDashboard user={user} lang={lang} onHome={onHome} onLogout={onLogout} onRoleChange={onRoleChange} />;
-  if (user.role === "admin") return <AdminDashboard user={user} lang={lang} onHome={onHome} onRoleChange={onRoleChange} />;
+  if (user.role === "admin") {
+  return (
+    <AdminDashboard
+      user={user}
+      lang={lang}
+      onHome={onHome}
+      onLogout={onLogout}
+    />
+  );
+}
   return <ClientDashboard user={user} lang={lang} onHome={onHome} onLogout={onLogout} onRoleChange={onRoleChange} />;
 }

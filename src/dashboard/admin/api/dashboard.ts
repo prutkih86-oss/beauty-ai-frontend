@@ -29,29 +29,23 @@ export interface DashboardData {
   activeNow: DashboardBooking[];
 }
 
-interface Page<T> { results?: T[]; next?: string | null }
-interface RawAppointment {
-  id?: number | string; appointment_id?: number | string;
-  client_name?: string; master_name?: string; service_name?: string;
-  appointment_date?: string; appointment_time?: string;
-  appointment_status?: string; status?: string;
-  total_price?: number | string; price?: number | string;
+interface Page<T> {
+  results?: T[];
+  next?: string | null;
 }
-interface RawClient { date_joined?: string; registration_date_user?: string }
 
-async function getAllPages<T>(path: string): Promise<T[]> {
-  const rows: T[] = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const separator = path.includes("?") ? "&" : "?";
-    const data = await apiGet<T[] | Page<T>>(`${path}${separator}page=${page}`);
-    if (Array.isArray(data)) {
-      rows.push(...data);
-      break;
-    }
-    rows.push(...(data.results || []));
-    if (!data.next) break;
-  }
-  return rows;
+interface RawAppointment {
+  id?: number | string;
+  appointment_id?: number | string;
+  client_name?: string;
+  master_name?: string;
+  service_name?: string;
+  appointment_date?: string;
+  appointment_time?: string;
+  appointment_status?: string;
+  status?: string;
+  total_price?: number | string;
+  price?: number | string;
 }
 
 function safeDate(value?: string): Date | null {
@@ -77,76 +71,76 @@ function mapBooking(item: RawAppointment): DashboardBooking {
   };
 }
 
+function unwrap<T>(data: T[] | Page<T>): T[] {
+  return Array.isArray(data) ? data : data.results ?? [];
+}
+
 export function pctChange(current: number, previous: number) {
   if (previous === 0) return current > 0 ? 100 : 0;
   return ((current - previous) / previous) * 100;
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [appointments, clients] = await Promise.all([
-    getAllPages<RawAppointment>("/api/appointments/"),
-    getAllPages<RawClient>("/api/users/clients/"),
+  // Lightweight dashboard:
+  // only 3 appointment pages for visual blocks.
+  // Full 30-day KPI aggregation must come from backend later.
+  const pages = await Promise.all([
+    apiGet<RawAppointment[] | Page<RawAppointment>>("/api/appointments/?page=1"),
+    apiGet<RawAppointment[] | Page<RawAppointment>>("/api/appointments/?page=2"),
+    apiGet<RawAppointment[] | Page<RawAppointment>>("/api/appointments/?page=3"),
   ]);
 
-  const bookings = appointments.map(mapBooking);
+  const bookings = pages.flatMap(unwrap).map(mapBooking);
+
   const parsed = bookings
     .map((booking) => ({ booking, date: safeDate(booking.dateTime) }))
-    .filter((x): x is { booking: DashboardBooking; date: Date } => x.date !== null);
+    .filter((x): x is { booking: DashboardBooking; date: Date } => x.date !== null)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  // Exact behavior of the original Python dashboard:
-  // "today" is the newest booking date when bookings exist.
-  const anchorDate = parsed.length
-    ? new Date(Math.max(...parsed.map((x) => x.date.getTime())))
-    : new Date();
-
-  const currentStart = new Date(anchorDate);
-  currentStart.setDate(currentStart.getDate() - 29);
-
-  const previousEnd = new Date(currentStart.getTime() - 1000);
-  const previousStart = new Date(previousEnd);
-  previousStart.setDate(previousStart.getDate() - 29);
-
-  const inRange = (date: Date, start: Date, end: Date) => date >= start && date <= end;
-
-  const current = parsed.filter((x) => inRange(x.date, currentStart, anchorDate));
-  const previous = parsed.filter((x) => inRange(x.date, previousStart, previousEnd));
-
-  let clientsCurrent = 0;
-  let clientsPrevious = 0;
-  clients.forEach((client) => {
-    const joined = safeDate(client.date_joined || client.registration_date_user);
-    if (!joined) return;
-    if (inRange(joined, currentStart, anchorDate)) clientsCurrent += 1;
-    else if (inRange(joined, previousStart, previousEnd)) clientsPrevious += 1;
-  });
-
-  const currentMasterNames = new Set(current.map((x) => x.booking.master).filter((x) => x && x !== "—"));
-  const previousMasterNames = new Set(previous.map((x) => x.booking.master).filter((x) => x && x !== "—"));
-
+  const anchorDate = parsed.length ? parsed[0].date : new Date();
   const anchorDay = anchorDate.toISOString().slice(0, 10);
-  const todayPairs = parsed.filter((x) => x.date.toISOString().slice(0, 10) === anchorDay);
+
+  const todayPairs = parsed.filter(
+    (x) => x.date.toISOString().slice(0, 10) === anchorDay
+  );
+
   const status = (value: string) => value.trim().toLowerCase();
 
-  const activeNow: DashboardBooking[] = todayPairs
-    .filter((x) => ["in_progress", "in progress"].includes(status(x.booking.status)))
+  const activeNow = todayPairs
+    .filter((x) =>
+      ["in_progress", "in progress"].includes(status(x.booking.status))
+    )
     .map((x) => x.booking);
 
   return {
     anchorDate,
-    revenueCurrent: current.reduce((sum, x) => sum + x.booking.price, 0),
-    revenuePrevious: previous.reduce((sum, x) => sum + x.booking.price, 0),
-    bookingsCurrent: current.length,
-    bookingsPrevious: previous.length,
-    clientsCurrent,
-    clientsPrevious,
-    mastersCurrent: currentMasterNames.size,
-    mastersPrevious: previousMasterNames.size,
+
+    // Intentionally not calculated on frontend anymore.
+    // Backend summary endpoint should provide these later.
+    revenueCurrent: 0,
+    revenuePrevious: 0,
+    bookingsCurrent: 0,
+    bookingsPrevious: 0,
+    clientsCurrent: 0,
+    clientsPrevious: 0,
+    mastersCurrent: 0,
+    mastersPrevious: 0,
+
     bookingsToday: todayPairs.length,
-    completedToday: todayPairs.filter((x) => status(x.booking.status) === "completed").length,
-    cancelledToday: todayPairs.filter((x) => status(x.booking.status) === "cancelled").length,
-    noShowToday: todayPairs.filter((x) => ["no-show", "no show", "noshow"].includes(status(x.booking.status))).length,
-    recentBookings: [...parsed].sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 30).map((x) => x.booking),
-    todaySchedule: [...todayPairs].sort((a, b) => a.date.getTime() - b.date.getTime()).map((x) => x.booking),
+    completedToday: todayPairs.filter(
+      (x) => status(x.booking.status) === "completed"
+    ).length,
+    cancelledToday: todayPairs.filter(
+      (x) => status(x.booking.status) === "cancelled"
+    ).length,
+    noShowToday: todayPairs.filter((x) =>
+      ["no-show", "no show", "noshow"].includes(status(x.booking.status))
+    ).length,
+
+    recentBookings: parsed.slice(0, 30).map((x) => x.booking),
+    todaySchedule: [...todayPairs]
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map((x) => x.booking),
     activeNow,
   };
 }

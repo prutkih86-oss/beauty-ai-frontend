@@ -852,8 +852,8 @@ body {
   aspect-ratio: 16/10;
 }
 
-.card-image-solo::before {
-  background-position: center 18%;
+.card-image.card-image-solo::before {
+  background-position: center 20%;
   filter: saturate(0.97) contrast(0.98) brightness(1.01);
 }
 

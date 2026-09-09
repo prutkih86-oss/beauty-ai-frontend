@@ -1,6 +1,5 @@
 import { apiGetPageSlice, apiPost } from "./client";
 import { getSalons } from "./salons";
-import { getAnalyticsSourceData } from "./analytics";
 
 export interface MasterRow {
   name: string;
@@ -33,8 +32,7 @@ export type MastersPage = {
 
 function mapMaster(
   item: RawMaster,
-  cityBySalonId: Map<number, string>,
-  performanceByName: Map<string, { bookings: number; revenue: number }>
+  cityBySalonId: Map<number, string>
 ): MasterRow {
   const name =
     `${item.first_name || ""} ${item.last_name || ""}`.trim() ||
@@ -58,15 +56,13 @@ function mapMaster(
       ? cityBySalonId.get(salonId) ?? "N/A"
       : "N/A";
 
-  const performance = performanceByName.get(name);
-
   return {
     name,
     specialization,
     rating: Number(item.average_rating ?? item.rating ?? 0),
     city,
-    bookings: performance?.bookings ?? Number(item.bookings_count ?? 0),
-    revenue: performance?.revenue ?? Number(item.total_revenue ?? 0),
+    bookings: Number(item.bookings_count ?? 0),
+    revenue: Number(item.total_revenue ?? 0),
     isSolo,
   };
 }
@@ -75,10 +71,9 @@ export async function getMastersPage(
   page: number,
   pageSize = 15
 ): Promise<MastersPage> {
-  const [masterPage, salonRows, analyticsSource] = await Promise.all([
+  const [masterPage, salonRows] = await Promise.all([
     apiGetPageSlice<RawMaster>("/api/users/masters/", page, pageSize),
     getSalons(),
-    getAnalyticsSourceData(),
   ]);
 
   const cityBySalonId = new Map<number, string>();
@@ -88,29 +83,9 @@ export async function getMastersPage(
     }
   });
 
-  const performanceByName = new Map<
-    string,
-    { bookings: number; revenue: number }
-  >();
-
-  analyticsSource.bookings.forEach((booking) => {
-    if (!booking.master || booking.master === "—") {
-      return;
-    }
-
-    const current = performanceByName.get(booking.master) ?? {
-      bookings: 0,
-      revenue: 0,
-    };
-
-    current.bookings += 1;
-    current.revenue += booking.price;
-    performanceByName.set(booking.master, current);
-  });
-
   return {
     masters: masterPage.items.map((item) =>
-      mapMaster(item, cityBySalonId, performanceByName)
+      mapMaster(item, cityBySalonId)
     ),
     count: masterPage.count,
   };

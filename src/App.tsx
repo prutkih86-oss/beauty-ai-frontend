@@ -265,6 +265,27 @@ type MockUser = {
   avatar: string;
 };
 
+
+function makeInitialsAvatar(name: string): string {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "I";
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+      <rect width="160" height="160" rx="80" fill="#9840F0"/>
+      <text x="80" y="86" text-anchor="middle" dominant-baseline="middle"
+        font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="white">${initials}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 const roleAvatars: Record<AuthRole, string> = {
   client: "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop",
   master: "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=320&h=320&fit=crop",
@@ -528,6 +549,43 @@ function resolveRoleFromProfile(profile: any): AuthRole {
   return "client";
 }
 
+
+function formatUaPhone(value: string): string {
+  let digits = value.replace(/\D/g, "");
+
+  // Accept pasted +38..., 38..., 0XX..., or just local digits.
+  if (digits.startsWith("38")) {
+    digits = digits.slice(2);
+  }
+  digits = digits.slice(0, 10);
+
+  const parts = [
+    digits.slice(0, 3),
+    digits.slice(3, 6),
+    digits.slice(6, 8),
+    digits.slice(8, 10),
+  ];
+
+  let result = "+38";
+  if (parts[0]) result += ` (${parts[0]}`;
+  if (parts[0].length === 3) result += ")";
+  if (parts[1]) result += ` ${parts[1]}`;
+  if (parts[2]) result += ` ${parts[2]}`;
+  if (parts[3]) result += ` ${parts[3]}`;
+  return result;
+}
+
+function uaPhoneDigits(value: string): string {
+  let digits = value.replace(/\D/g, "");
+  if (digits.startsWith("38")) digits = digits.slice(2);
+  return digits.slice(0, 10);
+}
+
+function isValidUaPhone(value: string): boolean {
+  const digits = uaPhoneDigits(value);
+  return digits.length === 10 && digits.startsWith("0");
+}
+
 function AuthModal({
   lang,
   onClose,
@@ -547,6 +605,9 @@ function AuthModal({
   const [role, setRole] = useState<Exclude<AuthRole, "admin">>(initialRole);
   const [partnerKind] = useState<"solo" | "salon" | undefined>(initialPartnerKind);
   const [businessName, setBusinessName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("+38");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -616,10 +677,60 @@ function AuthModal({
         name: `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || (ua ? "Beauty AI користувач" : "Beauty AI user"),
         email: profile.email || email,
         role: authRole,
-        avatar: profile.photo || roleAvatars[authRole],
+        avatar: profile.photo || (authRole === "client" ? makeInitialsAvatar(`${profile.first_name ?? ""} ${profile.last_name ?? ""}`) : roleAvatars[authRole]),
       });
     } catch (err: any) {
       setAuthError(err.message || (ua ? "Сталася помилка. Спробуйте ще раз." : "Something went wrong. Try again."));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const registerClient = async () => {
+    setAuthError(null);
+
+    if (!isValidUaPhone(phone)) {
+      setAuthError(
+        ua
+          ? "Введіть коректний номер у форматі +38 (0XX) XXX XX XX"
+          : "Enter a valid phone number in the format +38 (0XX) XXX XX XX"
+      );
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const registerRes = await fetch(`${API_BASE_URL}/api/users/register/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone: `+38${uaPhoneDigits(phone)}`,
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      if (!registerRes.ok) {
+        const body = await registerRes.json().catch(() => null);
+        const fieldError = body && typeof body === "object"
+          ? Object.values(body).flat().find((value) => typeof value === "string")
+          : null;
+        throw new Error(
+          (fieldError as string | undefined) ||
+            body?.detail ||
+            (ua ? "Не вдалося створити акаунт" : "Could not create account")
+        );
+      }
+
+      await loginWithPassword();
+    } catch (err: any) {
+      setAuthError(
+        err?.message ||
+          (ua ? "Не вдалося створити акаунт. Спробуйте ще раз." : "Could not create account. Try again.")
+      );
     } finally {
       setAuthLoading(false);
     }
@@ -656,12 +767,20 @@ function AuthModal({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+
     if (mode === "login") {
-      loginWithPassword();
+      void loginWithPassword();
       return;
     }
-    // Реєстрація поки що лишається демо-заглушкою (не запитували підключення /api/users/register/)
-    finishAuth(role);
+
+    if (role === "client") {
+      void registerClient();
+      return;
+    }
+
+    // Реєстрація майстра поки лишається демо, бо /api/users/register/
+    // створює звичайного user, але не master profile.
+    finishAuth("master");
   };
 
   return (
@@ -698,8 +817,12 @@ function AuthModal({
                 ? "Увійдіть, щоб керувати записами, обраним і профілем."
                 : "Sign in to manage bookings, favourites and your profile."
               : ua
-                ? "Оберіть тип профілю — решту даних підключимо до API після запуску сервера."
-                : "Choose a profile type — the API will be connected when the server is online."}
+                ? role === "client"
+                  ? "Створіть реальний акаунт клієнта Beauty AI."
+                  : "Реєстрація майстра поки працює в демо-режимі."
+                : role === "client"
+                  ? "Create a real Beauty AI client account."
+                  : "Master registration is still in demo mode."}
           </p>
         </div>
 
@@ -742,6 +865,51 @@ function AuthModal({
             </>
           )}
 
+          {mode === "register" && role === "client" && (
+            <>
+              <label>
+                <span>{ua ? "Ім'я" : "First name"}</span>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  placeholder={ua ? "Ім'я" : "First name"}
+                  required
+                />
+              </label>
+              <label>
+                <span>{ua ? "Прізвище" : "Last name"}</span>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  placeholder={ua ? "Прізвище" : "Last name"}
+                  required
+                />
+              </label>
+              <label>
+                <span>{ua ? "Телефон" : "Phone"}</span>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(formatUaPhone(event.target.value))}
+                  onFocus={(event) => {
+                    if (!event.currentTarget.value.startsWith("+38")) setPhone("+38");
+                  }}
+                  onBlur={() => {
+                    if (!phone.startsWith("+38")) setPhone("+38");
+                  }}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+38 (053) 401 23 23"
+                  pattern="\+38 \(0[0-9]{2}\) [0-9]{3} [0-9]{2} [0-9]{2}"
+                  title={ua ? "Формат: +38 (0XX) XXX XX XX" : "Format: +38 (0XX) XXX XX XX"}
+                  required
+                />
+              </label>
+            </>
+          )}
+
           <label>
             <span>Email</span>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required />
@@ -757,14 +925,16 @@ function AuthModal({
             </button>
           )}
 
-          {mode === "login" && authError && <p className="auth-google-error">{authError}</p>}
+          {authError && <p className="auth-google-error">{authError}</p>}
 
-          <button className="auth-primary" type="submit" disabled={mode === "login" && authLoading}>
-            {mode === "login"
-              ? authLoading
+          <button className="auth-primary" type="submit" disabled={authLoading}>
+            {authLoading
+              ? mode === "login"
                 ? (ua ? "Входимо…" : "Signing in…")
-                : (ua ? "Увійти" : "Sign in")
-              : (ua ? "Створити акаунт" : "Create account")}
+                : (ua ? "Створюємо…" : "Creating…")
+              : mode === "login"
+                ? (ua ? "Увійти" : "Sign in")
+                : (ua ? "Створити акаунт" : "Create account")}
           </button>
         </form>
 
@@ -796,8 +966,8 @@ function AuthModal({
 
         <p className="auth-demo-note">
           {ua
-            ? "Вхід через email/пароль уже підключений до бекенду. Реєстрація та Google — поки що демо."
-            : "Email/password sign-in is wired to the real backend. Register and Google are still demo."}
+            ? "Вхід і реєстрація клієнта через email/пароль підключені до бекенду. Google і реєстрація майстра — поки демо."
+            : "Client email/password sign-in and registration are wired to the backend. Google and master registration are still demo."}
         </p>
       </div>
 
@@ -1567,16 +1737,24 @@ function getSalonFallbackImage(salonId: number): string {
   return FALLBACK_SALON_IMAGES[Math.abs(salonId) % FALLBACK_SALON_IMAGES.length];
 }
 
-const FALLBACK_MASTER_IMAGES = [
-  "https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
-  "https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
-  "https://images.pexels.com/photos/3992656/pexels-photo-3992656.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
-  "https://images.pexels.com/photos/3993449/pexels-photo-3993449.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
-  "https://images.pexels.com/photos/3764014/pexels-photo-3764014.jpeg?auto=compress&cs=tinysrgb&w=700&h=900&fit=crop",
-];
+const MALE_NAME_EXCEPTIONS = new Set([
+  "микита", "ілля", "данило", "данила", "сава", "лука", "хома", "кузьма", "яків", "нікіта",
+]);
+function guessMasterGender(firstName?: string): "men" | "women" {
+  const name = firstName?.trim().toLowerCase() ?? "";
+  if (MALE_NAME_EXCEPTIONS.has(name)) return "men";
+  const lastChar = name.slice(-1);
+  return lastChar === "а" || lastChar === "я" ? "women" : "men";
+}
 
-function getMasterFallbackImage(masterId: number): string {
-  return FALLBACK_MASTER_IMAGES[Math.abs(masterId) % FALLBACK_MASTER_IMAGES.length];
+function guessMasterGenderFolder(firstName?: string): "male" | "female" {
+  return guessMasterGender(firstName) === "women" ? "female" : "male";
+}
+
+function getMasterFallbackImage(masterId: number, firstName?: string): string {
+  const sex = guessMasterGenderFolder(firstName);
+  const index = Math.abs(masterId) % 100; // репозиторій має рівно 100 фото на стать (0–99)
+  return `https://cdn.jsdelivr.net/gh/faker-js/assets-person-portrait/${sex}/512/${index}.jpg`;
 }
 
 function salonToCard(
@@ -1647,7 +1825,7 @@ function masterToCard(
     : null;
 
   return {
-    image: master.photo || getMasterFallbackImage(master.id),
+    image: master.photo || getMasterFallbackImage(master.id, master.first_name),
     badges: [],
     title: name || `Майстер #${master.id}`,
     type: serviceNames.length
@@ -2910,8 +3088,8 @@ export default function App() {
     role: "client",
   });
   const [partnerChoiceOpen, setPartnerChoiceOpen] = useState(false);
-  const [user, setUser] = useState<MockUser | null>(null);
-  const [view, setView] = useState<AppView>("home");
+  const [user, setUser] = useState<MockUser | null>(() => readStoredUser());
+  const [view, setView] = useState<AppView>(() => (readStoredUser() ? "dashboard" : "home"));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -3180,7 +3358,15 @@ export default function App() {
     const hydratedUser = nextUser.role === "master"
       ? { ...nextUser, name: masterProfile?.displayName || nextUser.name, avatar: masterProfile?.avatar || nextUser.avatar }
       : nextUser.role === "client"
-        ? { ...nextUser, name: clientProfile.name || nextUser.name, avatar: clientAvatar || nextUser.avatar }
+        ? {
+            ...nextUser,
+            name: clientProfile.name || nextUser.name,
+            avatar:
+              clientAvatar ||
+              (nextUser.avatar && !nextUser.avatar.includes("pexels.com/photos/774909")
+                ? nextUser.avatar
+                : makeInitialsAvatar(clientProfile.name || nextUser.name)),
+          }
         : nextUser;
     setUser(hydratedUser);
     sessionStorage.setItem(STORED_USER_KEY, JSON.stringify(hydratedUser));

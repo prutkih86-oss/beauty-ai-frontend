@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  fetchMasterActiveAppointments,
+  fetchMasterHistoryAppointments,
+  updateAppointmentStatus,
+  type MasterAppointmentApi,
+} from "../../api/beautyApi";
 import DashboardFrame, { type MasterSection, type MasterHeaderNotification } from "../DashboardFrame";
 import type { AuthRole, Lang, MockUser } from "../types";
 
@@ -186,7 +192,28 @@ function downloadCsv(filename: string, rows: string[][]) {
   a.click();
   URL.revokeObjectURL(url);
 }
+function mapApiAppointmentToBooking(appt: MasterAppointmentApi): ClientBooking {
+  const start = new Date(appt.start);
+  const valid = !Number.isNaN(start.getTime());
+  const status: BookingStatus =
+    appt.status === "completed" ? "completed" : appt.status === "cancelled" ? "cancelled" : "confirmed";
 
+  return {
+    id: String(appt.id),
+    title: appt.salon_name || "",
+    type: "salon",
+    image: "",
+    service: appt.service_name,
+    date: valid ? toInputDate(start) : "",
+    time: valid ? `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` : "",
+    phone: appt.client_name,
+    district: appt.salon_name || "",
+    priceFrom: appt.total_price,
+    status,
+    code: String(appt.id),
+    createdAt: appt.created_at,
+  };
+}
 export default function MasterDashboard({
   user,
   lang,
@@ -233,11 +260,27 @@ export default function MasterDashboard({
     };
   }, []);
 
+  const [apiBookings, setApiBookings] = useState<ClientBooking[]>([]);
+
+  const loadBookings = React.useCallback(async () => {
+    try {
+      const [active, history] = await Promise.all([
+        fetchMasterActiveAppointments(),
+        fetchMasterHistoryAppointments(),
+      ]);
+      setApiBookings([...active, ...history].map(mapApiAppointmentToBooking));
+    } catch {
+      // Бекенд недоступний — лишаємось з тим, що вже було завантажено раніше.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBookings();
+  }, [loadBookings]);
+
   useEffect(() => {
     const knownIds = new Set(masterState.notifications.filter((item) => item.kind === "booking").map((item) => item.entityId));
-    const newBookings = clientState.bookings.filter((booking) =>
-      booking.title === masterState.profile.displayName && !knownIds.has(booking.id)
-    );
+    const newBookings = apiBookings.filter((booking) => !knownIds.has(booking.id));
     if (!newBookings.length) return;
     const notices: MasterNotification[] = newBookings.map((booking) => ({
       id: `master-booking-${booking.id}`,
@@ -249,30 +292,9 @@ export default function MasterDashboard({
       entityId: booking.id,
     }));
     setMasterState((current) => ({ ...current, notifications: [...notices, ...current.notifications] }));
-  }, [clientState.bookings, masterState.profile.displayName, masterState.notifications, ua]);
+  }, [apiBookings, masterState.notifications, ua]);
 
-  useEffect(() => {
-    const knownReviewIds = new Set(masterState.notifications.filter((item) => item.kind === "review").map((item) => item.entityId));
-    const newReviews = clientState.bookings.filter((booking) =>
-      booking.title === masterState.profile.displayName && booking.reviewSubmitted && booking.reviewComment && !knownReviewIds.has(booking.id)
-    );
-    if (!newReviews.length) return;
-    const notices: MasterNotification[] = newReviews.map((booking) => ({
-      id: `master-review-${booking.id}`,
-      title: ua ? "Новий відгук" : "New review",
-      text: `${booking.service} · ${booking.reviewMasterRating ?? 0}★`,
-      createdAt: booking.reviewSubmittedAt || new Date().toISOString(),
-      read: false,
-      kind: "review",
-      entityId: booking.id,
-    }));
-    setMasterState((current) => ({ ...current, notifications: [...notices, ...current.notifications] }));
-  }, [clientState.bookings, masterState.profile.displayName, masterState.notifications, ua]);
-
-  const bookings = useMemo(
-    () => clientState.bookings.filter((booking) => booking.title === masterState.profile.displayName),
-    [clientState.bookings, masterState.profile.displayName]
-  );
+  const bookings = apiBookings;
 
   const selectedBookings = useMemo(
     () => bookings.filter((booking) => booking.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time)),
@@ -324,33 +346,29 @@ export default function MasterDashboard({
 
   const updateMasterState = (updater: (current: MasterState) => MasterState) => setMasterState((current) => updater(current));
 
-  const syncBookingStatus = (bookingId: string, status: BookingStatus) => {
-    const state = readClientState();
-    let pointsDelta = 0;
-    const updatedBookings = state.bookings.map((booking) => {
-      if (booking.id !== bookingId) return booking;
-      if (status === "completed" && !booking.pointsAwarded) pointsDelta = 50;
-      return {
-        ...booking,
-        status,
-        pointsAwarded: status === "completed" ? true : booking.pointsAwarded,
-      };
-    });
-    const target = updatedBookings.find((booking) => booking.id === bookingId);
+  const syncBookingStatus = async (bookingId: string, status: BookingStatus) => {
+    const target = bookings.find((booking) => booking.id === bookingId);
     if (!target) return;
-    const label = status === "completed" ? "Запис завершено" : status === "cancelled" ? "Запис скасовано" : "Запис підтверджено";
-    const notifications: ClientNotification[] = [
-      {
-        id: `master-status-${bookingId}-${Date.now()}`,
-        title: label,
-        text: `${target.title} · ${target.service} · ${formatDate(target.date, true)} · ${target.time}${pointsDelta ? " · +50 Beauty AI балів" : ""}`,
-        createdAt: new Date().toISOString(),
-        read: false,
-      },
-      ...state.notifications,
-    ];
-    writeClientState({ ...state, bookings: updatedBookings, points: state.points + pointsDelta, notifications });
-    setClientState(readClientState());
+
+    try {
+      await updateAppointmentStatus(bookingId, status === "completed" ? "completed" : "cancelled");
+    } catch {
+      updateMasterState((current) => ({
+        ...current,
+        notifications: [{
+          id: `master-status-error-${bookingId}-${Date.now()}`,
+          title: ua ? "Не вдалось оновити запис" : "Failed to update booking",
+          text: ua ? "Спробуйте ще раз" : "Please try again",
+          createdAt: new Date().toISOString(),
+          read: false,
+          kind: "status",
+          entityId: bookingId,
+        }, ...current.notifications],
+      }));
+      return;
+    }
+
+    await loadBookings();
     updateMasterState((current) => ({
       ...current,
       notifications: [{

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import type { AuthRole, Lang, MockUser } from "../types";
+import React, { useState } from "react";
+import type { Lang, MockUser } from "../types";
 import AdminLayout, { type AdminSection } from "./AdminLayout";
 import AdminHome from "./AdminHome";
 import AdminAnalytics from "./AdminAnalytics";
@@ -31,11 +31,12 @@ export default function AdminDashboard({
   user,
   lang,
   onHome,
+  onLogout,
 }: {
   user: MockUser;
   lang: Lang;
   onHome: () => void;
-  onRoleChange: (role: AuthRole) => void;
+  onLogout?: () => void;
 }) {
   const [section, setSection] = useState<AdminSection>("dashboard");
   const { title, subtitle } = SECTION_TITLES[section];
@@ -61,6 +62,7 @@ export default function AdminDashboard({
       active={section}
       onNavigate={setSection}
       onHome={onHome}
+      onLogout={onLogout}
       title={title}
       subtitle={subtitle}
     >
