@@ -17,6 +17,9 @@ import {
   type SalonApi,
   type ServiceApi,
 } from "./api/beautyApi";
+import BeautyAssistant, {
+  type AssistantState,
+} from "./BeautyAssistant";
 
 type CardReview = {
   author: string;
@@ -3334,6 +3337,10 @@ export default function App() {
   const [locationPending, setLocationPending] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [assistantState, setAssistantState] =
+    useState<AssistantState>("idle");
+  const [assistantMessage, setAssistantMessage] = useState("");
+  const [assistantVisible, setAssistantVisible] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
@@ -3416,10 +3423,18 @@ export default function App() {
       window.clearTimeout(searchTimeoutRef.current);
     }
 
+    setAssistantVisible(true);
+    setAssistantState("thinking");
+    setAssistantMessage("Шукаю найкращі варіанти ✨");
+
     setIsSearching(true);
     searchTimeoutRef.current = window.setTimeout(() => {
       setAppliedSearch(query);
       setIsSearching(false);
+
+      setAssistantState("found");
+      setAssistantMessage("Знайшов варіанти за твоїм запитом 👀");
+
       searchTimeoutRef.current = null;
     }, 900);
   };
@@ -4001,116 +4016,174 @@ export default function App() {
         </div>
       ) : (
         <>
-      <div className="recommendation-row recommendation-row-salons">
-        <div
-          className={`recommendation-intro ${
-            recommendationFiltersOpen ? "filters-open" : ""
-          }`}
-        >
-          <div className="recommendation-intro-head">
-            <div className="recommendation-title-anchor">
-              <img
-                src={beautyAISparkles}
-                alt=""
-                aria-hidden="true"
-                className="recommendation-heading-spark recommendation-heading-spark-floating"
-              />
-              <h2>{t.sections.recommendations.title}</h2>
-            </div>
-
-              <div className="recommendations-filter-menu recommendations-filter-menu-inline">
-                <button
-                  className={`recommendations-filter-toggle recommendations-ai-settings-toggle ${
-                    recommendationFiltersOpen ? "is-open" : ""
-                  }`}
-                  type="button"
-                  aria-expanded={recommendationFiltersOpen}
-                  aria-label={
-                    lang === "ua"
-                      ? "Налаштувати AI-підбір"
-                      : "Customize AI recommendations"
-                  }
-                  data-tooltip={
-                    lang === "ua"
-                      ? "Налаштувати AI-підбір"
-                      : "Customize AI recommendations"
-                  }
-                  onClick={() => setRecommendationFiltersOpen((open) => !open)}
-                >
+          {filteredSalons.length === 0 && filteredMasters.length === 0 ? (
+            <div
+              className="recommendations-idle-panel"
+              style={{
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                gap: 4,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <div className="recommendations-idle-icon" aria-hidden="true">
                   <img
-                    src={settingsIcon}
+                    src={beautyAISparkles}
                     alt=""
-                    aria-hidden="true"
-                    className="recommendations-ai-settings-icon"
+                    className="recommendations-idle-sparkles"
                   />
-                </button>
-              </div>
-            </div>
-
-            <p className="section-sub">
-              {filteredSalons.length > 0
-                ? (lang === "ua" ? "Найкращі збіги за вашим запитом" : "Best matches for your request")
-                : (lang === "ua" ? "Салонів не знайдено" : "No salons found")}
-            </p>
-
-            {recommendationFiltersOpen && (
-              <div className="recommendations-filter-panel recommendations-filter-panel-inline">
-                <div className="recommendations-filter-panel-heading">
-                  <strong>
-                    {lang === "ua" ? (
-                      <>
-                        НАЛАШТУВАННЯ{" "}
-                        <span className="recommendations-filter-ai">AI</span>
-                        {" "}ПІДБОРУ
-                      </>
-                    ) : (
-                      <>
-                        <span className="recommendations-filter-ai">AI</span>
-                        {" "}MATCH SETTINGS
-                      </>
-                    )}
-                  </strong>
-
-                  <span>
-                    {lang === "ua"
-                      ? "Уточніть параметри для точніших рекомендацій"
-                      : "Refine the parameters for more accurate recommendations"}
-                  </span>
                 </div>
-
-                <FilterBar
-                  lang={lang}
-                  onFilterChange={(filters: any) => console.log(filters)}
-                />
+                <strong>
+                  {lang === "ua" ? "Нічого не знайдено" : "Nothing found"}
+                </strong>
               </div>
-            )}
-           
-          </div>
-          <RecommendationCarousel cards={filteredSalons} t={t} variant="salons" onLocationClick={handleLocationClick} hasSearch={hasSearch} />
-        </div>
 
-        <div className="recommendation-row recommendation-row-masters" id="masters">
-          <div className="recommendation-intro">
-            <div className="recommendation-intro-head">
-              <div className="recommendation-title-anchor">
-                <img
-                  src={beautyAISparkles}
-                  alt=""
-                  aria-hidden="true"
-                  className="recommendation-heading-spark recommendation-heading-spark-floating"
-                />
-                <h2>{t.sections.soloMasters.title}</h2>
-              </div>
+              <span>
+                {lang === "ua"
+                  ? "Спробуйте іншу послугу"
+                  : "Try another service"}
+              </span>
             </div>
+          ) : (
+            <>
+              {filteredSalons.length > 0 && (
+                <div className="recommendation-row recommendation-row-salons">
+                  <div
+                    className={`recommendation-intro ${
+                      recommendationFiltersOpen ? "filters-open" : ""
+                    }`}
+                  >
+                    <div className="recommendation-intro-head">
+                      <div className="recommendation-title-anchor">
+                        <img
+                          src={beautyAISparkles}
+                          alt=""
+                          aria-hidden="true"
+                          className="recommendation-heading-spark recommendation-heading-spark-floating"
+                        />
+                        <h2>{t.sections.recommendations.title}</h2>
+                      </div>
 
-            <p className="section-sub">
-              {filteredMasters.length > 0
-                ? (lang === "ua" ? "Найкращі майстри за вашим запитом" : "Best masters for your request")
-                : (lang === "ua" ? "Майстрів не знайдено" : "No masters found")}
-            </p>
-          </div>
-          <RecommendationCarousel cards={filteredMasters} t={t} variant="masters" onLocationClick={handleLocationClick} hasSearch={hasSearch} />
-        </div>
+                      <div className="recommendations-filter-menu recommendations-filter-menu-inline">
+                        <button
+                          className={`recommendations-filter-toggle recommendations-ai-settings-toggle ${
+                            recommendationFiltersOpen ? "is-open" : ""
+                          }`}
+                          type="button"
+                          aria-expanded={recommendationFiltersOpen}
+                          aria-label={
+                            lang === "ua"
+                              ? "Налаштувати AI-підбір"
+                              : "Customize AI recommendations"
+                          }
+                          data-tooltip={
+                            lang === "ua"
+                              ? "Налаштувати AI-підбір"
+                              : "Customize AI recommendations"
+                          }
+                          onClick={() => setRecommendationFiltersOpen((open) => !open)}
+                        >
+                          <img
+                            src={settingsIcon}
+                            alt=""
+                            aria-hidden="true"
+                            className="recommendations-ai-settings-icon"
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="section-sub">
+                      {lang === "ua"
+                        ? "Найкращі збіги за вашим запитом"
+                        : "Best matches for your request"}
+                    </p>
+
+                    {recommendationFiltersOpen && (
+                      <div className="recommendations-filter-panel recommendations-filter-panel-inline">
+                        <div className="recommendations-filter-panel-heading">
+                          <strong>
+                            {lang === "ua" ? (
+                              <>
+                                НАЛАШТУВАННЯ{" "}
+                                <span className="recommendations-filter-ai">AI</span>
+                                {" "}ПІДБОРУ
+                              </>
+                            ) : (
+                              <>
+                                <span className="recommendations-filter-ai">AI</span>
+                                {" "}MATCH SETTINGS
+                              </>
+                            )}
+                          </strong>
+
+                          <span>
+                            {lang === "ua"
+                              ? "Уточніть параметри для точніших рекомендацій"
+                              : "Refine the parameters for more accurate recommendations"}
+                          </span>
+                        </div>
+
+                        <FilterBar
+                          lang={lang}
+                          onFilterChange={(filters: any) => console.log(filters)}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <RecommendationCarousel
+                    cards={filteredSalons}
+                    t={t}
+                    variant="salons"
+                    onLocationClick={handleLocationClick}
+                    hasSearch={hasSearch}
+                  />
+                </div>
+              )}
+
+              {filteredMasters.length > 0 && (
+                <div className="recommendation-row recommendation-row-masters" id="masters">
+                  <div className="recommendation-intro">
+                    <div className="recommendation-intro-head">
+                      <div className="recommendation-title-anchor">
+                        <img
+                          src={beautyAISparkles}
+                          alt=""
+                          aria-hidden="true"
+                          className="recommendation-heading-spark recommendation-heading-spark-floating"
+                        />
+                        <h2>{t.sections.soloMasters.title}</h2>
+                      </div>
+                    </div>
+
+                    <p className="section-sub">
+                      {lang === "ua"
+                        ? "Найкращі майстри за вашим запитом"
+                        : "Best masters for your request"}
+                    </p>
+                  </div>
+
+                  <RecommendationCarousel
+                    cards={filteredMasters}
+                    t={t}
+                    variant="masters"
+                    onLocationClick={handleLocationClick}
+                    hasSearch={hasSearch}
+                  />
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
     </section>
@@ -4420,6 +4493,11 @@ export default function App() {
           </div>
         </div>
       )}
+      <BeautyAssistant
+        state={assistantState}
+        message={assistantMessage}
+        visible={assistantVisible}
+      />
     </div>
   );
 }
