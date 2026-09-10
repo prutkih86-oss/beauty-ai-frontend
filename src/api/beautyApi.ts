@@ -152,6 +152,8 @@ export type MasterApi = {
   services?: Array<{
     id: number;
     name: string;
+    price?: number | string | null;
+    duration_minutes?: number | string | null;
   }>;
 };
 
@@ -205,16 +207,79 @@ async function fetchAllPages<T>(initialPath: string): Promise<T[]> {
   return items;
 }
 
-export async function fetchSalons(): Promise<SalonApi[]> {
-  return fetchAllPages<SalonApi>("/api/salons/");
+export async function fetchSalons(city?: string): Promise<SalonApi[]> {
+  const query = city ? `?city=${encodeURIComponent(city)}` : "";
+  return fetchAllPages<SalonApi>(`/api/salons/${query}`);
 }
 
 export async function fetchMasters(): Promise<MasterApi[]> {
   return fetchAllPages<MasterApi>("/api/users/masters/");
 }
 
-export async function fetchServices(): Promise<ServiceApi[]> {
-  return fetchAllPages<ServiceApi>("/api/services/");
+export async function fetchServices(city?: string): Promise<ServiceApi[]> {
+  const query = city ? `?city=${encodeURIComponent(city)}` : "";
+  return fetchAllPages<ServiceApi>(`/api/services/${query}`);
+}
+
+export type AvailableSlotApi = {
+  start: string;
+  end: string;
+};
+
+export type AvailableSlotsByDateApi = Record<string, AvailableSlotApi[]>;
+
+export async function fetchAvailableSlots(params: {
+  masterId: number;
+  serviceId: number;
+  date: string;
+  salonId?: number | null;
+}): Promise<AvailableSlotApi[]> {
+  const query = new URLSearchParams();
+
+  if (params.salonId != null) {
+    query.set("salon", String(params.salonId));
+    query.set("master", String(params.masterId));
+    query.set("service", String(params.serviceId));
+    query.set("date_from", params.date);
+
+    const data = await apiGet<AvailableSlotsByDateApi>(
+      `/api/appointments/available-slots/by-salon/?${query.toString()}`
+    );
+    return Array.isArray(data?.[params.date]) ? data[params.date] : [];
+  }
+
+  // Для соло-майстра Swagger документує query у description:
+  // master_id, service_id, date. Підтримуємо цей endpoint як fallback.
+  query.set("master_id", String(params.masterId));
+  query.set("service_id", String(params.serviceId));
+  query.set("date", params.date);
+
+  const data = await apiGet<AvailableSlotApi[] | AvailableSlotsByDateApi>(
+    `/api/appointments/available-slots/by-master/?${query.toString()}`
+  );
+
+  if (Array.isArray(data)) return data;
+  return Array.isArray(data?.[params.date]) ? data[params.date] : [];
+}
+
+export type CreateAppointmentPayload = {
+  master_id: number;
+  service_id: number;
+  appointment_date: string;
+  appointment_time: string;
+  notes?: string;
+};
+
+export type CreatedAppointmentApi = CreateAppointmentPayload & {
+  id?: number;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export async function createAppointment(
+  payload: CreateAppointmentPayload
+): Promise<CreatedAppointmentApi> {
+  return apiPost<CreatedAppointmentApi>("/api/appointments/create/", payload);
 }
 export type UserProfileApi = {
   id: number;
@@ -403,3 +468,92 @@ export async function updateAppointmentStatus(
     await apiPatch(`/api/appointments/${id}/status/`, { status: APPOINTMENT_STATUS_ORDER[index] });
   }
 }
+
+export type DayOffApi = {
+  id: number;
+  start_date: string;
+  end_date: string;
+  reason: string;
+};
+
+export async function fetchDayOffs(): Promise<DayOffApi[]> {
+  return fetchAllPages<DayOffApi>("/api/users/masters/me/day-offs/");
+}
+
+export async function createDayOff(payload: {
+  start_date: string;
+  end_date: string;
+  reason: string;
+}): Promise<DayOffApi> {
+  return apiPost<DayOffApi>("/api/users/masters/me/day-offs/", payload);
+}
+
+export async function deleteDayOff(id: number | string): Promise<void> {
+  await apiDelete(`/api/users/masters/me/day-offs/${id}/`);
+}
+
+export type WorkingScheduleDayApi = {
+  id?: number;
+  weekday: number; // 1 = Понеділок ... 7 = Неділя
+  opening_time: string | null;
+  closing_time: string | null;
+  is_closed: boolean;
+};
+
+export async function fetchWorkingSchedule(): Promise<WorkingScheduleDayApi[]> {
+  return fetchAllPages<WorkingScheduleDayApi>("/api/users/masters/me/working-schedule/");
+}
+
+export async function saveWorkingScheduleDay(day: WorkingScheduleDayApi): Promise<WorkingScheduleDayApi> {
+  const payload = {
+    weekday: day.weekday,
+    opening_time: day.is_closed ? null : day.opening_time,
+    closing_time: day.is_closed ? null : day.closing_time,
+    is_closed: day.is_closed,
+  };
+  return day.id
+    ? apiPatch<WorkingScheduleDayApi>(`/api/users/masters/me/working-schedule/${day.id}/`, payload)
+    : apiPost<WorkingScheduleDayApi>("/api/users/masters/me/working-schedule/", payload);
+}
+
+export type MasterReviewApi = {
+  id: number;
+  client_name: string;
+  client_profile_photo?: string | null;
+  rating: number;
+  comment?: string | null;
+  service_name: string;
+  appointment_date: string;
+  created_at: string;
+};
+
+export async function fetchMasterReviews(): Promise<MasterReviewApi[]> {
+  return fetchAllPages<MasterReviewApi>("/api/reviews/masters/me/?ordering=-created_at");
+}
+
+export type MasterProfileApi = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  bio?: string | null;
+  years_of_experience?: number;
+  photo?: string | null;
+  average_rating?: number;
+  total_reviews?: number;
+};
+
+export async function fetchMasterProfile(): Promise<MasterProfileApi> {
+  return apiGet<MasterProfileApi>("/api/users/masters/me/");
+}
+
+export async function updateMasterProfile(payload: {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  bio?: string;
+}): Promise<MasterProfileApi> {
+  return apiPatch<MasterProfileApi>("/api/users/masters/me/", payload);
+}
+

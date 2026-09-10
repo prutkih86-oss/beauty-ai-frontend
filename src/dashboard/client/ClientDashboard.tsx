@@ -118,7 +118,7 @@ function makeInitialsAvatar(name: string): string {
     : parts[0]?.[0] ?? "I"
   ).toUpperCase();
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="80" fill="#EDE7F6"/><text x="80" y="91" text-anchor="middle" font-family="Arial,sans-serif" font-size="54" font-weight="700" fill="#6F3CC3">${initials}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" rx="80" fill="#EDE7F6"/><text x="80" y="80" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="54" font-weight="700" fill="#6F3CC3">${initials}</text></svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
@@ -344,7 +344,13 @@ useEffect(() => {
       if (fullName) setProfileName(fullName);
       if (apiProfile.phone) setProfilePhone(apiProfile.phone);
       if (apiProfile.email) setProfileEmail(apiProfile.email);
-      setProfileAvatar(apiProfile.photo || makeInitialsAvatar(fullName || user.name));
+      setProfileAvatar((currentAvatar) =>
+        apiProfile.photo ||
+        savedProfile.avatar ||
+        initialClientState.profileAvatar ||
+        currentAvatar ||
+        makeInitialsAvatar(fullName || user.name)
+      );
     } catch {
       // Бекенд недоступний — лишаємось на локальному кеші, як і решта застосунку.
     }

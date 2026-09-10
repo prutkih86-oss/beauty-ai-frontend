@@ -3,7 +3,18 @@ import {
   fetchMasterActiveAppointments,
   fetchMasterHistoryAppointments,
   updateAppointmentStatus,
+  fetchWorkingSchedule,
+  saveWorkingScheduleDay,
+  fetchDayOffs,
+  createDayOff,
+  deleteDayOff,
+  fetchMasterReviews,
+  fetchMasterProfile,
+  updateMasterProfile,
   type MasterAppointmentApi,
+  type WorkingScheduleDayApi,
+  type DayOffApi,
+  type MasterReviewApi,
 } from "../../api/beautyApi";
 import DashboardFrame, { type MasterSection, type MasterHeaderNotification } from "../DashboardFrame";
 import type { AuthRole, Lang, MockUser } from "../types";
@@ -42,7 +53,6 @@ type ClientState = {
 };
 
 type MasterService = { id: string; name: string; price: number; duration: number; active: boolean };
-type MasterWindow = { id: string; date: string; time: string; duration: number };
 type MasterProfile = {
   displayName: string;
   specialization: string;
@@ -58,7 +68,6 @@ type MasterPayout = { id: string; amount: number; createdAt: string; status: "re
 type MasterState = {
   profile: MasterProfile;
   services: MasterService[];
-  windows: MasterWindow[];
   portfolioImages: string[];
   notifications: MasterNotification[];
   payouts: MasterPayout[];
@@ -103,7 +112,6 @@ function emptyMasterState(user: MockUser): MasterState {
       avatar: user.avatar,
     },
     services: [],
-    windows: [],
     portfolioImages: [],
     notifications: [],
     payouts: [],
@@ -121,7 +129,6 @@ function readMasterState(user: MockUser): MasterState {
       ...parsed,
       profile: { ...base.profile, ...(parsed.profile ?? {}) },
       services: Array.isArray(parsed.services) ? parsed.services : [],
-      windows: Array.isArray(parsed.windows) ? parsed.windows : [],
       portfolioImages: Array.isArray(parsed.portfolioImages) ? parsed.portfolioImages : [],
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
       payouts: Array.isArray(parsed.payouts) ? parsed.payouts : [],
@@ -145,18 +152,6 @@ function toInputDate(date: Date) {
 
 function isPastDateValue(value: string) {
   return value < toInputDate(new Date());
-}
-
-function currentTimeValue() {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function isUnavailableSlot(date: string, time: string) {
-  const today = toInputDate(new Date());
-  if (date < today) return true;
-  if (time > "21:00") return true;
-  return date === today && time < currentTimeValue();
 }
 
 function parsePrice(value: string | number) {
@@ -214,6 +209,31 @@ function mapApiAppointmentToBooking(appt: MasterAppointmentApi): ClientBooking {
     createdAt: appt.created_at,
   };
 }
+
+const WEEKDAYS: { value: number; short: { ua: string; en: string } }[] = [
+  { value: 1, short: { ua: "Пн", en: "Mon" } },
+  { value: 2, short: { ua: "Вт", en: "Tue" } },
+  { value: 3, short: { ua: "Ср", en: "Wed" } },
+  { value: 4, short: { ua: "Чт", en: "Thu" } },
+  { value: 5, short: { ua: "Пт", en: "Fri" } },
+  { value: 6, short: { ua: "Сб", en: "Sat" } },
+  { value: 7, short: { ua: "Нд", en: "Sun" } },
+];
+
+function defaultWorkingSchedule(): WorkingScheduleDayApi[] {
+  return WEEKDAYS.map(({ value }) => ({
+    weekday: value,
+    opening_time: value <= 5 ? "09:00" : null,
+    closing_time: value <= 5 ? "18:00" : null,
+    is_closed: value > 5,
+  }));
+}
+
+function splitName(fullName: string): { first_name: string; last_name: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return { first_name: parts[0] ?? "", last_name: parts.slice(1).join(" ") };
+}
+
 export default function MasterDashboard({
   user,
   lang,
@@ -235,10 +255,13 @@ export default function MasterDashboard({
   const [clientState, setClientState] = useState<ClientState>(() => readClientState());
   const [selectedDate, setSelectedDate] = useState(todayValue);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const [windowModalOpen, setWindowModalOpen] = useState(false);
-  const [windowDate, setWindowDate] = useState(todayValue);
-  const [windowTime, setWindowTime] = useState("09:00");
-  const [windowDuration, setWindowDuration] = useState("60");
+  const [workingSchedule, setWorkingSchedule] = useState<WorkingScheduleDayApi[]>(() => defaultWorkingSchedule());
+  const [dayOffs, setDayOffs] = useState<DayOffApi[]>([]);
+  const [scheduleSaving, setScheduleSaving] = useState<number | null>(null);
+  const [dayOffModalOpen, setDayOffModalOpen] = useState(false);
+  const [dayOffStart, setDayOffStart] = useState(todayValue);
+  const [dayOffEnd, setDayOffEnd] = useState(todayValue);
+  const [dayOffReason, setDayOffReason] = useState("");
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ name: "", price: "", duration: "60", active: true });
   const [allReviewsOpen, setAllReviewsOpen] = useState(false);
@@ -278,6 +301,67 @@ export default function MasterDashboard({
     void loadBookings();
   }, [loadBookings]);
 
+  const loadSchedule = React.useCallback(async () => {
+    try {
+      const [schedule, offs] = await Promise.all([fetchWorkingSchedule(), fetchDayOffs()]);
+      if (schedule.length) {
+        setWorkingSchedule(
+          WEEKDAYS.map(({ value }) =>
+            schedule.find((day) => day.weekday === value) ?? { weekday: value, opening_time: null, closing_time: null, is_closed: true }
+          )
+        );
+      }
+      setDayOffs(offs);
+    } catch {
+      // Бекенд недоступний — лишаємось з дефолтним/попереднім графіком.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSchedule();
+  }, [loadSchedule]);
+
+  const [apiReviews, setApiReviews] = useState<MasterReviewApi[]>([]);
+
+  const loadReviews = React.useCallback(async () => {
+    try {
+      setApiReviews(await fetchMasterReviews());
+    } catch {
+      // Бекенд недоступний — лишаємось з тим, що вже було завантажено раніше.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReviews();
+  }, [loadReviews]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const apiProfile = await fetchMasterProfile();
+        if (cancelled) return;
+        const fullName = `${apiProfile.first_name} ${apiProfile.last_name}`.trim();
+        updateMasterState((current) => ({
+          ...current,
+          profile: {
+            ...current.profile,
+            displayName: fullName || current.profile.displayName,
+            email: apiProfile.email || current.profile.email,
+            phone: apiProfile.phone || current.profile.phone,
+            about: apiProfile.bio || current.profile.about,
+            avatar: apiProfile.photo || current.profile.avatar,
+          },
+        }));
+      } catch {
+        // Бекенд недоступний — лишаємось з тим, що вже було в локальному кеші.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const knownIds = new Set(masterState.notifications.filter((item) => item.kind === "booking").map((item) => item.entityId));
     const newBookings = apiBookings.filter((booking) => !knownIds.has(booking.id));
@@ -301,11 +385,6 @@ export default function MasterDashboard({
     [bookings, selectedDate]
   );
 
-  const selectedWindows = useMemo(
-    () => masterState.windows.filter((slot) => slot.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time)),
-    [masterState.windows, selectedDate]
-  );
-
   const todayBookings = useMemo(() => bookings.filter((booking) => booking.date === todayValue), [bookings, todayValue]);
   const monthBookings = useMemo(
     () => bookings.filter((booking) => {
@@ -316,14 +395,12 @@ export default function MasterDashboard({
   );
 
   const reviews = useMemo(
-    () => bookings
-      .filter((booking) => booking.status === "completed" && booking.reviewSubmitted && booking.reviewComment)
-      .sort((a, b) => String(b.reviewSubmittedAt ?? b.createdAt).localeCompare(String(a.reviewSubmittedAt ?? a.createdAt))),
-    [bookings]
+    () => [...apiReviews].sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    [apiReviews]
   );
 
   const rating = useMemo(() => {
-    const values = reviews.map((booking) => booking.reviewMasterRating ?? 0).filter(Boolean);
+    const values = reviews.map((review) => review.rating).filter(Boolean);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   }, [reviews]);
 
@@ -336,11 +413,29 @@ export default function MasterDashboard({
     const d = new Date(`${booking.date}T12:00:00`);
     return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
   }).map((booking) => booking.phone)).size;
-  const availableCount = monthBookings.length + masterState.windows.filter((slot) => {
-    const d = new Date(`${slot.date}T12:00:00`);
-    return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
-  }).length;
-  const occupancy = availableCount ? Math.round((monthBookings.length / availableCount) * 100) : 0;
+  const isDateOff = React.useCallback(
+    (value: string) => dayOffs.some((off) => value >= off.start_date && value <= off.end_date),
+    [dayOffs]
+  );
+
+  const workingDaysInMonth = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const isoWeekday = ((date.getDay() + 6) % 7) + 1; // 1=Пн ... 7=Нд
+      const scheduleDay = workingSchedule.find((item) => item.weekday === isoWeekday);
+      if (scheduleDay?.is_closed) continue;
+      if (isDateOff(toInputDate(date))) continue;
+      count += 1;
+    }
+    return count;
+  }, [calendarMonth, workingSchedule, isDateOff]);
+
+  const bookedDaysInMonth = useMemo(() => new Set(monthBookings.map((booking) => booking.date)).size, [monthBookings]);
+  const occupancy = workingDaysInMonth ? Math.round((bookedDaysInMonth / workingDaysInMonth) * 100) : 0;
 
   const portfolioCountLabel = `${masterState.portfolioImages.length} ${masterState.portfolioImages.length === 1 ? (ua ? "робота" : "work") : (ua ? "робіт" : "works")}`;
 
@@ -383,17 +478,43 @@ export default function MasterDashboard({
     }));
   };
 
-  const addWindow = () => {
-    if (!windowDate || !windowTime || Number(windowDuration) < 15 || isUnavailableSlot(windowDate, windowTime)) return;
-    updateMasterState((current) => ({
-      ...current,
-      windows: [
-        ...current.windows.filter((slot) => !(slot.date === windowDate && slot.time === windowTime)),
-        { id: `window-${Date.now()}`, date: windowDate, time: windowTime, duration: Number(windowDuration) },
-      ],
-    }));
-    setSelectedDate(windowDate);
-    setWindowModalOpen(false);
+  const updateScheduleDay = (weekday: number, patch: Partial<WorkingScheduleDayApi>) => {
+    setWorkingSchedule((current) => current.map((day) => (day.weekday === weekday ? { ...day, ...patch } : day)));
+  };
+
+  const persistScheduleDay = async (weekday: number) => {
+    const day = workingSchedule.find((item) => item.weekday === weekday);
+    if (!day) return;
+    setScheduleSaving(weekday);
+    try {
+      const saved = await saveWorkingScheduleDay(day);
+      setWorkingSchedule((current) => current.map((item) => (item.weekday === weekday ? { ...item, ...saved } : item)));
+    } catch {
+      // Не вдалось зберегти — залишок стану лишається як є, спробує ще раз при наступній зміні.
+    } finally {
+      setScheduleSaving(null);
+    }
+  };
+
+  const addDayOff = async () => {
+    if (!dayOffStart || !dayOffEnd || dayOffEnd < dayOffStart) return;
+    try {
+      const created = await createDayOff({ start_date: dayOffStart, end_date: dayOffEnd, reason: dayOffReason.trim() });
+      setDayOffs((current) => [...current, created]);
+      setDayOffModalOpen(false);
+      setDayOffReason("");
+    } catch {
+      // TODO: показати помилку користувачу замість тихого no-op.
+    }
+  };
+
+  const removeDayOff = async (id: number) => {
+    try {
+      await deleteDayOff(id);
+      setDayOffs((current) => current.filter((off) => off.id !== id));
+    } catch {
+      // Не вдалось видалити — запис лишається в списку.
+    }
   };
 
   const saveService = () => {
@@ -451,10 +572,23 @@ export default function MasterDashboard({
     });
   };
 
-  const savePublicProfile = () => {
+  const savePublicProfile = async () => {
     setProfileSaved(true);
     window.dispatchEvent(new CustomEvent("beautyai:master-profile", { detail: masterState.profile }));
     window.setTimeout(() => setProfileSaved(false), 1800);
+
+    try {
+      const { first_name, last_name } = splitName(masterState.profile.displayName);
+      await updateMasterProfile({
+        first_name,
+        last_name,
+        email: masterState.profile.email,
+        phone: masterState.profile.phone,
+        bio: masterState.profile.about,
+      });
+    } catch {
+      // Бекенд не прийняв зміни — локально вже збережено, спробуємо синхронізувати іншим разом.
+    }
   };
 
   const changeAvatar = async (file: File | undefined) => {
@@ -526,10 +660,9 @@ export default function MasterDashboard({
             <section className="master-card-v2 master-schedule-v2">
               <div className="master-card-head-v2">
                 <div><h2>{ua ? "Розклад" : "Schedule"}</h2><p>{formatDate(selectedDate, ua, { weekday: "long", day: "numeric", month: "long" })}</p></div>
-                <button type="button" disabled={isPastDateValue(selectedDate)} onClick={() => { setWindowDate(selectedDate); setWindowTime(selectedDate === todayValue ? currentTimeValue() : "09:00"); setWindowModalOpen(true); }}>+ {ua ? "Додати вікно" : "Add slot"}</button>
               </div>
               <div className="master-schedule-list-v2">
-                {selectedBookings.length === 0 && selectedWindows.length === 0 && <div className="master-empty-v2">{ua ? "На цю дату записів і вільних вікон немає" : "No bookings or available slots for this date"}</div>}
+                {selectedBookings.length === 0 && <div className="master-empty-v2">{ua ? "На цю дату записів немає" : "No bookings for this date"}</div>}
                 {selectedBookings.map((booking) => (
                   <div className={`master-slot-v2 ${booking.status}`} key={booking.id} role="button" tabIndex={0} onClick={() => setSelectedBooking(booking)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedBooking(booking); }}>
                     <time>{booking.time}</time>
@@ -541,17 +674,6 @@ export default function MasterDashboard({
                         <button type="button" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "completed"); }}>{ua ? "Завершити" : "Complete"}</button>
                         <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "cancelled"); }}>{ua ? "Скасувати" : "Cancel"}</button>
                       </>}
-                    </div>
-                  </div>
-                ))}
-                {selectedWindows.map((slot) => (
-                  <div className="master-slot-v2 available" key={slot.id}>
-                    <time>{slot.time}</time>
-                    <div className="master-slot-copy-v2"><b>{ua ? "Вільне вікно" : "Available slot"}</b><span>{slot.duration} {ua ? "хв" : "min"}</span></div>
-                    <strong>—</strong>
-                    <div className="master-slot-actions-v2">
-                      <span className="master-slot-status-v2 available">{ua ? "Вільно" : "Available"}</span>
-                      <button type="button" className="danger" onClick={() => updateMasterState((current) => ({ ...current, windows: current.windows.filter((item) => item.id !== slot.id) }))}>{ua ? "Видалити" : "Delete"}</button>
                     </div>
                   </div>
                 ))}
@@ -584,7 +706,7 @@ export default function MasterDashboard({
 
           <section className="master-card-v2 master-reviews-v2 master-reviews-wide-v2">
             <div className="master-card-head-v2"><div><h2>{ua ? "Останні відгуки" : "Latest reviews"}</h2></div><button className="link" type="button" disabled={!reviews.length} onClick={() => setAllReviewsOpen(true)}>{ua ? "Переглянути всі" : "View all"}</button></div>
-            {reviews.length ? <div className="master-reviews-grid-v2">{reviews.slice(0, 3).map((booking) => <article key={booking.id}><div className="master-review-avatar-v2">★</div><div><b>{ua ? "Клієнт Beauty AI" : "Beauty AI client"}</b><span>{booking.reviewSubmittedAt ? new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "numeric", month: "long" }).format(new Date(booking.reviewSubmittedAt)) : formatDate(booking.date, ua)}</span><p>{booking.reviewComment}</p></div><strong>{"★".repeat(booking.reviewMasterRating ?? 0)} <span>{(booking.reviewMasterRating ?? 0).toFixed(1)}</span></strong></article>)}</div> : <div className="master-empty-v2 master-empty-reviews-v2">{ua ? "Відгуків ще немає — вони зʼявляться після завершених візитів" : "No reviews yet — they will appear after completed visits"}</div>}
+            {reviews.length ? <div className="master-reviews-grid-v2">{reviews.slice(0, 3).map((review) => <article key={review.id}>{review.client_profile_photo ? <img className="master-review-avatar-v2" src={review.client_profile_photo} alt={review.client_name} /> : <div className="master-review-avatar-v2">★</div>}<div><b>{review.client_name}</b><span>{new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "numeric", month: "long" }).format(new Date(review.created_at))}</span><p>{review.comment}</p></div><strong>{"★".repeat(review.rating)} <span>{review.rating.toFixed(1)}</span></strong></article>)}</div> : <div className="master-empty-v2 master-empty-reviews-v2">{ua ? "Відгуків ще немає — вони зʼявляться після завершених візитів" : "No reviews yet — they will appear after completed visits"}</div>}
           </section>
         </div>
       )}
@@ -636,6 +758,73 @@ export default function MasterDashboard({
         </section>
       )}
 
+      {section === "profile" && (
+        <section className="master-card-v2 master-schedule-settings-v2">
+          <div className="master-card-head-v2"><div><h2>{ua ? "Графік роботи" : "Working hours"}</h2><p>{ua ? "Тижневий розклад, за яким клієнти бачать вільний час" : "Weekly hours clients see as available"}</p></div></div>
+          <div className="master-weekly-schedule-v2">
+            {workingSchedule.map((day) => {
+              const label = WEEKDAYS.find((item) => item.value === day.weekday)?.short[ua ? "ua" : "en"] ?? String(day.weekday);
+              return (
+                <div className="master-weekly-schedule-row-v2" key={day.weekday}>
+                  <b>{label}</b>
+                  <label className="master-checkbox-v2">
+                    <input
+                      type="checkbox"
+                      checked={!day.is_closed}
+                      onChange={(event) => {
+                        updateScheduleDay(day.weekday, { is_closed: !event.target.checked });
+                        void persistScheduleDay(day.weekday);
+                      }}
+                    />
+                    {ua ? "Робочий день" : "Working day"}
+                  </label>
+                  {!day.is_closed && (
+                    <>
+                      <input
+                        type="time"
+                        value={day.opening_time ?? "09:00"}
+                        onChange={(event) => updateScheduleDay(day.weekday, { opening_time: event.target.value })}
+                        onBlur={() => persistScheduleDay(day.weekday)}
+                      />
+                      <span>—</span>
+                      <input
+                        type="time"
+                        value={day.closing_time ?? "18:00"}
+                        onChange={(event) => updateScheduleDay(day.weekday, { closing_time: event.target.value })}
+                        onBlur={() => persistScheduleDay(day.weekday)}
+                      />
+                    </>
+                  )}
+                  {scheduleSaving === day.weekday && <small>{ua ? "Збереження…" : "Saving…"}</small>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {section === "profile" && (
+        <section className="master-card-v2 master-dayoffs-v2">
+          <div className="master-card-head-v2">
+            <div><h2>{ua ? "Вихідні та відпустки" : "Days off"}</h2><p>{ua ? "Дати, коли ви недоступні для запису" : "Dates you're unavailable for bookings"}</p></div>
+            <button type="button" onClick={() => { setDayOffStart(todayValue); setDayOffEnd(todayValue); setDayOffReason(""); setDayOffModalOpen(true); }}>+ {ua ? "Додати" : "Add"}</button>
+          </div>
+          {dayOffs.length ? (
+            <div className="master-dayoffs-list-v2">
+              {dayOffs.map((off) => (
+                <div className="master-dayoff-row-v2" key={off.id}>
+                  <span>{formatDate(off.start_date, ua)} — {formatDate(off.end_date, ua)}</span>
+                  <small>{off.reason}</small>
+                  <button type="button" className="danger" onClick={() => removeDayOff(off.id)}>{ua ? "Видалити" : "Delete"}</button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="master-empty-v2">{ua ? "Вихідних не заплановано" : "No days off scheduled"}</div>
+          )}
+        </section>
+      )}
+
       {section === "finance" && (
         <div className="master-finance-v2">
           <div className="master-summary-v2 finance"><article><span>{ua ? "Дохід за весь період" : "Total income"}</span><strong>{formatMoney(completedRevenue, ua)}</strong><small>{completedBookings.length} {ua ? "завершених візитів" : "completed visits"}</small></article><article className="master-payout-summary-v3"><span>{ua ? "Доступно до виплати" : "Available payout"}</span><strong>{formatMoney(availablePayout, ua)}</strong><small>{masterState.payouts.length ? (ua ? `${masterState.payouts.length} заявок створено` : `${masterState.payouts.length} requests created`) : (ua ? "Ще не було заявок" : "No payout requests yet")}</small><button type="button" disabled={availablePayout <= 0} onClick={requestPayout}>{ua ? "Створити заявку" : "Request payout"}</button></article><article><span>{ua ? "Середній чек" : "Average check"}</span><strong>{completedBookings.length ? formatMoney(Math.round(completedRevenue / completedBookings.length), ua) : "—"}</strong><small>{ua ? "За завершеними записами" : "Completed bookings"}</small></article></div>
@@ -644,13 +833,27 @@ export default function MasterDashboard({
         </div>
       )}
 
-      {selectedBooking && <div className="master-modal-backdrop-v2" onMouseDown={() => setSelectedBooking(null)}><div className="master-modal-v2 master-booking-detail-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setSelectedBooking(null)}>×</button><div className="master-booking-detail-head-v2"><span className={`master-slot-status-v2 ${selectedBooking.status}`}>{selectedBooking.status === "completed" ? (ua ? "Завершено" : "Completed") : selectedBooking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span><h3>{selectedBooking.service}</h3><p>{formatDate(selectedBooking.date, ua, { weekday: "long", day: "numeric", month: "long" })} · {selectedBooking.time}</p></div><div className="master-booking-detail-grid-v2"><div><span>{ua ? "Клієнт" : "Client"}</span><strong>{selectedBooking.phone || "—"}</strong></div><div><span>{ua ? "Сума" : "Amount"}</span><strong>{formatMoney(parsePrice(selectedBooking.priceFrom), ua)}</strong></div><div><span>{ua ? "Код запису" : "Booking code"}</span><strong>{selectedBooking.code}</strong></div><div><span>{ua ? "Створено" : "Created"}</span><strong>{new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(selectedBooking.createdAt))}</strong></div></div>{selectedBooking.reviewSubmitted && selectedBooking.reviewComment && <div className="master-booking-review-v2"><span>{ua ? "Відгук клієнта" : "Client review"}</span><strong>{"★".repeat(selectedBooking.reviewMasterRating ?? 0)}</strong><p>{selectedBooking.reviewComment}</p></div>}{selectedBooking.status === "confirmed" && <div className="master-booking-detail-actions-v2"><button className="master-primary-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "completed"); setSelectedBooking(null); }}>{ua ? "Завершити візит" : "Complete visit"}</button><button className="master-danger-outline-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "cancelled"); setSelectedBooking(null); }}>{ua ? "Скасувати запис" : "Cancel booking"}</button></div>}</div></div>}
+      {selectedBooking && <div className="master-modal-backdrop-v2" onMouseDown={() => setSelectedBooking(null)}><div className="master-modal-v2 master-booking-detail-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setSelectedBooking(null)}>×</button><div className="master-booking-detail-head-v2"><span className={`master-slot-status-v2 ${selectedBooking.status}`}>{selectedBooking.status === "completed" ? (ua ? "Завершено" : "Completed") : selectedBooking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span><h3>{selectedBooking.service}</h3><p>{formatDate(selectedBooking.date, ua, { weekday: "long", day: "numeric", month: "long" })} · {selectedBooking.time}</p></div><div className="master-booking-detail-grid-v2"><div><span>{ua ? "Клієнт" : "Client"}</span><strong>{selectedBooking.phone || "—"}</strong></div><div><span>{ua ? "Сума" : "Amount"}</span><strong>{formatMoney(parsePrice(selectedBooking.priceFrom), ua)}</strong></div><div><span>{ua ? "Код запису" : "Booking code"}</span><strong>{selectedBooking.code}</strong></div><div><span>{ua ? "Створено" : "Created"}</span><strong>{new Intl.DateTimeFormat(ua ? "uk-UA" : "en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(selectedBooking.createdAt))}</strong></div></div>{(() => {
+  const matchedReview = reviews.find((review) => review.service_name === selectedBooking.service && review.appointment_date === selectedBooking.date);
+  return matchedReview ? <div className="master-booking-review-v2"><span>{ua ? "Відгук клієнта" : "Client review"}</span><strong>{"★".repeat(matchedReview.rating)}</strong><p>{matchedReview.comment}</p></div> : null;
+})()}{selectedBooking.status === "confirmed" && <div className="master-booking-detail-actions-v2"><button className="master-primary-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "completed"); setSelectedBooking(null); }}>{ua ? "Завершити візит" : "Complete visit"}</button><button className="master-danger-outline-v2" type="button" onClick={() => { syncBookingStatus(selectedBooking.id, "cancelled"); setSelectedBooking(null); }}>{ua ? "Скасувати запис" : "Cancel booking"}</button></div>}</div></div>}
 
-      {windowModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setWindowModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setWindowModalOpen(false)}>×</button><h3>{ua ? "Додати вільне вікно" : "Add available slot"}</h3><label>{ua ? "Дата" : "Date"}<input type="date" min={todayValue} value={windowDate} onChange={(event) => { setWindowDate(event.target.value); if (event.target.value === todayValue && windowTime < currentTimeValue()) setWindowTime(currentTimeValue()); }} /></label><label>{ua ? "Час" : "Time"}<input type="time" min={windowDate === todayValue ? currentTimeValue() : undefined} max="21:00" value={windowTime} onChange={(event) => setWindowTime(event.target.value)} /><small className="master-time-hint-v2">{ua ? "Доступний час: від поточного моменту до 21:00" : "Available time: from now until 21:00"}</small></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={windowDuration} onChange={(event) => setWindowDuration(event.target.value)} /></label><button className="master-primary-v2" type="button" disabled={isUnavailableSlot(windowDate, windowTime)} onClick={addWindow}>{ua ? "Додати" : "Add"}</button></div></div>}
+      {dayOffModalOpen && (
+        <div className="master-modal-backdrop-v2" onMouseDown={() => setDayOffModalOpen(false)}>
+          <div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="master-modal-close-v2" type="button" onClick={() => setDayOffModalOpen(false)}>×</button>
+            <h3>{ua ? "Додати вихідні/відпустку" : "Add day off"}</h3>
+            <label>{ua ? "З дати" : "From"}<input type="date" min={todayValue} value={dayOffStart} onChange={(event) => { setDayOffStart(event.target.value); if (dayOffEnd < event.target.value) setDayOffEnd(event.target.value); }} /></label>
+            <label>{ua ? "До дати" : "To"}<input type="date" min={dayOffStart} value={dayOffEnd} onChange={(event) => setDayOffEnd(event.target.value)} /></label>
+            <label>{ua ? "Причина" : "Reason"}<input value={dayOffReason} onChange={(event) => setDayOffReason(event.target.value)} placeholder={ua ? "Наприклад, відпустка" : "e.g. Vacation"} /></label>
+            <button className="master-primary-v2" type="button" onClick={addDayOff}>{ua ? "Додати" : "Add"}</button>
+          </div>
+        </div>
+      )}
 
       {serviceModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setServiceModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setServiceModalOpen(false)}>×</button><h3>{serviceDraft.id ? (ua ? "Редагувати послугу" : "Edit service") : (ua ? "Нова послуга" : "New service")}</h3><label>{ua ? "Назва" : "Name"}<input value={serviceDraft.name} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>{ua ? "Ціна, грн" : "Price, UAH"}<input type="number" min="1" value={serviceDraft.price} onChange={(event) => setServiceDraft((current) => ({ ...current, price: event.target.value }))} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={serviceDraft.duration} onChange={(event) => setServiceDraft((current) => ({ ...current, duration: event.target.value }))} /></label><label className="master-checkbox-v2"><input type="checkbox" checked={serviceDraft.active} onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))} />{ua ? "Показувати клієнтам" : "Visible to clients"}</label><button className="master-primary-v2" type="button" onClick={saveService}>{ua ? "Зберегти" : "Save"}</button></div></div>}
 
-      {allReviewsOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setAllReviewsOpen(false)}><div className="master-modal-v2 master-reviews-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setAllReviewsOpen(false)}>×</button><h3>{ua ? "Усі відгуки" : "All reviews"}</h3><div className="master-all-reviews-list-v2">{reviews.map((booking) => <article key={booking.id}><div><b>{ua ? "Клієнт Beauty AI" : "Beauty AI client"}</b><span>{booking.reviewSubmittedAt ? new Date(booking.reviewSubmittedAt).toLocaleDateString(ua ? "uk-UA" : "en-GB") : formatDate(booking.date, ua)}</span></div><strong>{"★".repeat(booking.reviewMasterRating ?? 0)}</strong><p>{booking.reviewComment}</p></article>)}</div></div></div>}
+      {allReviewsOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setAllReviewsOpen(false)}><div className="master-modal-v2 master-reviews-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setAllReviewsOpen(false)}>×</button><h3>{ua ? "Усі відгуки" : "All reviews"}</h3><div className="master-all-reviews-list-v2">{reviews.map((review) => <article key={review.id}><div><b>{review.client_name}</b><span>{review.service_name} · {new Date(review.created_at).toLocaleDateString(ua ? "uk-UA" : "en-GB")}</span></div><strong>{"★".repeat(review.rating)}</strong><p>{review.comment}</p></article>)}</div></div></div>}
     </DashboardFrame>
   );
 }

@@ -8,6 +8,8 @@ import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
 import settingsIcon from "./assets/settings.png";
 import DashboardShell from "./dashboard/DashboardShell";
 import {
+  createAppointment,
+  fetchAvailableSlots,
   fetchMasters,
   fetchSalons,
   fetchServices,
@@ -31,6 +33,7 @@ type CardData = {
   rating: number;
   reviews: number;
   district: string;
+  city?: string;
   distance: string;
   openNow?: boolean;
   tags: string[];
@@ -46,6 +49,14 @@ type CardData = {
   reviewsList?: CardReview[];
   website?: string;
   gallery?: string[];
+  backendMasterId?: number;
+  backendSalonId?: number;
+  backendServices?: Array<{
+    id: number;
+    name: string;
+    price?: number | string | null;
+    duration_minutes?: number | string | null;
+  }>;
 };
 
 
@@ -103,6 +114,47 @@ const DISTRICT_FALLBACKS: Record<string, [number, number]> = {
 };
 
 type Lang = "ua" | "en";
+type CityName = "Київ" | "Львів";
+
+const CITY_STORAGE_KEY = "beautyai_selected_city";
+const CITY_CENTERS: Record<CityName, { lat: number; lng: number }> = {
+  "Київ": { lat: 50.4501, lng: 30.5234 },
+  "Львів": { lat: 49.8397, lng: 24.0297 },
+};
+
+function readStoredCity(): CityName | null {
+  try {
+    const value = localStorage.getItem(CITY_STORAGE_KEY);
+    return value === "Київ" || value === "Львів" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLng / 2) ** 2;
+
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
+}
+
+function nearestSupportedCity(lat: number, lng: number): CityName {
+  return (Object.keys(CITY_CENTERS) as CityName[]).reduce((nearest, city) => {
+    const current = CITY_CENTERS[city];
+    const best = CITY_CENTERS[nearest];
+    return distanceKm(lat, lng, current.lat, current.lng) <
+      distanceKm(lat, lng, best.lat, best.lng)
+      ? city
+      : nearest;
+  }, "Київ");
+}
 
 const dict = {
   ua: {
@@ -465,6 +517,7 @@ function buildStoredMasterCards(baseCards: CardData[]): CardData[] {
       rating,
       reviews: reviewed.length,
       district: profile.city || "Київ",
+      city: profile.city || undefined,
       distance: "",
       openNow: futureWindows.length > 0,
       tags: activeServices.map((service) => service.name),
@@ -612,6 +665,7 @@ function AuthModal({
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [googlePickerOpen, setGooglePickerOpen] = useState(false);
   const [googlePickingRole, setGooglePickingRole] = useState<AuthRole | null>(null);
 
@@ -725,7 +779,14 @@ function AuthModal({
         );
       }
 
-      await loginWithPassword();
+      setRegistrationSuccess(true);
+      setAuthError(null);
+
+      window.setTimeout(() => {
+        setRegistrationSuccess(false);
+        setMode("login");
+        setPassword("");
+      }, 2500);
     } catch (err: any) {
       setAuthError(
         err?.message ||
@@ -736,10 +797,9 @@ function AuthModal({
     }
   };
 
-  const currentClientAvatar = readClientState().profileAvatar || roleAvatars.client;
   const storedDemoMaster = readStoredMasterProfile("beauty.master@gmail.com");
   const fakeGoogleAccounts: { role: AuthRole; name: string; email: string; avatar: string }[] = [
-    { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: currentClientAvatar },
+    { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: roleAvatars.client },
     { role: "master", name: storedDemoMaster?.displayName || (ua ? "Майстер Beauty" : "Beauty Master"), email: "beauty.master@gmail.com", avatar: storedDemoMaster?.avatar || roleAvatars.master },
     { role: "admin", name: ua ? "Адмін Beauty AI" : "Beauty AI Admin", email: "admin.beautyai@gmail.com", avatar: roleAvatars.admin },
   ];
@@ -752,7 +812,7 @@ function AuthModal({
       setGooglePickingRole(null);
       const storedMaster = account.role === "master" ? readStoredMasterProfile(account.email) : null;
       const latestAvatar = account.role === "client"
-        ? (readClientState().profileAvatar || account.avatar)
+        ? (readClientProfile(account as MockUser).avatar || account.avatar)
         : account.role === "master"
           ? (storedMaster?.avatar || account.avatar)
           : account.avatar;
@@ -796,6 +856,57 @@ function AuthModal({
           ×
         </button>
 
+        {registrationSuccess ? (
+          <div
+            className="auth-brand"
+            style={{
+              minHeight: 330,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              gap: 16,
+              padding: "32px 20px",
+            }}
+          >
+            <h2 id="auth-title" style={{ margin: 0 }}>
+              {ua ? "Акаунт створено!" : "Account created!"}
+            </h2>
+
+            <div
+              aria-hidden="true"
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                background: "#22c55e",
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                fontSize: 42,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+            >
+              ✓
+            </div>
+
+            <div style={{ maxWidth: 390 }}>
+              <p style={{ margin: 0, fontWeight: 600 }}>
+                {ua
+                  ? "Перейдіть на пошту та підтвердьте свою електронну адресу."
+                  : "Check your email and confirm your email address."}
+              </p>
+              <p style={{ margin: "8px 0 0", opacity: 0.7 }}>
+                {ua
+                  ? "Після підтвердження ви зможете увійти в Beauty AI."
+                  : "After confirmation, you will be able to sign in to Beauty AI."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="auth-brand">
           <div className="auth-title-row">
             <span className="auth-title-icon" aria-hidden="true" />
@@ -969,6 +1080,9 @@ function AuthModal({
             ? "Вхід і реєстрація клієнта через email/пароль підключені до бекенду. Google і реєстрація майстра — поки демо."
             : "Client email/password sign-in and registration are wired to the backend. Google and master registration are still demo."}
         </p>
+
+          </>
+        )}
       </div>
 
       {googlePickerOpen && (
@@ -1132,16 +1246,32 @@ function BookingModal({
   const dates = getBookingDates();
   const storedMaster = data.variant === "solo" ? findStoredMasterState(data.title) : null;
   const storedServices = (storedMaster?.services ?? []).filter((item) => item.active);
-  const services = storedServices.length ? storedServices.map((item) => item.name) : (data.tags.length ? data.tags : [data.type]);
-  const [service, setService] = useState(services[0]);
+  const backendServices = data.backendServices ?? [];
+  const hasBackendBooking = Boolean(data.backendMasterId && backendServices.length);
+
+  const services = hasBackendBooking
+    ? backendServices.map((item) => item.name)
+    : storedServices.length
+      ? storedServices.map((item) => item.name)
+      : (data.tags.length ? data.tags : [data.type]);
+
+  const [service, setService] = useState(services[0] ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [time, setTime] = useState("");
   const [phone, setPhone] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<Array<{ start: string; end: string }>>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+
+  const selectedBackendService = backendServices.find((item) => item.name === service);
   const storedTimes = (storedMaster?.windows ?? []).filter((slot) => slot.date === date).map((slot) => slot.time);
-  const times = storedMaster ? storedTimes : getAvailableTimes(data.title, date);
+  const legacyTimes = storedMaster ? storedTimes : getAvailableTimes(data.title, date);
+  const times = hasBackendBooking ? availableSlots.map((slot) => slot.start) : legacyTimes;
   const selectedStoredService = storedServices.find((item) => item.name === service);
-  const selectedPriceFrom = selectedStoredService ? String(selectedStoredService.price) : data.priceFrom;
+  const selectedPrice = selectedBackendService?.price ?? selectedStoredService?.price ?? data.priceFrom;
+  const selectedPriceFrom = selectedPrice != null && selectedPrice !== "" ? String(selectedPrice) : data.priceFrom;
   const bookingCode = `BA-${data.title.replace(/[^A-Za-zА-Яа-яІіЇїЄє0-9]/g, "").slice(0, 3).toUpperCase()}-${date.replace(/-/g, "").slice(4)}-${time.replace(":", "")}`;
 
   useEffect(() => {
@@ -1156,6 +1286,93 @@ function BookingModal({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
+
+  useEffect(() => {
+    if (!hasBackendBooking || !date || !selectedBackendService || !data.backendMasterId) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingSlots(true);
+    setBookingError("");
+    setTime("");
+
+    fetchAvailableSlots({
+      masterId: data.backendMasterId,
+      serviceId: selectedBackendService.id,
+      salonId: data.backendSalonId,
+      date,
+    })
+      .then((slots) => {
+        if (!cancelled) setAvailableSlots(slots);
+      })
+      .catch((error) => {
+        console.error("Failed to load available slots", error);
+        if (!cancelled) {
+          setAvailableSlots([]);
+          setBookingError(
+            t.bookingModal.close === "Закрити"
+              ? "Не вдалося завантажити вільний час. Спробуйте ще раз."
+              : "Could not load available time slots. Please try again."
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasBackendBooking, date, selectedBackendService?.id, data.backendMasterId, data.backendSalonId, t.bookingModal.close]);
+
+  const handleConfirmBooking = async () => {
+    if (!date || !time) return;
+
+    if (!hasBackendBooking || !data.backendMasterId || !selectedBackendService) {
+      // Тимчасовий fallback для старих локальних/demo-карток.
+      saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode);
+      if (storedMaster) consumeStoredMasterWindow(data.title, date, time);
+      setConfirmed(true);
+      return;
+    }
+
+    setSubmitting(true);
+    setBookingError("");
+
+    try {
+      await createAppointment({
+        master_id: data.backendMasterId,
+        service_id: selectedBackendService.id,
+        appointment_date: date,
+        appointment_time: time.length === 5 ? `${time}:00` : time,
+      });
+      setConfirmed(true);
+    } catch (error) {
+      console.error("Failed to create appointment", error);
+      setBookingError(
+        t.bookingModal.close === "Закрити"
+          ? "Не вдалося створити запис. Можливо, цей час уже зайнятий — оберіть інший."
+          : "Could not create the booking. This slot may already be taken — choose another time."
+      );
+
+      try {
+        const slots = await fetchAvailableSlots({
+          masterId: data.backendMasterId,
+          serviceId: selectedBackendService.id,
+          salonId: data.backendSalonId,
+          date,
+        });
+        setAvailableSlots(slots);
+        if (!slots.some((slot) => slot.start === time)) setTime("");
+      } catch {
+        // Основну помилку створення запису вже показали користувачу.
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return createPortal(
     <div className="booking-modal-overlay" role="presentation" onMouseDown={onClose}>
@@ -1176,7 +1393,7 @@ function BookingModal({
             <div className="booking-modal-body">
               <label className="booking-field">
                 <span>{t.bookingModal.service}</span>
-                <select value={service} onChange={(event) => setService(event.target.value)}>
+                <select value={service} onChange={(event) => { setService(event.target.value); setTime(""); setBookingError(""); }}>
                   {services.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </label>
@@ -1185,7 +1402,7 @@ function BookingModal({
                 <span>{t.bookingModal.date}</span>
                 <div className="booking-date-grid">
                   {dates.map((item) => (
-                    <button key={item.value} type="button" className={date === item.value ? "active" : ""} onClick={() => { setDate(item.value); setTime(""); }}>
+                    <button key={item.value} type="button" className={date === item.value ? "active" : ""} onClick={() => { setDate(item.value); setTime(""); setBookingError(""); }}>
                       {item.label}
                     </button>
                   ))}
@@ -1196,10 +1413,12 @@ function BookingModal({
                 <span>{t.bookingModal.time}</span>
                 <div className="booking-time-grid">
                   {times.map((slot) => (
-                    <button key={slot} type="button" className={time === slot ? "active" : ""} onClick={() => setTime(slot)}>{slot}</button>
+                    <button key={slot} type="button" className={time === slot ? "active" : ""} onClick={() => { setTime(slot); setBookingError(""); }}>{slot}</button>
                   ))}
                 </div>
-                {!time && <small>{storedMaster && times.length === 0 ? (t.bookingModal.close === "Закрити" ? "На цю дату вільних вікон немає" : "No available slots for this date") : t.bookingModal.chooseTime}</small>}
+                {loadingSlots && <small>{t.bookingModal.close === "Закрити" ? "Завантажуємо вільний час…" : "Loading available times…"}</small>}
+                {!loadingSlots && !time && times.length === 0 && <small>{t.bookingModal.close === "Закрити" ? "На цю дату вільних вікон немає" : "No available slots for this date"}</small>}
+                {!loadingSlots && !time && times.length > 0 && <small>{t.bookingModal.chooseTime}</small>}
               </div>
 
               <label className="booking-field">
@@ -1215,8 +1434,17 @@ function BookingModal({
                 <b>{selectedPriceFrom} грн+</b>
               </div>
 
-              <button type="button" className="cta-btn booking-confirm-btn" disabled={!date || !time || phone.trim().length < 7} onClick={() => { saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode); if (storedMaster) consumeStoredMasterWindow(data.title, date, time); setConfirmed(true); }}>
-                {t.bookingModal.confirm}
+              {bookingError && <small className="booking-api-error" role="alert">{bookingError}</small>}
+
+              <button
+                type="button"
+                className="cta-btn booking-confirm-btn"
+                disabled={!date || !time || phone.trim().length < 7 || submitting || loadingSlots}
+                onClick={handleConfirmBooking}
+              >
+                {submitting
+                  ? (t.bookingModal.close === "Закрити" ? "Створюємо запис…" : "Creating booking…")
+                  : t.bookingModal.confirm}
               </button>
             </div>
           </>
@@ -1614,7 +1842,9 @@ function Card({
         <div className="card-title-row">
           <div>
             <h3>{data.title}</h3>
-            <p className="card-type">{data.type}</p>
+            <p className="card-type">
+              {isSolo ? data.type.replace(/^Майстер\s*[•·-]?\s*/i, "") : data.type}
+            </p>
           </div>
           <button
             type="button"
@@ -1785,6 +2015,7 @@ function salonToCard(
     rating: salon.average_rating ?? 0,
     reviews: salon.total_reviews ?? 0,
     district: salon.location?.city_name || "",
+    city: salon.location?.city_name || undefined,
     distance: "",
     openNow: salon.available_status === "available",
     tags,
@@ -1803,17 +2034,19 @@ function salonToCard(
 
 function masterToCard(
   master: MasterApi,
-  prices: number[] = []
+  prices: number[] = [],
+  serviceNamesFromApi: string[] = []
 ): CardData {
   const name =
     `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim();
 
-  const serviceNames =
-    master.services
-      ?.map((service) => service.name)
-      .filter(Boolean) ?? [];
+  const serviceNames = Array.from(
+    new Set([
+      ...(master.services?.map((service) => service.name).filter(Boolean) ?? []),
+      ...serviceNamesFromApi,
+    ])
+  );
 
-  const salonName = master.salons?.[0]?.name;
   const yearsOfExperience = master.years_of_experience ?? 0;
 
   const validPrices = prices.filter(
@@ -1833,7 +2066,7 @@ function masterToCard(
       : "Майстер",
     rating: master.average_rating ?? 0,
     reviews: 0,
-    district: salonName || "Соло-майстер",
+    district: "Соло-майстер",
     distance: "",
     openNow: true,
     tags: serviceNames,
@@ -1842,9 +2075,11 @@ function masterToCard(
       yearsOfExperience > 0
         ? `${yearsOfExperience} років досвіду`
         : undefined,
-    locationNote: salonName || "Соло-майстер",
+    locationNote: "Соло-майстер",
     profileLinkLabel: "Профіль майстра",
     variant: "solo",
+    backendMasterId: master.id,
+    backendServices: master.services ?? [],
   };
 }
 
@@ -2769,10 +3004,12 @@ function PartnerOffersSection({
 function KyivTopSection({
   cards,
   lang,
+  city,
   onLocationClick,
 }: {
   cards: CardData[];
   lang: Lang;
+  city: CityName;
   onLocationClick?: (name: string, district: string, distance: string) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -2834,7 +3071,7 @@ function KyivTopSection({
             </span>
 
             <h2 className="section-title section-title-centered kyiv-top-title">
-              {ua ? "Найкращі в Києві" : "Best in Kyiv"}
+              {ua ? `Найкращі в ${city === "Київ" ? "Києві" : "Львові"}` : `Best in ${city === "Київ" ? "Kyiv" : "Lviv"}`}
             </h2>
           </div>
 
@@ -3089,9 +3326,13 @@ export default function App() {
   });
   const [partnerChoiceOpen, setPartnerChoiceOpen] = useState(false);
   const [user, setUser] = useState<MockUser | null>(() => readStoredUser());
-  const [view, setView] = useState<AppView>(() => (readStoredUser() ? "dashboard" : "home"));
+  const [view, setView] = useState<AppView>("home");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [recommendationFiltersOpen, setRecommendationFiltersOpen] = useState(false);
+  const [selectedCity, setSelectedCity] = useState<CityName | null>(() => readStoredCity());
+  const [cityPickerOpen, setCityPickerOpen] = useState(() => readStoredCity() === null);
+  const [locationPending, setLocationPending] = useState(false);
+  const [locationError, setLocationError] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -3102,14 +3343,70 @@ export default function App() {
   const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [pendingClientAction, setPendingClientAction] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
   const [bookingCard, setBookingCard] = useState<CardData | null>(null);
-  const [salonCards, setSalonCards] = useState<CardData[]>(recommendations);
-  const [masterCards, setMasterCards] = useState<CardData[]>(soloMastersRecommendations);
+  const [salonCards, setSalonCards] = useState<CardData[]>([]);
+  const [masterCards, setMasterCards] = useState<CardData[]>([]);
   const t = dict[lang];
-    const filteredSalons = appliedSearch.trim()
-    ? salonCards.filter((card) =>
+
+  const chooseCity = (city: CityName) => {
+    setSelectedCity(city);
+    setCityPickerOpen(false);
+    setLocationError("");
+    try {
+      localStorage.setItem(CITY_STORAGE_KEY, city);
+    } catch {
+      // Storage may be unavailable in private/restricted browser modes.
+    }
+  };
+
+  const detectCity = () => {
+    if (!navigator.geolocation) {
+      setLocationError(
+        lang === "ua"
+          ? "Ваш браузер не підтримує визначення місцезнаходження."
+          : "Your browser does not support geolocation."
+      );
+      return;
+    }
+
+    setLocationPending(true);
+    setLocationError("");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        chooseCity(
+          nearestSupportedCity(
+            position.coords.latitude,
+            position.coords.longitude
+          )
+        );
+        setLocationPending(false);
+      },
+      (error) => {
+        setLocationPending(false);
+        setLocationError(
+          error.code === error.PERMISSION_DENIED
+            ? lang === "ua"
+              ? "Доступ до геолокації не надано. Оберіть місто вручну."
+              : "Location access was not granted. Choose a city manually."
+            : lang === "ua"
+              ? "Не вдалося визначити місцезнаходження. Оберіть місто вручну."
+              : "Could not determine your location. Choose a city manually."
+        );
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  };
+
+  const cityMatches = (card: CardData) =>
+    !selectedCity ||
+    (card.city || "").trim().toLowerCase() === selectedCity.toLowerCase();
+
+  const citySalonCards = salonCards.filter(cityMatches);
+  const filteredSalons = appliedSearch.trim()
+    ? citySalonCards.filter((card) =>
         card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
       )
-    : salonCards;
+    : citySalonCards;
   const hasSearch = appliedSearch.trim().length > 0;
   const runSearch = () => {
     const query = searchQuery.trim();
@@ -3139,18 +3436,37 @@ export default function App() {
     setActiveCategory(null);
   };
   const liveMasterRecommendations = buildStoredMasterCards(masterCards);
+  const cityMasterCards = liveMasterRecommendations.filter((card) =>
+    !selectedCity ||
+    !card.city ||
+    card.city.trim().toLowerCase() === selectedCity.toLowerCase()
+  );
+
   const filteredMasters = appliedSearch.trim()
-    ? liveMasterRecommendations.filter((card) =>
-        card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
-      )
-    : liveMasterRecommendations;
+    ? cityMasterCards
+        .filter((card) =>
+          card.tags.some((tag) =>
+            tag.toLowerCase().includes(appliedSearch.trim().toLowerCase())
+          )
+        )
+        .map((card) => {
+          const matchedService = card.tags.find((tag) =>
+            tag.toLowerCase().includes(appliedSearch.trim().toLowerCase())
+          );
+
+          return matchedService
+            ? { ...card, type: matchedService }
+            : card;
+        })
+    : cityMasterCards;
+
   void masterRegistryVersion;
 
   useEffect(() => {
     let cancelled = false;
 
     Promise.all([
-      fetchSalons(),
+      fetchSalons(selectedCity || undefined),
       fetchMasters(),
       fetchServices().catch((error) => {
         console.warn("Service prices are unavailable", error);
@@ -3161,12 +3477,26 @@ export default function App() {
         if (cancelled) return;
 
         const salonTagsById = new Map<number, Set<string>>();
+        const salonCityById = new Map<number, string>(
+          salons
+            .filter((salon) => Boolean(salon.location?.city_name))
+            .map((salon) => [salon.id, salon.location?.city_name || ""])
+        );
         const masterPricesById = new Map<number, number[]>();
+        const masterServicesById = new Map<number, Set<string>>();
+
+        const servicePriceById = new Map<number, number>();
+        const servicePriceByName = new Map<string, number>();
 
         services.forEach((service: ServiceApi) => {
-          const price = Number(service.price);
+          const catalogPrice = Number(service.price);
+          if (Number.isFinite(catalogPrice) && catalogPrice > 0) {
+            servicePriceById.set(service.id, catalogPrice);
+            servicePriceByName.set(service.name.trim().toLowerCase(), catalogPrice);
+          }
 
-          if (!Number.isFinite(price) || price <= 0) return;
+          const price = Number(service.price);
+          const hasValidPrice = Number.isFinite(price) && price > 0;
 
           service.masters?.forEach((masterRef) => {
             const rawId =
@@ -3178,11 +3508,19 @@ export default function App() {
 
             if (!Number.isFinite(masterId)) return;
 
-            const prices =
-              masterPricesById.get(masterId) ?? [];
+            const serviceNames =
+              masterServicesById.get(masterId) ?? new Set<string>();
 
-            prices.push(price);
-            masterPricesById.set(masterId, prices);
+            serviceNames.add(service.name);
+            masterServicesById.set(masterId, serviceNames);
+
+            if (hasValidPrice) {
+              const prices =
+                masterPricesById.get(masterId) ?? [];
+
+              prices.push(price);
+              masterPricesById.set(masterId, prices);
+            }
           });
         });
 
@@ -3215,11 +3553,27 @@ export default function App() {
               )
               .map((master) => master.id);
 
-            const salonPrices =
-              salonMasterIds.flatMap(
-                (masterId) =>
-                  masterPricesById.get(masterId) ?? []
-              );
+            const salonPrices = salonMasterIds.flatMap((masterId) => {
+              const master = masters.find((item) => item.id === masterId);
+
+              const directPrices =
+                master?.services
+                  ?.map((service) => {
+                    const ownPrice = Number(service.price);
+                    if (Number.isFinite(ownPrice) && ownPrice > 0) return ownPrice;
+
+                    const byId = servicePriceById.get(service.id);
+                    if (byId) return byId;
+
+                    return servicePriceByName.get(service.name.trim().toLowerCase()) ?? 0;
+                  })
+                  .filter((price) => Number.isFinite(price) && price > 0) ?? [];
+
+              return [
+                ...directPrices,
+                ...(masterPricesById.get(masterId) ?? []),
+              ];
+            });
 
             return salonToCard(
               salon,
@@ -3232,12 +3586,36 @@ export default function App() {
         );
 
         setMasterCards(
-          masters.map((master) =>
-            masterToCard(
-              master,
-              masterPricesById.get(master.id) ?? []
-            )
-          )
+          masters
+            .filter((master) => !master.salons?.length)
+            .map((master) => {
+              const directPrices =
+                master.services
+                  ?.map((service) => {
+                    const ownPrice = Number(service.price);
+                    if (Number.isFinite(ownPrice) && ownPrice > 0) return ownPrice;
+
+                    const byId = servicePriceById.get(service.id);
+                    if (byId) return byId;
+
+                    return servicePriceByName.get(service.name.trim().toLowerCase()) ?? 0;
+                  })
+                  .filter((price) => Number.isFinite(price) && price > 0) ?? [];
+
+              return masterToCard(
+                master,
+                [
+                  ...directPrices,
+                  ...(masterPricesById.get(master.id) ?? []),
+                ],
+                Array.from(
+                  new Set([
+                    ...(master.services?.map((service) => service.name).filter(Boolean) ?? []),
+                    ...Array.from(masterServicesById.get(master.id) ?? []),
+                  ])
+                )
+              );
+            })
         );
       })
       .catch((error) => {
@@ -3247,7 +3625,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedCity]);
 
   useEffect(() => {
     const refreshMasters = () => setMasterRegistryVersion((value) => value + 1);
@@ -3353,7 +3731,7 @@ export default function App() {
 
   const handleAuthenticated = (nextUser: MockUser) => {
     const clientProfile = nextUser.role === "client" ? readClientProfile(nextUser) : {};
-    const clientAvatar = nextUser.role === "client" ? (clientProfile.avatar || readClientState().profileAvatar) : undefined;
+    const clientAvatar = nextUser.role === "client" ? clientProfile.avatar : undefined;
     const masterProfile = nextUser.role === "master" ? readStoredMasterProfile(nextUser.email) : null;
     const hydratedUser = nextUser.role === "master"
       ? { ...nextUser, name: masterProfile?.displayName || nextUser.name, avatar: masterProfile?.avatar || nextUser.avatar }
@@ -3428,11 +3806,40 @@ export default function App() {
         </nav>
         <div className="header-right">
           <button
+            type="button"
+            className="city-selector"
+            onClick={() => setCityPickerOpen(true)}
+            aria-label={lang === "ua" ? "Змінити місто" : "Change city"}
+          >
+            <span className="city-selector-pin" aria-hidden="true">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </span>
+            <span>{selectedCity || (lang === "ua" ? "Місто" : "City")}</span>
+            <span className="city-selector-chevron" aria-hidden="true">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <path d="M2 3.5L5 6.5L8 3.5Z" fill="currentColor" />
+              </svg>
+            </span>
+          </button>
+
+          <button
             className="lang-select"
             onClick={() => setLang(lang === "ua" ? "en" : "ua")}
             aria-label="Switch language"
           >
-            {lang === "ua" ? "UA" : "EN"} ˅
+            {lang === "ua" ? "UA" : "EN"} 
           </button>
           
           {user ? (
@@ -3716,6 +4123,7 @@ export default function App() {
       <KyivTopSection
         cards={nearby}
         lang={lang}
+        city={selectedCity || "Київ"}
         onLocationClick={handleLocationClick}
       />
 
@@ -3863,6 +4271,118 @@ export default function App() {
               {lang === "ua" ? "Зареєструватися" : "Create account"}
             </button>
           </div>
+        </div>
+      )}
+
+      {view === "home" && cityPickerOpen && (
+        <div
+          className="city-picker-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && selectedCity) {
+              setCityPickerOpen(false);
+            }
+          }}
+        >
+          <section
+            className="city-picker-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="city-picker-title"
+          >
+            {selectedCity && (
+              <button
+                type="button"
+                className="city-picker-close"
+                onClick={() => setCityPickerOpen(false)}
+                aria-label={lang === "ua" ? "Закрити" : "Close"}
+              >
+                ×
+              </button>
+            )}
+
+            <div className="city-picker-icon" aria-hidden="true">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+            </div>
+
+            <h2 id="city-picker-title">
+              {lang === "ua" ? "Оберіть місто" : "Choose your city"}
+            </h2>
+            <p>
+              {lang === "ua"
+                ? "Покажемо салони та майстрів саме у вашому місті."
+                : "We’ll show salons and masters in your city."}
+            </p>
+
+            <div className="city-picker-options">
+              <button
+                type="button"
+                className={selectedCity === "Київ" ? "is-active" : ""}
+                onClick={() => chooseCity("Київ")}
+              >
+                Київ
+              </button>
+              <button
+                type="button"
+                className={selectedCity === "Львів" ? "is-active" : ""}
+                onClick={() => chooseCity("Львів")}
+              >
+                Львів
+              </button>
+            </div>
+
+            <div className="city-picker-divider">
+              <span>{lang === "ua" ? "або" : "or"}</span>
+            </div>
+
+            <button
+              type="button"
+              className="city-detect-btn"
+              onClick={detectCity}
+              disabled={locationPending}
+            >
+              <span className="city-detect-pin" aria-hidden="true">
+                <svg
+                  width="17"
+                  height="17"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+              </span>
+              {locationPending
+                ? lang === "ua"
+                  ? "Визначаємо…"
+                  : "Detecting…"
+                : lang === "ua"
+                  ? "Визначити моє місцезнаходження"
+                  : "Use my current location"}
+            </button>
+
+            {locationError && (
+              <p className="city-picker-error" role="alert">
+                {locationError}
+              </p>
+            )}
+          </section>
         </div>
       )}
 

@@ -5630,12 +5630,12 @@
   width: 23px !important;
   height: 23px !important;
   flex: 0 0 23px !important;
-  color: var(--beautyai-ai-purple) !important;
+  color: #9A55F5 !important;
   transform: translateY(-2px);
 }
 
 .client-loyalty-title em {
-  color: var(--beautyai-ai-purple) !important;
+  color: #742ED8 !important;
 }
 
 /* One preview on home, all reviews live in the modal. */
@@ -5956,3 +5956,25 @@
 .admin-account-trigger-v3 .admin-account-chevron-v3.open {
   transform: rotate(180deg) !important;
 }
+
+/* Client header polish: centered initials avatar + comfortable empty notifications state */
+.client-profile-trigger img,
+.dashboard-avatar.profile-avatar img {
+  display: block;
+}
+
+.client-notification-list > .client-empty-copy {
+  margin: 0;
+  padding: 20px 18px 22px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: #756c81;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: center;
+  overflow: visible;
+}
+
