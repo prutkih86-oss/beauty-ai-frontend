@@ -1,127 +1,119 @@
-.beauty-assistant {
-  position: fixed;
-  right: 28px;
-  bottom: 24px;
-  z-index: 2000;
-
-  display: flex;
+.beauty-assistant-inline {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-
-  cursor: grab;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
   user-select: none;
-  touch-action: none;
-}
-
-.beauty-assistant:active {
-  cursor: grabbing;
+  pointer-events: none;
 }
 
 .beauty-assistant-character {
   width: 90px;
   height: auto;
   display: block;
-  pointer-events: none;
-
+  flex: 0 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(78, 40, 140, 0.14));
   transition:
-    opacity 0.25s ease;
+    transform 0.24s ease,
+    opacity 0.24s ease;
 }
 
 .beauty-assistant-bubble {
   position: relative;
-  max-width: 165px;
-  padding: 8px 11px;
-  transform: translateY(-8px);
-
-  background: #fff;
-  border-radius: 14px;
-  border: 1.5px solid #9840F0;
-
+  max-width: 245px;
+  padding: 9px 12px;
+  color: #241a3d;
+  background: #fcfbff;
+  border: 1.5px solid #9840f0;
+  border-radius: 15px;
   box-shadow: 0 8px 22px rgba(50, 20, 90, 0.10);
-
   font-size: 13px;
-  line-height: 1.3;
+  font-weight: 600;
+  line-height: 1.35;
   pointer-events: none;
 }
 
-/* Коміксова "стрілочка" до ротика робота */
 .beauty-assistant-bubble::before {
   content: "";
   position: absolute;
-  right: -9px;
-  top: 58%;
-  width: 16px;
-  height: 16px;
+  right: -8px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
   background: #fff;
-  border-top: 1.5px solid #9840F0;
-  border-right: 1.5px solid #9840F0;
+  border-top: 1.5px solid #9840f0;
+  border-right: 1.5px solid #9840f0;
   transform: translateY(-50%) rotate(45deg);
 }
 
-.state-thinking {
-  animation: assistantThinking 1.2s ease-in-out infinite;
+.state-greeting .beauty-assistant-character {
+  animation: assistantGreeting 0.45s ease both;
 }
 
-.state-found {
-  animation: assistantPop 0.35s ease;
+.state-search .beauty-assistant-character {
+  animation: assistantSearch 1.3s ease-in-out infinite;
 }
 
-.state-success {
-  animation: assistantSuccess 0.45s ease;
+.state-success .beauty-assistant-character {
+  animation: assistantSuccess 0.48s ease both;
 }
 
-@keyframes assistantThinking {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-
-  50% {
-    translate: 0 -5px;
-  }
+.state-no-result .beauty-assistant-character,
+.state-error .beauty-assistant-character,
+.state-help .beauty-assistant-character,
+.state-detail-view .beauty-assistant-character,
+.state-what-you-doing .beauty-assistant-character {
+  animation: assistantSoftPop 0.35s ease both;
 }
 
-@keyframes assistantPop {
-  from {
-    scale: 0.85;
-    opacity: 0;
-  }
+.state-booking-success .beauty-assistant-character {
+  animation: assistantBookingSuccess 0.56s ease both;
+}
 
-  to {
-    scale: 1;
-    opacity: 1;
-  }
+@keyframes assistantGreeting {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes assistantSearch {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-5px) rotate(1deg); }
 }
 
 @keyframes assistantSuccess {
-  0% {
-    scale: 1;
-    rotate: 0deg;
-  }
+  0% { opacity: 0; transform: scale(0.84); }
+  65% { opacity: 1; transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
 
-  50% {
-    scale: 1.12;
-    rotate: 3deg;
-  }
+@keyframes assistantBookingSuccess {
+  0% { opacity: 0; transform: translateY(8px) scale(0.86); }
+  60% { opacity: 1; transform: translateY(-2px) scale(1.08); }
+  100% { transform: translateY(0) scale(1); }
+}
 
-  100% {
-    scale: 1;
-    rotate: 0deg;
-  }
+@keyframes assistantSoftPop {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.beautyai-assistant-disabled .beauty-assistant-inline {
+  display: none !important;
 }
 
 @media (max-width: 768px) {
-  .beauty-assistant {
-    right: 14px;
-    bottom: 14px;
-  }
-
-  .beauty-assistant-character {
-    width: 72px;
-  }
-
-  .beauty-assistant-bubble {
-    max-width: 145px;
-    font-size: 12px;
-  }
+  .beauty-assistant-character { width: 74px; }
+  .beauty-assistant-bubble { max-width: 190px; font-size: 12px; }
+}
+.beauty-assistant-bubble {
+  max-width: 220px;
+  padding: 16px 18px;
+  border-radius: 19px;
+  line-height: 1.35;
+  
+}
+.state-waiting .beauty-assistant-bubble {
+  transform: translate(-20px, -10px);
 }

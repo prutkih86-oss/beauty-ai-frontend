@@ -1,100 +1,68 @@
-import { useRef, useState } from "react";
 import "./BeautyAssistant.css";
 
 export type AssistantState =
   | "idle"
-  | "thinking"
-  | "found"
-  | "success";
+  | "greeting"
+  | "waiting"
+  | "what-you-doing"
+  | "what-you-doing-2"
+  | "search"
+  | "success"
+  | "no-result"
+  | "error"
+  | "help"
+  | "booking-success"
+  | "detail-view";
 
 type BeautyAssistantProps = {
   state: AssistantState;
-  message: string;
-  visible: boolean;
+  message?: string;
+  visible?: boolean;
+  className?: string;
+  ariaLabel?: string;
 };
 
 const assistantImages: Record<AssistantState, string> = {
   idle: "/assistant/assistant-idle.png",
-  thinking: "/assistant/assistant-thinking.png",
-  found: "/assistant/assistant-found.png",
-  success: "/assistant/assistant-success.png",
+  greeting: "/assistant/assistant-greeting2.png",
+  waiting: "/assistant/assistant-thinking.png",
+  "what-you-doing": "/assistant/assistant-whatyoudoing.png",
+  "what-you-doing-2": "/assistant/assistant-whatyoudoing2.png",
+  search: "/assistant/assistant-search2.png",
+  success: "/assistant/assistant-found.png",
+  "no-result": "/assistant/assistant-no_result2.png",
+  error: "/assistant/assistant-colaps.png",
+  help: "/assistant/assistant-help.png",
+  "booking-success": "/assistant/assistant-booking-success.png",
+  "detail-view": "/assistant/assistant-salon_master-detail-viev.png",
 };
 
 export default function BeautyAssistant({
   state,
-  message,
-  visible,
+  message = "",
+  visible = true,
+  className = "",
+  ariaLabel = "Beauty AI assistant",
 }: BeautyAssistantProps) {
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-  } | null>(null);
-
-  if (!visible) return null;
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-
-    dragRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: position.x,
-      originY: position.y,
-    };
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return;
-
-    const nextX =
-      dragRef.current.originX + event.clientX - dragRef.current.startX;
-    const nextY =
-      dragRef.current.originY + event.clientY - dragRef.current.startY;
-
-    setPosition({
-      x: nextX,
-      y: nextY,
-    });
-  };
-
-  const stopDragging = (event: React.PointerEvent<HTMLDivElement>) => {
-    dragRef.current = null;
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
-  const displayMessage =
-    message || (state === "idle" ? "Привіт! Що будемо шукати?" : "");
+  if (!visible) {
+    return null;
+  }
 
   return (
     <div
-      className="beauty-assistant"
-      style={{
-        transform: `translate(${position.x}px, ${position.y}px)`,
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={stopDragging}
-      onPointerCancel={stopDragging}
-      title="Перетягни мене"
+      className={`beauty-assistant-inline state-${state} ${className}`.trim()}
+      data-assistant-state={state}
     >
-      {displayMessage && (
-        <div className="beauty-assistant-bubble">
-          {displayMessage}
+      {message && (
+        <div className="beauty-assistant-bubble" role="status" aria-live="polite">
+          {message}
         </div>
       )}
 
       <img
         src={assistantImages[state]}
-        alt="Beauty AI assistant"
-        className={`beauty-assistant-character state-${state}`}
+        alt={ariaLabel}
+        className="beauty-assistant-character"
         draggable={false}
       />
     </div>

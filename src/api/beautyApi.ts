@@ -63,6 +63,15 @@ function clearTokensAndNotify() {
   window.dispatchEvent(new CustomEvent("beautyai:auth-expired"));
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(path: string, status: number) {
+    super(`API ${path} -> ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getAccessToken();
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -80,14 +89,14 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
         ...init,
         headers: { ...headers, Authorization: `Bearer ${newToken}` },
       });
-      if (!retry.ok) throw new Error(`API ${path} -> ${retry.status}`);
+      if (!retry.ok) throw new ApiError(path, retry.status);
       return retry.status === 204 ? (undefined as T) : retry.json();
     }
     clearTokensAndNotify();
-    throw new Error(`API ${path} -> 401 (session expired)`);
+    throw new ApiError(path, 401);
   }
 
-  if (!response.ok) throw new Error(`API ${path} -> ${response.status}`);
+  if (!response.ok) throw new ApiError(path, response.status);
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
@@ -128,7 +137,18 @@ export type SalonApi = {
   name: string;
   description?: string | null;
   logo?: string | null;
+
+  // Backend serializers seen in this project may expose location either nested
+  // or as flat fields. Keep both shapes supported.
   location?: SalonLocationApi | null;
+  city_id?: number | null;
+  city_name?: string | null;
+  city?: string | { id?: number; name?: string } | null;
+  district?: string | null;
+  address?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+
   phone?: string | null;
   average_rating?: number | null;
   total_reviews?: number;
@@ -136,6 +156,8 @@ export type SalonApi = {
   service_count?: number;
   working_hours?: unknown[];
   available_status?: string;
+
+  external_booking_url?: string | null;
 };
 
 export type MasterApi = {
@@ -304,6 +326,12 @@ export async function updateMyProfile(payload: {
   email?: string;
 }): Promise<UserProfileApi> {
   return apiPatch<UserProfileApi>("/api/users/me/", payload);
+}
+
+export async function updateMyProfilePhoto(file: Blob | File): Promise<UserProfileApi> {
+  const formData = new FormData();
+  formData.append("photo", file, file instanceof File ? file.name : "avatar.jpg");
+  return apiPatch<UserProfileApi>("/api/users/me/", formData);
 }
 
 export type ClientAppointmentApi = {
@@ -532,6 +560,7 @@ export async function fetchMasterReviews(): Promise<MasterReviewApi[]> {
 }
 
 export type MasterProfileApi = {
+  id: number;
   first_name: string;
   last_name: string;
   email: string;
@@ -541,6 +570,7 @@ export type MasterProfileApi = {
   photo?: string | null;
   average_rating?: number;
   total_reviews?: number;
+  active_services?: Array<{ id: number; name: string }>;
 };
 
 export async function fetchMasterProfile(): Promise<MasterProfileApi> {
@@ -555,5 +585,109 @@ export async function updateMasterProfile(payload: {
   bio?: string;
 }): Promise<MasterProfileApi> {
   return apiPatch<MasterProfileApi>("/api/users/masters/me/", payload);
+}
+
+export async function updateMasterProfilePhoto(file: Blob | File): Promise<MasterProfileApi> {
+  const formData = new FormData();
+  formData.append("photo", file, file instanceof File ? file.name : "avatar.jpg");
+  return apiPatch<MasterProfileApi>("/api/users/masters/me/", formData);
+}
+
+// Бекенд поки не має /api/services/?masters=<id> як окремого читомого фільтра,
+// тож дістаємо список активних послуг майстра через профіль (active_services — id+name),
+// і докручуємо повні дані (ціна/тривалість/категорія) із загального списку послуг.
+export async function fetchMasterServices(): Promise<ServiceApi[]> {
+  const profile = await fetchMasterProfile();
+  const activeIds = new Set((profile.active_services ?? []).map((service) => service.id));
+  if (!activeIds.size) return [];
+  const all = await fetchServices();
+  return all.filter((service) => activeIds.has(service.id));
+}
+
+// AI-чат живе на окремому сервісі (порт 8001), не на основному Django-бекенді.
+// В dev його проксить Vite (vite.config.ts, "/ai-chat" -> ...:8001, префікс обрізається),
+// у проді — nginx (nginx/default.conf, той самий /ai-chat/ -> ...:8001/, з прокиданням
+// заголовка Authorization). Тому тут завжди відносний шлях, без API_BASE_URL.
+export type AiChatResponse = {
+  conversation_id?: string | number | null;
+  reply?: string;
+  response?: string;
+  message?: string;
+  answer?: string;
+  content?: string;
+  detail?: string;
+};
+
+export async function sendAiChatMessage(
+  message: string,
+  conversationId: string | number | null
+): Promise<{ text: string; conversationId: string | number | null }> {
+  const aiChatUrl = import.meta.env.VITE_AI_CHAT_URL?.trim() || "/ai-chat/chat";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(aiChatUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ message, conversation_id: conversationId }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as AiChatResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.detail || `AI chat request failed (${response.status})`);
+  }
+
+  const data = payload ?? {};
+  const text =
+    [data.reply, data.response, data.message, data.answer, data.content].find(
+      (value): value is string => typeof value === "string"
+    ) ?? "";
+  const nextConversationId =
+    typeof data.conversation_id === "string" || typeof data.conversation_id === "number"
+      ? data.conversation_id
+      : conversationId;
+
+  return { text, conversationId: nextConversationId };
+}
+
+export type AppointmentReviewApi = {
+  id: number;
+  appointment: number;
+  client: number;
+  master: number;
+  rating: number;
+  comment?: string | null;
+  created_at: string;
+};
+
+export async function createAppointmentReview(
+  appointmentId: number | string,
+  payload: { rating: number; comment?: string }
+): Promise<AppointmentReviewApi> {
+  return apiPost<AppointmentReviewApi>(`/api/appointments/${appointmentId}/review/`, payload);
+}
+
+export async function updateAppointmentReview(
+  appointmentId: number | string,
+  payload: { rating?: number; comment?: string }
+): Promise<AppointmentReviewApi> {
+  return apiPatch<AppointmentReviewApi>(`/api/appointments/${appointmentId}/review/`, payload);
+}
+
+export async function fetchAppointmentReview(
+  appointmentId: number | string
+): Promise<AppointmentReviewApi | null> {
+  try {
+    return await apiGet<AppointmentReviewApi>(`/api/appointments/${appointmentId}/review/`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function deleteAppointmentReview(appointmentId: number | string): Promise<void> {
+  await apiDelete(`/api/appointments/${appointmentId}/review/`);
 }
 

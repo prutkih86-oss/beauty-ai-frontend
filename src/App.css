@@ -4770,7 +4770,7 @@ button .place-modal-reviews-summary {
 .ai-recommendations > .recommendation-row-masters {
   width: 100%;
   margin-top: 0 !important;
-
+  overflow: visible;
   background: linear-gradient(
     180deg,
     #f2edff 0%,
@@ -4789,6 +4789,7 @@ button .place-modal-reviews-summary {
   .ai-recommendations > .recommendation-row-salons {
     margin-top: 0 !important;
     padding-top: 18px !important;
+    overflow: visible;
   }
 }
 .recommendations-idle-panel {
@@ -4911,11 +4912,23 @@ button .place-modal-reviews-summary {
 }
 
 .recommendations-idle-copy strong {
-  color: #241a3d;
-  font-size: 15px;
-  font-weight: 700;
-}
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 
+  padding: 12px 18px;
+
+  background: #fcfbff;
+  border: 1.5px solid #9840f0;
+  border-radius: 19px;
+
+  color: #241a3d;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+
+  box-shadow: 0 6px 16px rgba(81, 53, 155, 0.08);
+}
 .recommendations-idle-copy span {
   color: #746d7d;
   font-size: 13px;
@@ -5676,4 +5689,951 @@ button .place-modal-reviews-summary {
     padding: 25px 20px 22px;
     border-radius: 20px;
   }
+}
+/* =========================================================
+   Salon / place details modal — presentation-ready pass
+   Bigger type, stronger contrast, Beauty AI visual language
+   ========================================================= */
+
+.place-modal-profile-v4 {
+  width: min(820px, calc(100vw - 40px));
+  max-height: min(88vh, 900px);
+  border: 1px solid rgba(113, 53, 232, 0.16);
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow:
+    0 30px 90px rgba(36, 26, 61, 0.22),
+    0 8px 28px rgba(113, 53, 232, 0.10);
+}
+
+.place-modal-profile-v4 .place-modal-hero {
+  min-height: 235px;
+}
+
+.place-modal-profile-v4 .place-modal-body {
+  padding: 30px 34px 32px;
+}
+
+.place-modal-profile-head {
+  gap: 10px;
+}
+
+.place-modal-role-pill {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 750;
+  color: #7135e8;
+  background: #f4efff;
+  border: 1px solid rgba(113, 53, 232, 0.20);
+}
+
+.place-modal-profile-head h2 {
+  margin: 2px 0 2px;
+  color: #17141f;
+  font-size: clamp(28px, 3vw, 34px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.place-modal-rating-v4 {
+  font-size: 15px;
+  color: #3d3748;
+}
+
+.place-modal-rating-v4 strong {
+  color: #1d1826;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.place-modal-rating-v4 > span:last-child {
+  color: #625a6d;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.place-modal-primary-meta-v4 {
+  margin-top: 4px;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.place-modal-primary-meta-v4 .place-modal-location-link {
+  color: #383142;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.place-modal-primary-meta-v4 .place-modal-distance {
+  color: #5d5566;
+}
+
+.place-modal-primary-meta-v4 .place-modal-status {
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.place-modal-profile-v4 .place-modal-section {
+  margin-top: 26px;
+}
+
+.place-modal-profile-v4 .place-modal-section h3 {
+  margin-bottom: 12px;
+  color: #201a2a;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.place-modal-description {
+  color: #3f3849;
+  font-size: 16px;
+  line-height: 1.65;
+  font-weight: 500;
+}
+
+.place-modal-tags {
+  gap: 9px;
+}
+
+.place-modal-tags .tag {
+  padding: 8px 12px;
+  color: #33244f;
+  background: #f8f4ff;
+  border: 1px solid rgba(113, 53, 232, 0.15);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.place-modal-facts-v4 {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #e8e1ef;
+  border-radius: 18px;
+  background: #fbf9fd;
+}
+
+.place-modal-facts-v4 > div {
+  padding: 16px 18px;
+}
+
+.place-modal-facts-v4 span {
+  color: #6a6272;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.place-modal-facts-v4 strong {
+  margin-top: 4px;
+  color: #1d1826;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.place-modal-review {
+  padding: 16px 18px;
+  border-color: #e8e1ef;
+  background: #fcfbfe;
+}
+
+.place-modal-review-head strong {
+  color: #241d2d;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.place-modal-review-head span {
+  color: #706777;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.place-modal-review p {
+  color: #494151;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 500;
+}
+
+.place-modal-show-all-v4 {
+  color: #7135e8;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.place-modal-cta {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 28px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 10px 26px rgba(113, 53, 232, 0.20);
+}
+
+.place-modal-booking-note {
+  margin: 10px 0 0;
+  color: #625a6d;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 550;
+  text-align: center;
+}
+
+.place-modal-profile-v4 .place-modal-close {
+  width: 38px;
+  height: 38px;
+  top: 16px;
+  right: 16px;
+  color: #241a3d;
+  font-size: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(36, 26, 61, 0.10);
+  box-shadow: 0 8px 22px rgba(36, 26, 61, 0.16);
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 {
+    width: 100%;
+    max-height: 94vh;
+    border-radius: 24px 24px 0 0;
+  }
+
+  .place-modal-profile-v4 .place-modal-hero {
+    min-height: 190px;
+  }
+
+  .place-modal-profile-v4 .place-modal-body {
+    padding: 24px 20px 26px;
+  }
+
+  .place-modal-profile-head h2 {
+    font-size: 27px;
+  }
+
+  .place-modal-profile-v4 .place-modal-section h3 {
+    font-size: 17px;
+  }
+
+  .place-modal-description {
+    font-size: 15px;
+  }
+
+  .place-modal-cta {
+    min-height: 52px;
+    font-size: 16px;
+  }
+}
+
+/* ==========================================================
+   2026-09-11 modal compact pass
+   ========================================================== */
+
+/* Place details: keep desktop modal compact instead of stretching wide. */
+.place-modal-profile-v4 {
+  width: min(680px, calc(100vw - 40px));
+  max-height: min(88vh, 860px);
+}
+
+.place-modal-profile-v4 .place-modal-body {
+  padding: 24px 28px 28px;
+}
+
+/* Solo master: portrait on the left, identity/rating/status on the right. */
+.place-modal-solo-top {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(81, 53, 155, 0.12);
+}
+
+.place-modal-solo-top .place-modal-hero-solo {
+  min-height: 190px;
+  height: 100%;
+  border-radius: 18px;
+  background-size: cover;
+  background-position: center top;
+}
+
+.place-modal-solo-top .place-modal-profile-head {
+  justify-content: center;
+  padding: 0;
+  border-bottom: 0;
+}
+
+/* Services: compact by default, expandable on demand. */
+.place-modal-tags-toggle {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(113, 53, 232, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #7135e8;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.place-modal-tags-toggle:hover {
+  background: #f8f4ff;
+}
+
+/* Information: one clean row with separators, no coloured cards. */
+.place-modal-facts-v4 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.place-modal-facts-v4 > div,
+.place-modal-facts-v4 > div:last-child:nth-child(odd) {
+  grid-column: auto;
+  flex: 1 1 0;
+  min-width: 130px;
+  padding: 2px 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.place-modal-facts-v4 > div:first-child {
+  padding-left: 0;
+}
+
+.place-modal-facts-v4 > div + div {
+  border-left: 1px solid #ded8e7;
+}
+
+.place-modal-facts-v4 span {
+  margin-bottom: 4px;
+  color: #6a6272;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.place-modal-facts-v4 strong {
+  margin-top: 0;
+  color: #1d1826;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* Booking modal: more breathing room, stronger controls, slightly larger type. */
+.booking-modal {
+  width: min(590px, 100%);
+}
+
+.booking-modal-head {
+  padding: 26px 66px 22px 34px;
+}
+
+.booking-modal-body {
+  gap: 20px;
+  padding: 26px 34px 30px;
+}
+
+.booking-modal-head span { font-size: 12px; }
+.booking-modal-head h2 { font-size: 22px; }
+.booking-modal-head p { font-size: 14px; }
+.booking-field > span { font-size: 13px; }
+.booking-field small { font-size: 12px; }
+.booking-summary strong { font-size: 14px; }
+.booking-summary span { font-size: 13px; }
+
+.booking-field select,
+.booking-field input {
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1.5px solid #cfc5dc;
+  background: #fff;
+  font-size: 15px;
+  box-shadow: inset 0 0 0 1px rgba(113, 53, 232, 0.025);
+}
+
+.booking-date-grid button,
+.booking-time-grid button {
+  min-height: 44px;
+  border: 1.5px solid #cfc5dc;
+  background: #fff;
+  font-size: 13px;
+}
+
+.booking-date-grid button:hover,
+.booking-time-grid button:hover {
+  border-color: #9a70e9;
+  background: #faf7ff;
+}
+
+.booking-date-grid button.active,
+.booking-time-grid button.active {
+  border-color: #7135e8;
+  background: #f2ebff;
+  color: #2f2147;
+  box-shadow: 0 0 0 1px rgba(113, 53, 232, 0.10);
+}
+
+.booking-phone-error {
+  color: #b42318 !important;
+  font-weight: 650;
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 {
+    width: 100%;
+  }
+
+  .place-modal-profile-v4 .place-modal-body {
+    padding: 22px 18px 24px;
+  }
+
+  .place-modal-solo-top {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .place-modal-solo-top .place-modal-hero-solo {
+    min-height: 145px;
+  }
+
+  .place-modal-facts-v4 > div {
+    flex: 1 1 50%;
+    padding: 8px 12px;
+  }
+
+  .place-modal-facts-v4 > div:first-child {
+    padding-left: 0;
+  }
+
+  .booking-modal-head {
+    padding: 20px 54px 18px 20px;
+  }
+
+  .booking-modal-body {
+    padding: 20px;
+  }
+}
+
+
+/* ==========================================================
+   BEAUTY AI ASSISTANT — state-driven placements
+   ========================================================== */
+
+.assistant-what-you-doing {
+  position: absolute;
+  left: 36%;
+  bottom: 120px;
+  z-index: 8;
+  transform: translateX(-50%);
+}
+
+.assistant-what-you-doing .beauty-assistant-character {
+  width: 90px;
+}
+
+.recommendations-greeting-panel {
+  min-height: 112px;
+  padding: 14px 26px;
+}
+
+.assistant-greeting-state {
+  width: min(720px, 100%);
+  justify-content: center;
+  gap: 18px;
+}
+
+.assistant-greeting-state .beauty-assistant-character {
+  order: 1;
+  width: 92px;
+  transform: translateX(-12px);
+}
+
+.assistant-greeting-state .beauty-assistant-bubble {
+  order: 2;
+  max-width: 430px;
+  text-align: left;
+}
+
+.assistant-greeting-state .beauty-assistant-bubble::before {
+  left: -8px;
+  right: auto;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 1.5px solid #9840f0;
+  border-left: 1.5px solid #9840f0;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.recommendations-assistant-off-copy {
+  color: var(--text-gray);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.recommendations-loading-panel {
+  min-height: 154px;
+  overflow: hidden;
+}
+
+.assistant-search-stage {
+  position: relative;
+  width: min(540px, 100%);
+  min-height: 126px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assistant-searching {
+  position: relative;
+  z-index: 2;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assistant-searching .beauty-assistant-bubble {
+  order: 1;
+  max-width: 150px;
+  padding: 7px 11px;
+  text-align: center;
+}
+
+.assistant-searching .beauty-assistant-bubble::before {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: -8px;
+  border-top: 0;
+  border-right: 1.5px solid #9840f0;
+  border-bottom: 1.5px solid #9840f0;
+  border-left: 0;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.assistant-searching .beauty-assistant-character {
+  order: 2;
+  width: 118px;
+}
+
+.assistant-search-loader {
+  position: absolute;
+  left: 57%;
+  top: 61%;
+  z-index: 3;
+  gap: 5px;
+  transform: translate(-50%, -50%) scale(0.78);
+  pointer-events: none;
+}
+
+.recommendations-state-panel {
+  min-height: 142px;
+}
+
+.assistant-result-state {
+  flex-direction: column;
+  gap: 7px;
+}
+
+.assistant-result-state .beauty-assistant-bubble {
+  order: 1;
+  max-width: 330px;
+  text-align: center;
+}
+
+.assistant-result-state .beauty-assistant-bubble::before {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: -8px;
+  border-top: 0;
+  border-right: 1.5px solid #9840f0;
+  border-bottom: 1.5px solid #9840f0;
+  border-left: 0;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.assistant-result-state .beauty-assistant-character {
+  order: 2;
+  width: 90px;
+}
+
+.recommendation-row {
+  position: relative;
+}
+
+.assistant-results-success .beauty-assistant-character {
+  width: 78px;
+}
+
+.assistant-results-success .beauty-assistant-bubble {
+  max-width: 230px;
+  font-size: 12px;
+  position: relative;
+  top: -5px;
+  left: 0px;
+}
+
+.recommendations-filter-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.recommendations-filter-heading-row > strong {
+  margin: 0;
+}
+
+
+.assistant-filter-help .beauty-assistant-character {
+  width: 75px;
+}
+
+.booking-success-icon {
+  display: none;
+}
+
+.assistant-booking-success {
+  margin: -8px auto 8px;
+}
+
+.assistant-booking-success .beauty-assistant-character {
+  width: 94px;
+}
+
+.place-modal-profile-head,
+.place-modal-about-v4 {
+  position: relative;
+}
+
+.assistant-detail-view .beauty-assistant-character {
+  width: 74px;
+}
+
+.assistant-detail-salon {
+  position: absolute;
+  right: 4px;
+  bottom: 7px;
+}
+
+.place-modal-profile-head:has(.assistant-detail-salon) {
+  padding-right: 90px;
+}
+
+.assistant-detail-master {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.place-modal-about-v4:has(.assistant-detail-master) {
+  padding-right: 92px;
+}
+
+.assistant-toggle {
+  position: fixed;
+  right: 22px;
+  bottom: 20px;
+  z-index: 2600;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(113, 53, 232, 0.24);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 10px 28px rgba(45, 25, 80, 0.16),
+    0 0 0 5px rgba(152, 64, 240, 0.06);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.assistant-toggle:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 30px rgba(45, 25, 80, 0.20),
+    0 0 0 6px rgba(152, 64, 240, 0.08);
+}
+
+.assistant-toggle img {
+  width: 48px;
+  height: 48px;
+  display: block;
+  object-fit: contain;
+}
+
+.assistant-toggle.is-off img {
+  opacity: 0.48;
+  filter: grayscale(0.45);
+}
+
+.assistant-toggle-status {
+  position: absolute;
+  right: 3px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #38b36a;
+}
+
+.assistant-toggle.is-off .assistant-toggle-status {
+  background: #a8a2b0;
+}
+
+.about-section {
+  background: linear-gradient(
+    180deg,
+    #fcfaff 0%,
+    #f6f2ff 55%,
+    #faf8ff 100%
+  );
+  border-color: rgba(113, 53, 232, 0.12);
+  box-shadow: 0 8px 24px rgba(81, 53, 155, 0.05);
+}
+
+@media (max-width: 768px) {
+  .assistant-what-you-doing { left: 52%; }
+
+  .assistant-greeting-state { gap: 8px; }
+  .assistant-greeting-state .beauty-assistant-character { width: 72px; transform: none; }
+  .assistant-greeting-state .beauty-assistant-bubble { max-width: 230px; font-size: 11.5px; }
+  .assistant-detail-salon,
+  .assistant-detail-master { position: static; transform: none; margin-left: auto; }
+  .place-modal-profile-head:has(.assistant-detail-salon),
+  .place-modal-about-v4:has(.assistant-detail-master) { padding-right: 0; }
+  .assistant-toggle { right: 14px; bottom: 14px; width: 48px; height: 48px; }
+  .assistant-toggle img { width: 42px; height: 42px; }
+}
+
+
+.hero-content,
+.hero-copy,
+.hero-left {
+  position: relative;
+}
+
+
+/* ==========================================================
+   BEAUTY AI ASSISTANT — overlay-only behavior
+   Assistant never participates in normal document flow.
+   ========================================================== */
+
+/* Greeting */
+.recommendations-greeting-panel {
+  position: relative;
+  min-height: 112px;
+}
+
+.assistant-greeting-state {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+
+  width: min(720px, calc(100% - 32px));
+
+  transform: translate(-50%, -50%);
+}
+
+/* Typing observer */
+.hero-content,
+.hero-copy,
+.hero-left {
+  position: relative;
+}
+
+.assistant-what-you-doing {
+  position: absolute;
+  left: 36%;
+  bottom: 46px;
+  z-index: 20;
+
+  transform: translateX(100%);
+}
+
+/* Searching */
+.recommendations-loading-panel {
+  position: relative;
+  min-height: 154px;
+}
+
+.assistant-search-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+
+  width: min(540px, calc(100% - 24px));
+  min-height: 126px;
+
+  transform: translate(-50%, -50%);
+}
+
+/* Success over result content */
+.recommendation-row {
+  position: relative;
+}
+
+.assistant-results-success {
+  position: absolute;
+  top: -5px;
+  right: 60px;
+  z-index: 20;
+
+  margin: 0;
+}
+
+/* No result / error */
+.recommendations-state-panel {
+  position: relative;
+  min-height: 142px;
+}
+
+.assistant-result-state {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+
+  transform: translate(-50%, -54%);
+}
+
+/* AI settings help */
+.recommendations-filter-panel-heading {
+  position: relative;
+}
+
+.recommendations-filter-heading-row {
+  position: relative;
+
+  display: block;
+  width: 100%;
+}
+
+.recommendations-filter-heading-row > strong {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+.assistant-filter-help {
+  position: absolute;
+  left: calc(50% + 150px);
+  top: 50%;
+  z-index: 8;
+
+  transform: translateY(-40%);
+}
+
+/* Booking success */
+.booking-success {
+  position: relative;
+  padding-top: 86px;
+}
+
+.assistant-booking-success {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  z-index: 8;
+
+  margin: 0;
+
+  transform: translateX(-50%);
+}
+
+/* Salon / master detail */
+.place-modal-profile-head,
+.place-modal-about-v4 {
+  position: relative;
+}
+
+.assistant-detail-salon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  z-index: 8;
+
+  transform: translateY(-50%);
+}
+
+.assistant-detail-master {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  z-index: 8;
+
+  transform: translateY(-50%);
+}
+
+/* Toggle remains viewport-fixed */
+.assistant-toggle {
+  position: fixed;
+}
+
+/* The assistant itself must not reserve layout space */
+.beauty-assistant-inline {
+  margin: 0;
+}
+
+/* Prevent clipping of overlay mascots in the relevant zones */
+.recommendations-greeting-panel,
+.recommendations-loading-panel,
+.recommendations-state-panel,
+.recommendation-row,
+.recommendations-filter-panel-heading,
+.booking-success,
+.place-modal-profile-head,
+.place-modal-about-v4 {
+  overflow: visible;
+}
+
+@media (max-width: 768px) {
+  .assistant-what-you-doing {
+    left: 44%;
+    bottom: 90px;
+  }
+
+  .assistant-greeting-state {
+    width: calc(100% - 20px);
+  }
+
+  .assistant-detail-salon,
+  .assistant-detail-master {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+
+    margin: 0;
+
+    transform: translateY(-50%);
+  }
+}
+.ai-recommendations > .recommendation-row-salons,
+.ai-recommendations > .recommendation-row-masters {
+  overflow: visible;
+}
+.state-what-you-doing-2.assistant-results-success {
+  right: 135px;
+  top: -70px;
 }

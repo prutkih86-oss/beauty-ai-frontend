@@ -220,8 +220,21 @@ async function loadHistoricalWindow(): Promise<{
   };
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
-  const { anchorDate, rows: parsed } = await loadHistoricalWindow();
+let dashboardDataPromise: Promise<DashboardData> | null = null;
+
+export async function getDashboardData(
+  forceRefresh = false
+): Promise<DashboardData> {
+  if (forceRefresh) {
+    dashboardDataPromise = null;
+  }
+
+  if (dashboardDataPromise) {
+    return dashboardDataPromise;
+  }
+
+  dashboardDataPromise = (async () => {
+    const { anchorDate, rows: parsed } = await loadHistoricalWindow();
 
   const currentEnd = endOfDay(anchorDate);
   const currentStart = startOfDay(addDays(anchorDate, -29));
@@ -301,5 +314,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     activeNow: todayPairs
       .filter((item) => statusValue(item.booking.status) === "in_progress")
       .map((item) => item.booking),
-  };
+    };
+  })().catch((error) => {
+    dashboardDataPromise = null;
+    throw error;
+  });
+
+  return dashboardDataPromise;
 }

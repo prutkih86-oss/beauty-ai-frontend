@@ -13,13 +13,37 @@ import {
   fetchMasters,
   fetchSalons,
   fetchServices,
+  sendAiChatMessage,
   type MasterApi,
   type SalonApi,
   type ServiceApi,
 } from "./api/beautyApi";
-import BeautyAssistant, {
-  type AssistantState,
-} from "./BeautyAssistant";
+import BeautyAssistant from "./BeautyAssistant";
+
+const AI_CONVERSATION_STORAGE_KEY = "beautyai_ai_conversation_id";
+
+function readAiConversationId(): string | number | null {
+  try {
+    const stored = sessionStorage.getItem(AI_CONVERSATION_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed: unknown = JSON.parse(stored);
+    return typeof parsed === "string" || typeof parsed === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeAiConversationId(conversationId: string | number | null) {
+  try {
+    if (conversationId === null) {
+      sessionStorage.removeItem(AI_CONVERSATION_STORAGE_KEY);
+    } else {
+      sessionStorage.setItem(AI_CONVERSATION_STORAGE_KEY, JSON.stringify(conversationId));
+    }
+  } catch {
+    // The current conversation still works if browser storage is unavailable.
+  }
+}
 
 type CardReview = {
   author: string;
@@ -1261,7 +1285,7 @@ function BookingModal({
   const [service, setService] = useState(services[0] ?? "");
   const [date, setDate] = useState(dates[0]?.value ?? "");
   const [time, setTime] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState("+38");
   const [confirmed, setConfirmed] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Array<{ start: string; end: string }>>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -1331,7 +1355,7 @@ function BookingModal({
   }, [hasBackendBooking, date, selectedBackendService?.id, data.backendMasterId, data.backendSalonId, t.bookingModal.close]);
 
   const handleConfirmBooking = async () => {
-    if (!date || !time) return;
+    if (!date || !time || !isValidUaPhone(phone)) return;
 
     if (!hasBackendBooking || !data.backendMasterId || !selectedBackendService) {
       // Тимчасовий fallback для старих локальних/demo-карток.
@@ -1426,7 +1450,30 @@ function BookingModal({
 
               <label className="booking-field">
                 <span>{t.bookingModal.contact}</span>
-                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder={t.bookingModal.contactPlaceholder} inputMode="tel" />
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(formatUaPhone(event.target.value))}
+                  onFocus={(event) => {
+                    if (!event.currentTarget.value.startsWith("+38")) setPhone("+38");
+                  }}
+                  onBlur={() => {
+                    if (!phone.startsWith("+38")) setPhone("+38");
+                  }}
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+38 (053) 401 23 23"
+                  pattern="\+38 \(0[0-9]{2}\) [0-9]{3} [0-9]{2} [0-9]{2}"
+                  title={t.bookingModal.close === "Закрити" ? "Формат: +38 (0XX) XXX XX XX" : "Format: +38 (0XX) XXX XX XX"}
+                  required
+                />
+                {phone !== "+38" && !isValidUaPhone(phone) && (
+                  <small className="booking-phone-error">
+                    {t.bookingModal.close === "Закрити"
+                      ? "Введіть номер у форматі +38 (0XX) XXX XX XX"
+                      : "Enter the number as +38 (0XX) XXX XX XX"}
+                  </small>
+                )}
               </label>
 
               <div className="booking-summary">
@@ -1442,7 +1489,7 @@ function BookingModal({
               <button
                 type="button"
                 className="cta-btn booking-confirm-btn"
-                disabled={!date || !time || phone.trim().length < 7 || submitting || loadingSlots}
+                disabled={!date || !time || !isValidUaPhone(phone) || submitting || loadingSlots}
                 onClick={handleConfirmBooking}
               >
                 {submitting
@@ -1453,7 +1500,10 @@ function BookingModal({
           </>
         ) : (
           <div className="booking-success">
-            <div className="booking-success-icon">✓</div>
+            <BeautyAssistant
+              state="booking-success"
+              className="assistant-booking-success"
+            />
             <h2>{t.bookingModal.successTitle}</h2>
             <p>{t.bookingModal.successText}</p>
             <div className="booking-success-card">
@@ -1548,6 +1598,7 @@ function PlaceDetailsModal({
   const ua = t.placeModal.close === "Закрити";
   const reviews = getPlaceReviews(data, t);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -1597,14 +1648,31 @@ function PlaceDetailsModal({
           ×
         </button>
 
-        <div
-          className={`place-modal-hero ${isSolo ? "place-modal-hero-solo" : "place-modal-hero-salon"}`}
-          style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
-          aria-hidden="true"
-        />
+        {!isSolo && (
+          <div
+            className="place-modal-hero place-modal-hero-salon"
+            style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
+            aria-hidden="true"
+          />
+        )}
 
         <div className="place-modal-body">
+          <div className={isSolo ? "place-modal-solo-top" : undefined}>
+            {isSolo && (
+              <div
+                className="place-modal-hero place-modal-hero-solo"
+                style={{ ["--place-modal-photo" as string]: `url(${data.image})` }}
+                aria-hidden="true"
+              />
+            )}
           <section className="place-modal-profile-head">
+            {!isSolo && (
+              <BeautyAssistant
+                state="detail-view"
+                className="assistant-detail-view assistant-detail-salon"
+              />
+            )}
+
             <span className="place-modal-role-pill">{data.type}</span>
 
             <h2 id="place-modal-title">{data.title}</h2>
@@ -1666,8 +1734,16 @@ function PlaceDetailsModal({
               </span>
             </div>
           </section>
+          </div>
 
           <section className="place-modal-section place-modal-about-v4">
+            {isSolo && (
+              <BeautyAssistant
+                state="detail-view"
+                className="assistant-detail-view assistant-detail-master"
+              />
+            )}
+
             <h3>{t.placeModal.aboutTitle}</h3>
             <p className="place-modal-description">{aboutText}</p>
           </section>
@@ -1687,11 +1763,22 @@ function PlaceDetailsModal({
             <section className="place-modal-section">
               <h3>{t.placeModal.servicesTitle}</h3>
               <div className="place-modal-tags">
-                {data.tags.map((tag) => (
+                {data.tags.slice(0, servicesOpen ? data.tags.length : 8).map((tag) => (
                   <span className="tag" key={tag}>
                     {tag}
                   </span>
                 ))}
+                {data.tags.length > 8 && (
+                  <button
+                    type="button"
+                    className="place-modal-tags-toggle"
+                    onClick={() => setServicesOpen((prev) => !prev)}
+                  >
+                    {servicesOpen
+                      ? (ua ? "Згорнути" : "Show less")
+                      : (ua ? `Ще ${data.tags.length - 8}` : `${data.tags.length - 8} more`)}
+                  </button>
+                )}
               </div>
             </section>
           )}
@@ -1780,9 +1867,21 @@ function PlaceDetailsModal({
           </section>
 
           <button type="button" className="cta-btn place-modal-cta" onClick={onBook}>
-            {isSolo ? t.placeModal.book : t.bookingModal.salonWebsite}
+            {t.placeModal.book}
             <span className="place-modal-cta-arrow" aria-hidden="true">→</span>
           </button>
+
+          {!isSolo && (
+            <p className="place-modal-booking-note">
+              {ua
+                ? data.website
+                  ? "Запис відкриється у системі бронювання салону."
+                  : "Онлайн-запис для цього салону ще підключається."
+                : data.website
+                  ? "Booking will open in the salon’s booking system."
+                  : "Online booking for this salon is being connected."}
+            </p>
+          )}
         </div>
       </div>
     </div>,
@@ -1820,8 +1919,32 @@ function Card({
       setShowBooking(true);
       return;
     }
-    openSalonWebsite(data.title, data.website);
+
+    // Для салону спочатку показуємо нашу внутрішню модалку.
+    setShowProfile(true);
   };
+
+  const handleProfileBook = () => {
+    if (isSolo) {
+      handleBook();
+      return;
+    }
+
+    // Салони бронюються у їхній зовнішній системі (Altegio / власний booking page).
+    if (data.website) {
+      window.open(data.website, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // Якщо booking URL ще не доданий — не кидаємо користувача в заглушку.
+    window.alert(
+      uaForCard
+        ? "Онлайн-запис для цього салону скоро буде доступний."
+        : "Online booking for this salon will be available soon."
+    );
+  };
+
+  const uaForCard = t.placeModal.close === "Закрити";
 
   return (
     <div className={`card ${isSolo ? "card-solo" : ""}`}>
@@ -1907,7 +2030,7 @@ function Card({
 
         <div className="card-cta-row">
           <button type="button" className="cta-btn" onClick={handleBook}>
-            {isSolo ? t.cta : t.bookingModal.salonWebsite}
+            {t.cta}
           </button>
           <button
             type="button"
@@ -1944,7 +2067,7 @@ function Card({
           data={data}
           t={t}
           onClose={() => setShowProfile(false)}
-          onBook={handleBook}
+          onBook={handleProfileBook}
           onLocationClick={onLocationClick}
         />
       )}
@@ -1990,6 +2113,26 @@ function getMasterFallbackImage(masterId: number, firstName?: string): string {
   return `https://cdn.jsdelivr.net/gh/faker-js/assets-person-portrait/${sex}/512/${index}.jpg`;
 }
 
+function getSalonCityName(salon: SalonApi): string {
+  const flatCity =
+    typeof salon.city === "string"
+      ? salon.city
+      : salon.city?.name;
+
+  const raw =
+    salon.location?.city_name ||
+    salon.city_name ||
+    flatCity ||
+    (salon.city_id === 1 ? "Київ" : salon.city_id === 2 ? "Львів" : "");
+
+  const normalized = String(raw || "").trim().toLowerCase();
+
+  if (["kyiv", "kiev", "київ", "киев"].includes(normalized)) return "Київ";
+  if (["lviv", "львів", "львов"].includes(normalized)) return "Львів";
+
+  return String(raw || "").trim();
+}
+
 function salonToCard(
   salon: SalonApi,
   tags: string[] = [],
@@ -2017,8 +2160,8 @@ function salonToCard(
     type: "Салон краси",
     rating: salon.average_rating ?? 0,
     reviews: salon.total_reviews ?? 0,
-    district: salon.location?.city_name || "",
-    city: salon.location?.city_name || undefined,
+    district: salon.district || getSalonCityName(salon) || "",
+    city: getSalonCityName(salon) || undefined,
     distance: "",
     openNow: salon.available_status === "available",
     tags,
@@ -2032,8 +2175,33 @@ function salonToCard(
         ? `${avgPrice} грн`
         : undefined,
     description: salon.description ?? undefined,
+    website: salon.external_booking_url || undefined,
+    backendSalonId: salon.id,
   };
 }
+
+const LOCAL_MASTER_IMAGES: Record<string, string> = {
+  "Кароліна Савчук": "/masters/female/karolina-savchuk.webp",
+  "Ярина Шевченко": "/masters/female/Shevchenko_Yaryna.webp",
+  "Соломія Гринчук": "/masters/female/Hrynchuk_Solomiia.webp",
+  "Дарина Самойленко": "/masters/female/Samoilenko_Daryna.webp",
+  "Данило Гнатенко": "/masters/male/Hnatenko_Danylo.webp",
+  "Максим Гречаник": "/masters/male/Hrechanyk_Maksym.webp",
+  "Микита Заєць": "/masters/male/Zaiets_Mykita.webp",
+  "Венедикт Дашенко": "/masters/male/Dashenko_Venedikt.webp",
+  "Трохим Іщак": "/masters/male/Ishchak_Trokhym.webp",
+
+  // На випадок, якщо бекенд поверне прізвище та імʼя у зворотному порядку.
+  "Савчук Кароліна": "/masters/female/karolina-savchuk.webp",
+  "Шевченко Ярина": "/masters/female/Shevchenko_Yaryna.webp",
+  "Гринчук Соломія": "/masters/female/Hrynchuk_Solomiia.webp",
+  "Самойленко Дарина": "/masters/female/Samoilenko_Daryna.webp",
+  "Гнатенко Данило": "/masters/male/Hnatenko_Danylo.webp",
+  "Гречаник Максим": "/masters/male/Hrechanyk_Maksym .webp",
+  "Заєць Микита": "/masters/male/Zaiets_Mykita.webp",
+  "Дашенко Венедикт": "/masters/male/Dashenko_Venedikt.webp",
+  "Іщак Трохим": "/masters/male/Ishchak_Trokhym.webp",
+};
 
 function masterToCard(
   master: MasterApi,
@@ -2061,7 +2229,10 @@ function masterToCard(
     : null;
 
   return {
-    image: master.photo || getMasterFallbackImage(master.id, master.first_name),
+    image:
+      master.photo ||
+      LOCAL_MASTER_IMAGES[name] ||
+      getMasterFallbackImage(master.id, master.first_name),
     badges: [],
     title: name || `Майстер #${master.id}`,
     type: serviceNames.length
@@ -3197,7 +3368,7 @@ function KyivTopSection({
                         return;
                       }
 
-                      openSalonWebsite(card.title, card.website);
+                      setActiveCard(card);
                     }}
                   >
                     {ua ? "Записатися" : "Book now"}
@@ -3239,7 +3410,15 @@ function KyivTopSection({
               setBookingCard(activeCard);
               setActiveCard(null);
             } else {
-              openSalonWebsite(activeCard.title, activeCard.website);
+              if (activeCard.website) {
+                window.open(activeCard.website, "_blank", "noopener,noreferrer");
+              } else {
+                window.alert(
+                  ua
+                    ? "Онлайн-запис для цього салону скоро буде доступний."
+                    : "Online booking for this salon will be available soon."
+                );
+              }
             }
           }}
         />
@@ -3337,14 +3516,41 @@ export default function App() {
   const [locationPending, setLocationPending] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [assistantState, setAssistantState] =
-    useState<AssistantState>("idle");
-  const [assistantMessage, setAssistantMessage] = useState("");
-  const [assistantVisible, setAssistantVisible] = useState(true);
+  const [assistantEnabled, setAssistantEnabled] = useState(() => {
+    try {
+      return localStorage.getItem("beautyai_assistant_enabled") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [greetingDismissed, setGreetingDismissed] = useState(() => {
+    try {
+      const alreadyShown =
+        sessionStorage.getItem("beautyai_greeting_shown") === "true";
+
+      if (!alreadyShown) {
+        sessionStorage.setItem("beautyai_greeting_shown", "true");
+      }
+
+      return alreadyShown;
+    } catch {
+      return false;
+    }
+  });
+  const [assistantResultTarget, setAssistantResultTarget] = useState<"salons" | "masters">("salons");
+  const mastersSectionRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [appliedSearch, setAppliedSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const searchTimeoutRef = useRef<number | null>(null);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+  const [marketplaceError, setMarketplaceError] = useState(false);
+  const [pendingSearchQuery, setPendingSearchQuery] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | number | null>(() => readAiConversationId());
+  const [aiReplyText, setAiReplyText] = useState("");
+  const searchStartedAtRef = useRef(0);
+  const aiRequestIdRef = useRef(0);
+  const searchFinishTimeoutRef = useRef<number | null>(null);
   const [selectedMapLocation, setSelectedMapLocation] = useState<SelectedMapLocation | null>(null);
   const [masterRegistryVersion, setMasterRegistryVersion] = useState(0);
   const [clientAuthGate, setClientAuthGate] = useState<{ data: CardData; action: "booking" | "favorite" } | null>(null);
@@ -3415,40 +3621,65 @@ export default function App() {
       )
     : citySalonCards;
   const hasSearch = appliedSearch.trim().length > 0;
+
   const runSearch = () => {
     const query = searchQuery.trim();
-    if (!query) return;
 
-    if (searchTimeoutRef.current !== null) {
-      window.clearTimeout(searchTimeoutRef.current);
+    if (!query) {
+      return;
     }
 
-    setAssistantVisible(true);
-    setAssistantState("thinking");
-    setAssistantMessage("Шукаю найкращі варіанти ✨");
+    setGreetingDismissed(true);
+    setSearchFocused(false);
 
+    if (searchFinishTimeoutRef.current !== null) {
+      window.clearTimeout(searchFinishTimeoutRef.current);
+      searchFinishTimeoutRef.current = null;
+    }
+
+    searchStartedAtRef.current = performance.now();
     setIsSearching(true);
-    searchTimeoutRef.current = window.setTimeout(() => {
-      setAppliedSearch(query);
-      setIsSearching(false);
+    setPendingSearchQuery(query);
+    setAiReplyText("");
 
-      setAssistantState("found");
-      setAssistantMessage("Знайшов варіанти за твоїм запитом 👀");
+    // Локальна фільтрація карток (нижче, filteredSalons/filteredMasters) лишається
+    // головним джерелом результатів — цей виклик лише дає AI-репліку для бульбашки
+    // помічника. Якщо AI-сервіс недоступний, помічник просто покаже локальний
+    // підрахунок (assistantResultMessage) замість цього тексту — без AI пошук усе одно працює.
+    const requestId = ++aiRequestIdRef.current;
 
-      searchTimeoutRef.current = null;
-    }, 900);
+    void sendAiChatMessage(query, conversationId)
+      .then(({ text, conversationId: nextConversationId }) => {
+        if (requestId !== aiRequestIdRef.current) return;
+
+        setAiReplyText(text);
+        setConversationId(nextConversationId);
+        writeAiConversationId(nextConversationId);
+      })
+      .catch((error) => {
+        if (requestId !== aiRequestIdRef.current) return;
+
+        console.error("AI chat is unavailable", error);
+      });
   };
 
   const resetSearch = () => {
-    if (searchTimeoutRef.current !== null) {
-      window.clearTimeout(searchTimeoutRef.current);
-      searchTimeoutRef.current = null;
+    aiRequestIdRef.current += 1;
+
+    if (searchFinishTimeoutRef.current !== null) {
+      window.clearTimeout(searchFinishTimeoutRef.current);
+      searchFinishTimeoutRef.current = null;
     }
 
     setSearchQuery("");
     setAppliedSearch("");
+    setPendingSearchQuery(null);
     setIsSearching(false);
+    setSearchFocused(false);
+    setGreetingDismissed(true);
     setActiveCategory(null);
+    setRecommendationFiltersOpen(false);
+    setAiReplyText("");
   };
   const liveMasterRecommendations = buildStoredMasterCards(masterCards);
   const cityMasterCards = liveMasterRecommendations.filter((card) =>
@@ -3475,14 +3706,160 @@ export default function App() {
         })
     : cityMasterCards;
 
+  const searchDraftChanged =
+    searchQuery.trim() !== appliedSearch.trim();
+  
+  const hasNoResults =
+    hasSearch &&
+    !isSearching &&
+    filteredSalons.length === 0 &&
+    filteredMasters.length === 0;
+
+  const assistantUiState =
+    isSearching
+      ? "search"
+      : marketplaceError && hasSearch && !searchDraftChanged
+        ? "error"
+        : hasSearch && hasNoResults && !searchDraftChanged
+          ? "no-result"
+          : recommendationFiltersOpen && hasSearch && !searchDraftChanged
+            ? "help"
+            : hasSearch && !searchDraftChanged
+              ? "success"
+              : searchFocused || activeCategory !== null
+                ? "what-you-doing"
+                : !greetingDismissed
+                  ? "greeting"
+                  : "waiting";
+
+  const showWhatYouDoing =
+    assistantEnabled &&
+    assistantUiState === "what-you-doing";
+
+  useEffect(() => {
+    if (assistantUiState !== "success") {
+      setAssistantResultTarget("salons");
+    }
+  }, [assistantUiState, appliedSearch]);
+
+  useEffect(() => {
+    if (
+      assistantUiState !== "success" ||
+      filteredSalons.length === 0 ||
+      filteredMasters.length === 0
+    ) {
+      return;
+    }
+
+    const mastersSection = mastersSectionRef.current;
+    if (!mastersSection) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setAssistantResultTarget("masters");
+        } else if (entry.boundingClientRect.top > 0) {
+          setAssistantResultTarget("salons");
+        }
+      },
+      {
+        threshold: 0.2,
+      }
+    );
+
+    observer.observe(mastersSection);
+
+    return () => observer.disconnect();
+  }, [
+    assistantUiState,
+    filteredSalons.length,
+    filteredMasters.length,
+  ]);
+
+  const getUaCountWord = (
+    value: number,
+    one: string,
+    few: string,
+    many: string
+  ) => {
+    const lastTwo = value % 100;
+    const last = value % 10;
+
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      return many;
+    }
+
+    if (last === 1) {
+      return one;
+    }
+
+    if (last >= 2 && last <= 4) {
+      return few;
+    }
+
+    return many;
+  };
+
+  const assistantResultMessage =
+    lang === "ua"
+      ? [
+          filteredSalons.length > 0
+            ? `${filteredSalons.length} ${getUaCountWord(
+                filteredSalons.length,
+                "салон",
+                "салони",
+                "салонів"
+              )}`
+            : "",
+          filteredMasters.length > 0
+            ? `${filteredMasters.length} ${getUaCountWord(
+                filteredMasters.length,
+                "майстер",
+                "майстри",
+                "майстрів"
+              )}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" і ")
+          .replace(/^/, "Я знайшов ")
+          .concat(" за твоїм запитом")
+      : `I found ${[
+          filteredSalons.length > 0
+            ? `${filteredSalons.length} salon${filteredSalons.length === 1 ? "" : "s"}`
+            : "",
+          filteredMasters.length > 0
+            ? `${filteredMasters.length} master${filteredMasters.length === 1 ? "" : "s"}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" and ")} for your request`;
+
+  // Показуємо реальну відповідь AI, якщо вона встигла прийти й запит не змінився
+  // відтоді; інакше — той самий локальний підрахунок карток, що й раніше.
+  const finalAssistantMessage = aiReplyText || assistantResultMessage;
+
   void masterRegistryVersion;
 
   useEffect(() => {
     let cancelled = false;
+    let salonsFailed = false;
+    let mastersFailed = false;
+
+    setMarketplaceLoading(true);
+    setMarketplaceError(false);
 
     Promise.all([
-      fetchSalons(selectedCity || undefined),
-      fetchMasters(),
+      fetchSalons().catch((error) => {
+        salonsFailed = true;
+        console.error("Salons are unavailable", error);
+        return [] as SalonApi[];
+      }),
+      fetchMasters().catch((error) => {
+        mastersFailed = true;
+        console.error("Masters are unavailable", error);
+        return [] as MasterApi[];
+      }),
       fetchServices().catch((error) => {
         console.warn("Service prices are unavailable", error);
         return [] as ServiceApi[];
@@ -3491,11 +3868,22 @@ export default function App() {
       .then(([salons, masters, services]) => {
         if (cancelled) return;
 
+        setMarketplaceError(salonsFailed && mastersFailed);
+
+        if (import.meta.env.DEV) {
+          console.info("[Beauty AI marketplace]", {
+            salons: salons.length,
+            masters: masters.length,
+            services: services.length,
+            selectedCity,
+          });
+        }
+
         const salonTagsById = new Map<number, Set<string>>();
         const salonCityById = new Map<number, string>(
           salons
-            .filter((salon) => Boolean(salon.location?.city_name))
-            .map((salon) => [salon.id, salon.location?.city_name || ""])
+            .map((salon) => [salon.id, getSalonCityName(salon)] as const)
+            .filter(([, city]) => Boolean(city))
         );
         const masterPricesById = new Map<number, number[]>();
         const masterServicesById = new Map<number, Set<string>>();
@@ -3635,12 +4023,61 @@ export default function App() {
       })
       .catch((error) => {
         console.error("Failed to load marketplace cards from API", error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMarketplaceLoading(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
   }, [selectedCity]);
+
+  useEffect(() => {
+    if (marketplaceLoading || !pendingSearchQuery) {
+      return;
+    }
+
+    const minimumAnimationMs = 2200;
+    const elapsed = performance.now() - searchStartedAtRef.current;
+    const remaining = Math.max(0, minimumAnimationMs - elapsed);
+
+    searchFinishTimeoutRef.current = window.setTimeout(() => {
+      setAppliedSearch(pendingSearchQuery);
+      setPendingSearchQuery(null);
+      setIsSearching(false);
+      searchFinishTimeoutRef.current = null;
+    }, remaining);
+
+    return () => {
+      if (searchFinishTimeoutRef.current !== null) {
+        window.clearTimeout(searchFinishTimeoutRef.current);
+        searchFinishTimeoutRef.current = null;
+      }
+    };
+  }, [marketplaceLoading, pendingSearchQuery]);
+
+  useEffect(() => {
+    document.body.classList.toggle(
+      "beautyai-assistant-disabled",
+      !assistantEnabled
+    );
+
+    try {
+      localStorage.setItem(
+        "beautyai_assistant_enabled",
+        assistantEnabled ? "true" : "false"
+      );
+    } catch {
+      // The assistant preference is non-critical if storage is unavailable.
+    }
+
+    return () => {
+      document.body.classList.remove("beautyai-assistant-disabled");
+    };
+  }, [assistantEnabled]);
 
   useEffect(() => {
     const refreshMasters = () => setMasterRegistryVersion((value) => value + 1);
@@ -3791,6 +4228,12 @@ export default function App() {
     window.dispatchEvent(new CustomEvent("beautyai:auth-changed"));
   };
 
+  useEffect(() => {
+    const onAuthExpired = () => handleLogout();
+    window.addEventListener("beautyai:auth-expired", onAuthExpired);
+    return () => window.removeEventListener("beautyai:auth-expired", onAuthExpired);
+  }, []);
+
   if (view === "dashboard" && user) {
     return (
       <div className="app">
@@ -3924,12 +4367,27 @@ export default function App() {
               {t.heroSubtitle}
             </p>
 
-            <div className="search-bar">
-              <input
-                type="text"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+            {showWhatYouDoing && (
+              <BeautyAssistant
+                state="what-you-doing"
+                className="assistant-what-you-doing"
+                ariaLabel={
+                  lang === "ua"
+                    ? "Beauty AI стежить за пошуком"
+                    : "Beauty AI watches the search"
+                }
+              />
+            )}
+          <div className="search-bar">
+            <input
+              type="text"
+              placeholder={t.searchPlaceholder}
+              value={searchQuery}
+              onFocus={() => {
+                setGreetingDismissed(true);
+                setSearchFocused(true);
+              }}
+              onChange={(event) => setSearchQuery(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") runSearch();
                 }}
@@ -3964,6 +4422,8 @@ export default function App() {
               lang={lang}
               activeCategory={activeCategory}
               onCategoryChange={(id, label) => {
+                setGreetingDismissed(true);
+                setSearchFocused(false);
                 setActiveCategory(id);
                 setSearchQuery(label);
               }}
@@ -3979,84 +4439,104 @@ export default function App() {
           role="status"
           aria-live="polite"
         >
-          <div className="ai-sparkle-loader" aria-hidden="true">
-            <span className="ai-sparkle" />
-            <span className="ai-sparkle" />
-            <span className="ai-sparkle" />
-            <span className="ai-sparkle" />
-          </div>
-          <div className="recommendations-idle-copy">
-            <strong>
-              {lang === "ua"
-                ? "AI підбирає найкращі варіанти…"
-                : "AI is finding the best matches…"}
-            </strong>
-            
-          </div>
+          {assistantEnabled ? (
+            <div className="assistant-search-stage">
+              <BeautyAssistant
+                state="search"
+                message={lang === "ua" ? "Я шукаю…" : "I'm searching…"}
+                className="assistant-searching"
+              />
+
+              <div
+                className="ai-sparkle-loader assistant-search-loader"
+                aria-hidden="true"
+              >
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+              </div>
+            </div>
+          ) : (
+            <div className="ai-sparkle-loader" aria-hidden="true">
+              <span className="ai-sparkle" />
+              <span className="ai-sparkle" />
+              <span className="ai-sparkle" />
+              <span className="ai-sparkle" />
+            </div>
+          )}
         </div>
       ) : !hasSearch ? (
-        <div className="recommendations-idle-panel">
-          <div className="recommendations-idle-icon" aria-hidden="true">
-            <img
-              src={beautyAISparkles}
-              alt=""
-              className="recommendations-idle-sparkles"
+        <div className="recommendations-idle-panel recommendations-greeting-panel">
+          {assistantEnabled && assistantUiState === "greeting" ? (
+            <BeautyAssistant
+              state="greeting"
+              message={
+                lang === "ua"
+                  ? "Привіт! Я Beauty AI. Скористайся пошуком, щоб я підібрав для тебе найкращі варіанти."
+                  : "Hi! I'm Beauty AI. Use search and I'll find the best options for you."
+              }
+              className="assistant-greeting-state"
             />
-          </div>
-          <div className="recommendations-idle-copy">
-            <strong>
-              {lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request"}
-            </strong>
-            <span>
-              {lang === "ua"
-              ? "Тут з’являться результати пошуку"
-              : "Search results will appear here"}
-            </span>
-          </div>
+          ) : assistantEnabled && assistantUiState === "waiting" ? (
+            <BeautyAssistant
+              state="waiting"
+              message={
+                lang === "ua"
+                  ? "Очікуємо ваш запит"
+                  : "Waiting for your request"
+              }
+              className="assistant-greeting-state"
+            />
+          ) : (
+            <div className="recommendations-idle-copy">
+              <strong>
+                {lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request"}
+              </strong>
+            </div>
+          )}
         </div>
       ) : (
         <>
-          {filteredSalons.length === 0 && filteredMasters.length === 0 ? (
-            <div
-              className="recommendations-idle-panel"
-              style={{
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                gap: 4,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                <div className="recommendations-idle-icon" aria-hidden="true">
-                  <img
-                    src={beautyAISparkles}
-                    alt=""
-                    className="recommendations-idle-sparkles"
-                  />
+          {assistantUiState === "error" || assistantUiState === "no-result" ? (
+            <div className="recommendations-idle-panel recommendations-state-panel">
+              {assistantEnabled ? (
+                <BeautyAssistant
+                  state={assistantUiState === "error" ? "error" : "no-result"}
+                  message={
+                    marketplaceError
+                      ? (lang === "ua"
+                          ? "Упс! Сталася помилка. Спробуй ще раз."
+                          : "Oops! Something went wrong. Try again.")
+                      : (lang === "ua"
+                          ? "Я нічого не знайшов. Давай спробуємо інший запит."
+                          : "I couldn't find anything. Let's try another search.")
+                  }
+                  className="assistant-result-state"
+                />
+              ) : (
+                <div className="recommendations-assistant-off-copy">
+                  {marketplaceError
+                    ? (lang === "ua" ? "Сталася помилка. Спробуйте ще раз." : "Something went wrong. Try again.")
+                    : (lang === "ua" ? "Нічого не знайдено. Спробуйте інший запит." : "Nothing found. Try another search.")}
                 </div>
-                <strong>
-                  {lang === "ua" ? "Нічого не знайдено" : "Nothing found"}
-                </strong>
-              </div>
-
-              <span>
-                {lang === "ua"
-                  ? "Спробуйте іншу послугу"
-                  : "Try another service"}
-              </span>
+              )}
             </div>
           ) : (
             <>
               {filteredSalons.length > 0 && (
                 <div className="recommendation-row recommendation-row-salons">
+                  {assistantEnabled &&
+                    assistantUiState === "success" &&
+                    assistantResultTarget === "salons" &&
+                    !recommendationFiltersOpen && (
+                    <BeautyAssistant
+                      state="success"
+                      message={finalAssistantMessage}
+                      className="assistant-results-success"
+                    />
+                  )}
+
                   <div
                     className={`recommendation-intro ${
                       recommendationFiltersOpen ? "filters-open" : ""
@@ -4111,20 +4591,30 @@ export default function App() {
                     {recommendationFiltersOpen && (
                       <div className="recommendations-filter-panel recommendations-filter-panel-inline">
                         <div className="recommendations-filter-panel-heading">
-                          <strong>
-                            {lang === "ua" ? (
-                              <>
-                                НАЛАШТУВАННЯ{" "}
-                                <span className="recommendations-filter-ai">AI</span>
-                                {" "}ПІДБОРУ
-                              </>
-                            ) : (
-                              <>
-                                <span className="recommendations-filter-ai">AI</span>
-                                {" "}MATCH SETTINGS
-                              </>
-                            )}
-                          </strong>
+                          <div className="recommendations-filter-heading-row">
+                            <strong>
+                              {lang === "ua" ? (
+                                <>
+                                  НАЛАШТУВАННЯ{" "}
+                                  <span className="recommendations-filter-ai">AI</span>
+                                  {" "}ПІДБОРУ
+                                </>
+                              ) : (
+                                <>
+                                  <span className="recommendations-filter-ai">AI</span>
+                                  {" "}MATCH SETTINGS
+                                </>
+                              )}
+                            </strong>
+
+                            {assistantEnabled &&
+                              assistantUiState === "help" && (
+                                <BeautyAssistant
+                                  state="help"
+                                  className="assistant-filter-help"
+                                />
+                              )}
+                          </div>
 
                           <span>
                             {lang === "ua"
@@ -4152,7 +4642,33 @@ export default function App() {
               )}
 
               {filteredMasters.length > 0 && (
-                <div className="recommendation-row recommendation-row-masters" id="masters">
+                <div
+                  ref={mastersSectionRef}
+                  className="recommendation-row recommendation-row-masters"
+                  id="masters"
+                >
+                  {assistantEnabled &&
+                    assistantUiState === "success" &&
+                    filteredSalons.length === 0 &&
+                    !recommendationFiltersOpen && (
+                      <BeautyAssistant
+                        state="success"
+                        message={finalAssistantMessage}
+                        className="assistant-results-success"
+                      />
+                    )}
+
+                  {assistantEnabled &&
+                    assistantUiState === "success" &&
+                    filteredSalons.length > 0 &&
+                    assistantResultTarget === "masters" &&
+                    !recommendationFiltersOpen && (
+                      <BeautyAssistant
+                        state="what-you-doing-2"
+                        className="assistant-results-success"
+                      />
+                    )}
+
                   <div className="recommendation-intro">
                     <div className="recommendation-intro-head">
                       <div className="recommendation-title-anchor">
@@ -4187,66 +4703,75 @@ export default function App() {
         </>
       )}
     </section>
-      <div
-        className={`section-divider ${hasSearch && !isSearching ? "section-divider-results" : "section-divider-idle"}`}
-        aria-hidden="true"
-      >
-        <span>✦✦✦</span>
-      </div>
-      <KyivTopSection
-        cards={nearby}
-        lang={lang}
-        city={selectedCity || "Київ"}
-        onLocationClick={handleLocationClick}
-      />
-
-      <PartnerOffersSection
-        title={t.sections.partners.title}
-        subtitle={t.sections.partners.subtitle}
-        offers={partners}
-        lang={lang}
-        onLocationClick={handleLocationClick}
-      />
-
-      <PanelCarouselSection
-        title={t.sections.topRated.title}
-        subtitle={t.sections.topRated.subtitle}
-        icon={
-          <svg
-            className="section-icon section-icon-worth"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            stroke="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      {hasSearch && !isSearching && assistantUiState === "success" && (
+        <>
+          <div
+            className="section-divider section-divider-results"
             aria-hidden="true"
           >
-            <path d="M12 22c4.4 0 8-3.3 8-7.8 0-3.2-1.8-5.9-4.7-8.2.2 2.4-.8 4.3-2.7 5.5.3-3.7-1.7-7-5.5-9.5.1 3.7-1.7 6.4-3.4 8.5C2.6 11.9 2 13.6 2 15.3 2 19 6.1 22 12 22Z" />
-          </svg>
-        }
-        cards={topRated}
-        t={t}
-        lang={lang}
-        variant="worth-trying"
-        resultsWord={lang === "ua" ? "варіантів знайдено" : "options found"}
-        id="worth-trying"
-        onLocationClick={handleLocationClick}
-      />
+            <span>✦✦✦</span>
+          </div>
 
-      <PanelCarouselSection
-        title={t.sections.fresh.title}
-        subtitle={t.sections.fresh.subtitle}
-        icon={<span className="section-symbol-mark section-symbol-mark-new">NEW</span>}
-        cards={fresh}
-        t={t}
-        lang={lang}
-        variant="fresh"
-        resultsWord={lang === "ua" ? "новинок знайдено" : "new listings"}
-        id="fresh"
-        onLocationClick={handleLocationClick}
-      />
+          <KyivTopSection
+            cards={nearby}
+            lang={lang}
+            city={selectedCity || "Київ"}
+            onLocationClick={handleLocationClick}
+          />
+
+          <PartnerOffersSection
+            title={t.sections.partners.title}
+            subtitle={t.sections.partners.subtitle}
+            offers={partners}
+            lang={lang}
+            onLocationClick={handleLocationClick}
+          />
+
+          <PanelCarouselSection
+            title={t.sections.topRated.title}
+            subtitle={t.sections.topRated.subtitle}
+            icon={
+              <svg
+                className="section-icon section-icon-worth"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 22c4.4 0 8-3.3 8-7.8 0-3.2-1.8-5.9-4.7-8.2.2 2.4-.8 4.3-2.7 5.5.3-3.7-1.7-7-5.5-9.5.1 3.7-1.7 6.4-3.4 8.5C2.6 11.9 2 13.6 2 15.3 2 19 6.1 22 12 22Z" />
+              </svg>
+            }
+            cards={topRated}
+            t={t}
+            lang={lang}
+            variant="worth-trying"
+            resultsWord={lang === "ua" ? "варіантів знайдено" : "options found"}
+            id="worth-trying"
+            onLocationClick={handleLocationClick}
+          />
+
+          <PanelCarouselSection
+            title={t.sections.fresh.title}
+            subtitle={t.sections.fresh.subtitle}
+            icon={
+              <span className="section-symbol-mark section-symbol-mark-new">
+                NEW
+              </span>
+            }
+            cards={fresh}
+            t={t}
+            lang={lang}
+            variant="fresh"
+            resultsWord={lang === "ua" ? "новинок знайдено" : "new listings"}
+            id="fresh"
+            onLocationClick={handleLocationClick}
+          />
+        </>
+      )}
       
       <section className="about-section" id="about">
         <div className="about-main">
@@ -4493,11 +5018,29 @@ export default function App() {
           </div>
         </div>
       )}
-      <BeautyAssistant
-        state={assistantState}
-        message={assistantMessage}
-        visible={assistantVisible}
-      />
+      <button
+        type="button"
+        className={`assistant-toggle ${assistantEnabled ? "is-on" : "is-off"}`}
+        onClick={() => setAssistantEnabled((enabled) => !enabled)}
+        aria-pressed={assistantEnabled}
+        aria-label={
+          assistantEnabled
+            ? (lang === "ua" ? "Вимкнути Beauty AI помічника" : "Turn off Beauty AI assistant")
+            : (lang === "ua" ? "Увімкнути Beauty AI помічника" : "Turn on Beauty AI assistant")
+        }
+        title={
+          assistantEnabled
+            ? (lang === "ua" ? "Вимкнути помічника" : "Turn assistant off")
+            : (lang === "ua" ? "Увімкнути помічника" : "Turn assistant on")
+        }
+      >
+        <img
+          src="/assistant/assistant-idle.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <span className="assistant-toggle-status" aria-hidden="true" />
+      </button>
     </div>
   );
 }

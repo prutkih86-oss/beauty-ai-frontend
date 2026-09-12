@@ -11,10 +11,13 @@ import {
   fetchMasterReviews,
   fetchMasterProfile,
   updateMasterProfile,
+  updateMasterProfilePhoto,
+  fetchMasterServices,
   type MasterAppointmentApi,
   type WorkingScheduleDayApi,
   type DayOffApi,
   type MasterReviewApi,
+  type ServiceApi,
 } from "../../api/beautyApi";
 import DashboardFrame, { type MasterSection, type MasterHeaderNotification } from "../DashboardFrame";
 import type { AuthRole, Lang, MockUser } from "../types";
@@ -34,25 +37,8 @@ type ClientBooking = {
   status: BookingStatus;
   code: string;
   createdAt: string;
-  reviewSubmitted?: boolean;
-  reviewMasterRating?: number;
-  reviewSalonRating?: number;
-  reviewComment?: string;
-  reviewSubmittedAt?: string;
-  pointsAwarded?: boolean;
 };
 
-type ClientNotification = { id: string; title: string; text: string; createdAt: string; read: boolean };
-type ClientState = {
-  favorites: unknown[];
-  bookings: ClientBooking[];
-  notifications: ClientNotification[];
-  points: number;
-  registrationBonusAwarded: boolean;
-  profileAvatar?: string;
-};
-
-type MasterService = { id: string; name: string; price: number; duration: number; active: boolean };
 type MasterProfile = {
   displayName: string;
   specialization: string;
@@ -67,33 +53,13 @@ type MasterNotification = MasterHeaderNotification;
 type MasterPayout = { id: string; amount: number; createdAt: string; status: "requested" };
 type MasterState = {
   profile: MasterProfile;
-  services: MasterService[];
   portfolioImages: string[];
   notifications: MasterNotification[];
   payouts: MasterPayout[];
 };
 
-type ServiceDraft = { id?: string; name: string; price: string; duration: string; active: boolean };
-
-const CLIENT_STATE_KEY = "beautyai_client_state";
 const MASTER_STATE_PREFIX = "beautyai_master_state:";
 const MASTER_REGISTRY_EVENT = "beautyai:master-state";
-
-const clientEmpty = (): ClientState => ({ favorites: [], bookings: [], notifications: [], points: 0, registrationBonusAwarded: false });
-
-function readClientState(): ClientState {
-  try {
-    const raw = localStorage.getItem(CLIENT_STATE_KEY);
-    return raw ? { ...clientEmpty(), ...JSON.parse(raw) } : clientEmpty();
-  } catch {
-    return clientEmpty();
-  }
-}
-
-function writeClientState(next: ClientState) {
-  localStorage.setItem(CLIENT_STATE_KEY, JSON.stringify(next));
-  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: next }));
-}
 
 function stateKey(email: string) {
   return `${MASTER_STATE_PREFIX}${email.trim().toLowerCase()}`;
@@ -111,7 +77,6 @@ function emptyMasterState(user: MockUser): MasterState {
       email: user.email,
       avatar: user.avatar,
     },
-    services: [],
     portfolioImages: [],
     notifications: [],
     payouts: [],
@@ -128,7 +93,6 @@ function readMasterState(user: MockUser): MasterState {
       ...base,
       ...parsed,
       profile: { ...base.profile, ...(parsed.profile ?? {}) },
-      services: Array.isArray(parsed.services) ? parsed.services : [],
       portfolioImages: Array.isArray(parsed.portfolioImages) ? parsed.portfolioImages : [],
       notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
       payouts: Array.isArray(parsed.payouts) ? parsed.payouts : [],
@@ -252,7 +216,6 @@ export default function MasterDashboard({
   const todayValue = toInputDate(today);
   const [section, setSection] = useState<MasterSection>("home");
   const [masterState, setMasterState] = useState<MasterState>(() => readMasterState(user));
-  const [clientState, setClientState] = useState<ClientState>(() => readClientState());
   const [selectedDate, setSelectedDate] = useState(todayValue);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [workingSchedule, setWorkingSchedule] = useState<WorkingScheduleDayApi[]>(() => defaultWorkingSchedule());
@@ -262,8 +225,7 @@ export default function MasterDashboard({
   const [dayOffStart, setDayOffStart] = useState(todayValue);
   const [dayOffEnd, setDayOffEnd] = useState(todayValue);
   const [dayOffReason, setDayOffReason] = useState("");
-  const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ name: "", price: "", duration: "60", active: true });
+  const [apiServices, setApiServices] = useState<ServiceApi[]>([]);
   const [allReviewsOpen, setAllReviewsOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<ClientBooking | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
@@ -272,16 +234,6 @@ export default function MasterDashboard({
   useEffect(() => {
     writeMasterState(user, masterState);
   }, [masterState, user]);
-
-  useEffect(() => {
-    const sync = () => setClientState(readClientState());
-    window.addEventListener("beautyai:client-state", sync as EventListener);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener("beautyai:client-state", sync as EventListener);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
 
   const [apiBookings, setApiBookings] = useState<ClientBooking[]>([]);
 
@@ -334,6 +286,18 @@ export default function MasterDashboard({
   useEffect(() => {
     void loadReviews();
   }, [loadReviews]);
+
+  const loadServices = React.useCallback(async () => {
+    try {
+      setApiServices(await fetchMasterServices());
+    } catch {
+      // Бекенд недоступний — лишаємось з тим, що вже було завантажено раніше.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadServices();
+  }, [loadServices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -517,29 +481,6 @@ export default function MasterDashboard({
     }
   };
 
-  const saveService = () => {
-    const price = Number(serviceDraft.price);
-    const duration = Number(serviceDraft.duration);
-    if (!serviceDraft.name.trim() || !price || !duration) return;
-    updateMasterState((current) => {
-      const next: MasterService = {
-        id: serviceDraft.id ?? `service-${Date.now()}`,
-        name: serviceDraft.name.trim(),
-        price,
-        duration,
-        active: serviceDraft.active,
-      };
-      return {
-        ...current,
-        services: serviceDraft.id
-          ? current.services.map((item) => item.id === serviceDraft.id ? next : item)
-          : [...current.services, next],
-      };
-    });
-    setServiceDraft({ name: "", price: "", duration: "60", active: true });
-    setServiceModalOpen(false);
-  };
-
   const addPortfolioImages = async (files: FileList | null) => {
     if (!files?.length) return;
     const images = await Promise.all(Array.from(files).filter((file) => file.type.startsWith("image/")).map(fileToDataUrl));
@@ -596,6 +537,12 @@ export default function MasterDashboard({
     const avatar = await fileToDataUrl(file);
     updateMasterState((current) => ({ ...current, profile: { ...current.profile, avatar } }));
     window.dispatchEvent(new CustomEvent("beautyai:master-profile", { detail: { ...masterState.profile, avatar } }));
+
+    try {
+      await updateMasterProfilePhoto(file);
+    } catch {
+      // Бекенд не прийняв фото — локально вже збережено, спробуємо синхронізувати іншим разом.
+    }
   };
 
   const openBookingFromNotification = (notification: MasterNotification) => {
@@ -713,10 +660,10 @@ export default function MasterDashboard({
 
       {section === "services" && (
         <section className="master-card-v2 master-services-page-v2">
-          <div className="master-card-head-v2"><div><h2>{ua ? "Послуги та ціни" : "Services & prices"}</h2><p>{ua ? "Ці послуги бачить клієнт під час запису" : "Clients see these services while booking"}</p></div><button type="button" onClick={() => { setServiceDraft({ name: "", price: "", duration: "60", active: true }); setServiceModalOpen(true); }}>+ {ua ? "Додати послугу" : "Add service"}</button></div>
+          <div className="master-card-head-v2"><div><h2>{ua ? "Послуги та ціни" : "Services & prices"}</h2><p>{ua ? "Дані з бекенду. Редагування послуг поки доступне лише через адміністратора салону" : "Data from the backend. Editing services is only available via the salon admin for now"}</p></div></div>
           <div className="master-services-list-v2">
-            {masterState.services.length === 0 && <div className="master-empty-v2">{ua ? "Додайте першу послугу, щоб клієнти могли її забронювати" : "Add your first service so clients can book it"}</div>}
-            {masterState.services.map((service) => <article key={service.id} className={!service.active ? "inactive" : ""}><div><b>{service.name}</b><span>{service.duration} {ua ? "хв" : "min"}</span></div><strong>{formatMoney(service.price, ua)}</strong><span className={`master-service-state-v2 ${service.active ? "active" : ""}`}>{service.active ? (ua ? "Активна" : "Active") : (ua ? "Прихована" : "Hidden")}</span><button type="button" onClick={() => { setServiceDraft({ id: service.id, name: service.name, price: String(service.price), duration: String(service.duration), active: service.active }); setServiceModalOpen(true); }}>{ua ? "Редагувати" : "Edit"}</button><button type="button" className="danger" onClick={() => updateMasterState((current) => ({ ...current, services: current.services.filter((item) => item.id !== service.id) }))}>{ua ? "Видалити" : "Delete"}</button></article>)}
+            {apiServices.length === 0 && <div className="master-empty-v2">{ua ? "Активних послуг не знайдено" : "No active services found"}</div>}
+            {apiServices.map((service) => <article key={service.id}><div><b>{service.name}</b><span>{service.duration_minutes ?? "—"} {ua ? "хв" : "min"}</span></div><strong>{formatMoney(Number(service.price) || 0, ua)}</strong>{service.category && <span className="master-service-state-v2 active">{service.category}</span>}</article>)}
           </div>
         </section>
       )}
@@ -851,7 +798,6 @@ export default function MasterDashboard({
         </div>
       )}
 
-      {serviceModalOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setServiceModalOpen(false)}><div className="master-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setServiceModalOpen(false)}>×</button><h3>{serviceDraft.id ? (ua ? "Редагувати послугу" : "Edit service") : (ua ? "Нова послуга" : "New service")}</h3><label>{ua ? "Назва" : "Name"}<input value={serviceDraft.name} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} /></label><label>{ua ? "Ціна, грн" : "Price, UAH"}<input type="number" min="1" value={serviceDraft.price} onChange={(event) => setServiceDraft((current) => ({ ...current, price: event.target.value }))} /></label><label>{ua ? "Тривалість, хв" : "Duration, min"}<input type="number" min="15" step="15" value={serviceDraft.duration} onChange={(event) => setServiceDraft((current) => ({ ...current, duration: event.target.value }))} /></label><label className="master-checkbox-v2"><input type="checkbox" checked={serviceDraft.active} onChange={(event) => setServiceDraft((current) => ({ ...current, active: event.target.checked }))} />{ua ? "Показувати клієнтам" : "Visible to clients"}</label><button className="master-primary-v2" type="button" onClick={saveService}>{ua ? "Зберегти" : "Save"}</button></div></div>}
 
       {allReviewsOpen && <div className="master-modal-backdrop-v2" onMouseDown={() => setAllReviewsOpen(false)}><div className="master-modal-v2 master-reviews-modal-v2" onMouseDown={(event) => event.stopPropagation()}><button className="master-modal-close-v2" type="button" onClick={() => setAllReviewsOpen(false)}>×</button><h3>{ua ? "Усі відгуки" : "All reviews"}</h3><div className="master-all-reviews-list-v2">{reviews.map((review) => <article key={review.id}><div><b>{review.client_name}</b><span>{review.service_name} · {new Date(review.created_at).toLocaleDateString(ua ? "uk-UA" : "en-GB")}</span></div><strong>{"★".repeat(review.rating)}</strong><p>{review.comment}</p></article>)}</div></div></div>}
     </DashboardFrame>
