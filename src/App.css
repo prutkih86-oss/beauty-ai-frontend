@@ -669,10 +669,12 @@ body {
 }
 
 .map-district .label {
-  color: var(--text-light);
+  color: #5f566c;
   display: block;
   margin-bottom: 2px;
   font-size: 11px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .map-district .value {
@@ -2104,7 +2106,7 @@ more-filters-text-btn {
 /* ---------- About Beauty AI ---------- */
 
 .about-section {
-  margin-top: 28px;
+  margin-top: 0px;
   padding: 28px 32px;
 
   display: grid;
@@ -2122,6 +2124,13 @@ more-filters-text-btn {
   border-radius: 20px;
 
   box-shadow: 0 8px 26px rgba(45, 34, 66, 0.04);
+}
+.about-section--empty {
+  margin-top: 10px;
+}
+
+.about-section--with-results {
+  margin-top: 18px;
 }
 
 .about-kicker {
@@ -5775,7 +5784,7 @@ button .place-modal-reviews-summary {
 }
 
 .place-modal-profile-v4 .place-modal-section {
-  margin-top: 26px;
+  margin-top: 0px;
 }
 
 .place-modal-profile-v4 .place-modal-section h3 {
@@ -6636,4 +6645,895 @@ button .place-modal-reviews-summary {
 .state-what-you-doing-2.assistant-results-success {
   right: 135px;
   top: -70px;
+}
+
+/* ==========================================================
+   Recommendation edge cases — short lists, standalone rows,
+   shared filters and marketplace retry.
+   ========================================================== */
+
+/* On desktop four cards are the natural carousel page. With 1–3 cards there
+   is no useful horizontal scroll, so keep the group visually centered. */
+@media (min-width: 981px) {
+  .app .recommendation-carousel.is-short-list .carousel-track {
+    justify-content: center;
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+}
+
+/* A section that has no sibling above/below must look like a complete panel,
+   not like one half of the old joined Salons + Masters block. */
+.ai-recommendations > .recommendation-row-salons.recommendation-row-standalone,
+.ai-recommendations > .recommendation-row-masters.recommendation-row-standalone {
+  border: 1px solid rgba(113, 53, 232, 0.12) !important;
+  border-radius: 18px !important;
+}
+
+/* Filter controls belong to the whole recommendation result, not only salons. */
+.recommendations-global-filter {
+  position: relative;
+  width: 100%;
+  height: 0;
+  z-index: 80;
+}
+
+.recommendations-filter-menu-global {
+  position: absolute !important;
+  top: 14px !important;
+  right: 18px !important;
+  transform: none !important;
+  z-index: 82;
+}
+
+.recommendations-filter-menu-global .recommendations-ai-settings-toggle {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.recommendations-global-filter.is-open {
+  height: auto;
+  padding: 16px;
+  background: linear-gradient(180deg, #f2edff 0%, #faf8ff 100%);
+  border: 1px solid rgba(113, 53, 232, 0.12);
+  border-radius: 18px;
+  margin-bottom: 10px;
+  z-index: 90;
+}
+
+.recommendations-global-filter.is-open .recommendations-filter-menu-global {
+  top: 8px !important;
+  right: 12px !important;
+}
+
+.recommendations-filter-panel-global {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.marketplace-retry-btn {
+  margin-top: 14px;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid rgba(113, 53, 232, 0.24);
+  border-radius: 12px;
+  background: #241a3d;
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.marketplace-retry-btn:hover:not(:disabled) {
+  background: #33244f;
+}
+
+.marketplace-retry-btn:disabled {
+  opacity: 0.62;
+  cursor: wait;
+}
+
+@media (max-width: 600px) {
+  .recommendations-global-filter {
+    display: none !important;
+  }
+}
+
+/* ==========================================================
+   Search/filter state + auth gate + stable header polish.
+   ========================================================== */
+
+/* Keep location/language fixed when the account control changes between
+   "Увійти" and the avatar. */
+.header-right {
+  gap: 10px;
+}
+
+.header-context {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 0 0 auto;
+}
+.header-context--logged-out {
+  transform: translateX(0);
+}
+
+.header-context--logged-in {
+  transform: translateX(21px);
+}
+
+.header-account-slot {
+  width: 76px;
+  min-width: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.header-account-slot .google-login-btn {
+  min-width: 72px;
+  padding: 8px 13px;
+  white-space: nowrap;
+}
+
+.header-account-slot .account-menu-wrap {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* Compact help Pokémon in the auth-required modal. No message is passed,
+   therefore BeautyAssistant renders only the character. */
+.booking-auth-gate-help {
+  display: flex;
+  justify-content: center;
+  margin: -4px auto 4px;
+  pointer-events: none;
+}
+
+.booking-auth-gate-help .beauty-assistant-character {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+/* The filters are global now, so section headings must never inherit the old
+   inline-filter "hide heading" behavior. */
+.ai-recommendations .recommendation-intro h2 {
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .header-right {
+    gap: 6px !important;
+  }
+
+  .header-context {
+    gap: 4px;
+  }
+
+  .header-account-slot {
+    width: 54px;
+    min-width: 54px;
+  }
+
+  .header-account-slot .google-login-btn {
+    min-width: 54px;
+    padding: 7px 8px !important;
+    font-size: 11.5px !important;
+  }
+}
+
+/* ==========================================================
+   2026-09-13 detail modal / reviews polish
+   ========================================================== */
+
+/* Match place-detail dialogs to the booking dialog footprint. */
+.place-modal-profile-v4 {
+  width: min(590px, calc(100vw - 40px));
+  max-height: min(90vh, 820px);
+}
+
+.place-modal-profile-v4 .place-modal-body {
+  padding: 20px 24px 24px;
+}
+
+.place-modal-profile-v4 .place-modal-hero-salon {
+  min-height: 145px;
+  max-height: 145px;
+}
+
+.place-modal-profile-v4 .place-modal-section {
+  margin-top: 0px;
+}
+
+.place-modal-profile-v4 .place-modal-section h3 {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+/* Salon title + type pill share a single compact row. */
+.place-modal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.place-modal-title-row h2 {
+  min-width: 0;
+  margin: 0;
+}
+
+.place-modal-title-row .place-modal-role-pill {
+  flex: 0 0 auto;
+  margin-right: 54px;
+}
+
+/* Compact About block with optional expansion. */
+.place-modal-profile-v4 .place-modal-description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.place-modal-profile-v4 .place-modal-description.is-open {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.place-modal-about-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7135e8;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+/* Services stay on one row until the user expands them. */
+.place-modal-tags.is-closed {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.place-modal-tags.is-closed .tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-modal-tags.is-closed .place-modal-tags-toggle {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.place-modal-tags.is-open {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.place-modal-tags-toggle {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+/* Strong, consistent separators between all information columns. */
+.place-modal-facts-v4 > div + div {
+  border-left: 1px solid #d8d0e3;
+}
+
+/* Detail CTA is deliberately smaller than the booking form CTA. */
+.place-modal-profile-v4 .place-modal-cta {
+  width: auto;
+  min-width: 164px;
+  min-height: 44px;
+  margin: 22px 0 0 auto;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  font-size: 14px;
+}
+
+/* Booking stays scrollable with mouse/trackpad/touch, scrollbar is hidden. */
+.booking-modal {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.booking-modal::-webkit-scrollbar {
+  display: none;
+}
+
+/* Universal reviews dialog for salons and solo masters. */
+.reviews-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(24, 15, 43, 0.58);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.reviews-modal {
+  position: relative;
+  width: min(590px, 100%);
+  max-height: min(82vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(113, 53, 232, 0.16);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(24, 15, 43, 0.30);
+}
+
+.reviews-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  color: #241a3d;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(36, 26, 61, 0.14);
+}
+
+.reviews-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 62px 18px 24px;
+  border-bottom: 1px solid #ece6f2;
+  background: #faf7ff;
+}
+
+.reviews-modal-head > div:first-child span {
+  color: #7651b8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.reviews-modal-head h3 {
+  margin: 4px 0 0;
+  color: #1d1826;
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.reviews-modal-score {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.reviews-modal-score strong {
+  font-size: 22px;
+  color: #1d1826;
+}
+
+.reviews-modal-score > span {
+  color: #f2b827;
+}
+
+.reviews-modal-score small {
+  color: #6a6272;
+  font-size: 12px;
+}
+
+.reviews-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 24px 30px ;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.reviews-modal-list::-webkit-scrollbar {
+  display: none;
+}
+
+.reviews-modal-review {
+  padding: 15px 16px;
+  border: 1px solid #e8e1ef;
+  border-radius: 16px;
+  background: #fcfbfe;
+}
+
+.reviews-modal-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reviews-modal-review-head strong {
+  color: #241d2d;
+  font-size: 14px;
+}
+
+.reviews-modal-review-head span {
+  color: #706777;
+  font-size: 12px;
+}
+
+.reviews-modal-stars {
+  margin: 6px 0;
+  color: #d8cfdf;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.reviews-modal-stars .active {
+  color: #f2b827;
+}
+
+.reviews-modal-review p {
+  margin: 0;
+  color: #494151;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 {
+    width: 100%;
+  }
+
+
+
+  .place-modal-title-row {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .place-modal-title-row .place-modal-role-pill {
+    margin-right: 38px;
+  }
+
+  .place-modal-profile-v4 .place-modal-cta {
+    min-width: 150px;
+  }
+
+  .reviews-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .reviews-modal {
+    width: 100%;
+    max-height: 90vh;
+    border-radius: 22px 22px 0 0;
+  }
+}
+
+
+/* ==========================================================
+   2026-09-13 targeted follow-up fixes
+   Keep this pass isolated to agreed states and detail dialogs.
+   ========================================================== */
+
+/* Reviews must sit above the already-open place modal (z-index: 5000). */
+.reviews-modal-overlay {
+  z-index: 6200;
+}
+
+/* Detail content gets clearer horizontal breathing room. */
+.place-modal-profile-v4 .place-modal-body {
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+/* Tighter rhythm between sections, more space inside each section below its title. */
+.place-modal-profile-v4 .place-modal-section {
+  margin-top: 0px;
+}
+
+.place-modal-profile-v4 .place-modal-section h3 {
+  margin-bottom: 11px;
+}
+
+/* Information row: retain all values, with visible side padding and separators. */
+.place-modal-facts-v4 {
+  padding: 0 8px;
+}
+
+.place-modal-facts-v4 > div,
+.place-modal-facts-v4 > div:last-child:nth-child(odd) {
+  padding: 4px 20px;
+}
+
+.place-modal-facts-v4 > div:first-child {
+  padding-left: 20px;
+}
+
+/* Services: chevron stays beside the heading; collapsed state is a single clean row. */
+.place-modal-services-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+}
+
+.place-modal-services-heading h3 {
+  margin-bottom: 0 !important;
+}
+
+.place-modal-services-toggle {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #7135e8;
+  cursor: pointer;
+}
+
+.place-modal-services-toggle span {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+  transform: translateY(-2px);
+  transition: transform 0.18s ease;
+}
+
+.place-modal-services-toggle.is-open span {
+  transform: translateY(2px) rotate(180deg);
+}
+
+.place-modal-tags.is-closed {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.place-modal-tags.is-closed .tag {
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.place-modal-tags.is-open {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+/* Detail CTA mirrors the compact card CTA and is centered; no arrow. */
+.place-modal-profile-v4 .place-modal-cta {
+  width: 210px;
+  min-width: 210px;
+  min-height: 42px;
+  margin: 22px auto 0;
+  padding: 10px 20px;
+}
+
+.place-modal-cta-arrow {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 .place-modal-body {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .place-modal-facts-v4 > div,
+  .place-modal-facts-v4 > div:first-child {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .place-modal-profile-v4 .place-modal-cta {
+    width: 190px;
+    min-width: 190px;
+  }
+}
+
+/* ==========================================================
+   2026-09-13 compact detail modal v5
+   Narrower dialog, calm info panel, paged service rows.
+   ========================================================== */
+.place-modal-profile-v4 {
+  width: min(510px, calc(100vw - 40px));
+}
+
+.place-modal-profile-v4 .place-modal-body {
+  padding: 18px 28px 22px;
+}
+
+.place-modal-profile-v4 .place-modal-section {
+  margin-top: 0px;
+}
+
+.place-modal-profile-v4 .place-modal-section h3 {
+  margin: 0 0 9px;
+}
+
+.place-modal-profile-v4 .place-modal-about-v4 {
+  margin-top: 0px;
+}
+
+.place-modal-profile-v4 .place-modal-services-v5 {
+  margin-top: 0px;
+}
+
+/* No salon/service badge in the detail header. */
+.place-modal-profile-v4 .place-modal-role-pill {
+  display: none;
+}
+
+/* White information block with subtle separation and purple icons. */
+.place-modal-profile-v4 .place-modal-info-v4 {
+  padding-bottom: 10px;
+   border-bottom: 1px solid #ece7f3;
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4 {
+  display: grid;
+  grid-template-columns:
+  minmax(0, 1fr)
+  minmax(0, 1fr)
+  1px
+  minmax(0, 1fr);
+  gap: 0;
+  padding: 13px 10px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: none;
+}
+.place-modal-profile-v4 .place-modal-facts-v4--solo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.place-modal-profile-v4 .place-modal-facts-v4 > div,
+.place-modal-profile-v4 .place-modal-facts-v4 > div:last-child:nth-child(odd) {
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4 > div:first-child {
+  padding-left: 6px;
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4 > div + div {
+   border-left: 1px solid #d8c8f0;  
+}
+.place-modal-fact-separator {
+  width: 1px;
+  align-self: stretch;
+  background: #d8c8f0;
+  padding: 0 !important;
+}
+.place-modal-fact-v5 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.place-modal-fact-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7c3aed;
+}
+
+.place-modal-fact-icon svg {
+  width: 23px;
+  height: 23px;
+  stroke: #7c3aed;
+}
+
+.place-modal-fact-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.place-modal-profile-v4 .place-modal-fact-copy > span {
+  font-size: 11.5px;
+  line-height: 1.2;
+  color: #777083;
+}
+
+.place-modal-profile-v4 .place-modal-fact-copy strong {
+  font-size: 14px;
+  line-height: 1.25;
+  color: #1f1a29;
+}
+
+/* Services are a vertical row carousel: one fixed-height row at a time. */
+.place-modal-services-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.place-modal-services-heading h3 {
+  margin-bottom: 0 !important;
+}
+
+.place-modal-service-row-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.place-modal-service-row-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #7135e8;
+  cursor: pointer;
+}
+
+.place-modal-service-row-btn:hover {
+  background: #f7f3ff;
+}
+
+.place-modal-service-row-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.place-modal-profile-v4 .place-modal-service-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  overflow: hidden;
+}
+
+.place-modal-profile-v4 .place-modal-service-row .tag {
+  flex: 0 0 auto;
+  min-width: max-content;
+  margin: 0;
+  padding: 7px 11px;
+  border: 1px solid #d9c8ff;
+  border-radius: 999px;
+  background: #fff;
+  color: #40384f;
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.place-modal-profile-v4 .place-modal-cta {
+  width: 300px;
+  min-width: 190px;
+  margin: 18px auto 0;
+}
+
+@media (max-width: 640px) {
+  .place-modal-profile-v4 {
+    width: min(560px, calc(100vw - 24px));
+  }
+
+  .place-modal-profile-v4 .place-modal-body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .place-modal-profile-v4 .place-modal-facts-v4 {
+    grid-template-columns: 1fr;
+    padding: 8px 12px;
+  }
+
+  .place-modal-profile-v4 .place-modal-facts-v4 > div,
+  .place-modal-profile-v4 .place-modal-facts-v4 > div:first-child,
+  .place-modal-profile-v4 .place-modal-facts-v4 > div:last-child:nth-child(odd) {
+    padding: 10px 4px;
+  }
+
+  .place-modal-profile-v4 .place-modal-facts-v4 > div + div {
+    border-left: 0;
+    border-top: 1px solid #e3dbea;
+  }
+}
+.place-modal-profile-v4 .place-modal-facts-v4--solo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4--solo > div {
+  padding: 0 20px;
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4--solo > div:first-child {
+  padding-left: 20px;
+}
+
+.place-modal-profile-v4 .place-modal-facts-v4--solo > div:nth-child(2) {
+  border-left: 1px solid #d8c8f0;
+}
+.map-user-location-label {
+ background: #ffffff !important;
+  color: #2f2540 !important;
+  border: 1px solid rgba(81, 53, 155, 0.18) !important;
+  border-radius: 999px !important;
+  padding: 5px 10px !important;
+  font-family: "Manrope", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(36, 26, 61, 0.14);
+}
+
+.map-user-location-label::before {
+  display: none !important;
 }

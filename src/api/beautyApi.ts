@@ -618,6 +618,17 @@ export type AiChatResponse = {
   detail?: string;
 };
 
+export type AiSearchIntent = {
+  serviceQuery: string | null;
+  city: "kyiv" | "lviv" | null;
+  district: string | null;
+  priceMin: number | null;
+  priceMax: number | null;
+  minRating: number | null;
+  venueType: "salon" | "solo" | "studio" | null;
+  availability: "today" | "tomorrow" | "week" | null;
+};
+
 export async function sendAiChatMessage(
   message: string,
   conversationId: string | number | null
@@ -650,6 +661,109 @@ export async function sendAiChatMessage(
       : conversationId;
 
   return { text, conversationId: nextConversationId };
+}
+
+function stripJsonCodeFence(value: string): string {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return (fenced?.[1] ?? trimmed).trim();
+}
+
+function nullableTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function nullableFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return allowed.includes(normalized as T) ? (normalized as T) : null;
+}
+
+function normalizeAiSearchIntent(value: unknown): AiSearchIntent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("AI search intent must be a JSON object");
+  }
+
+  const data = value as Record<string, unknown>;
+
+  return {
+    serviceQuery: nullableTrimmedString(data.serviceQuery),
+    city: normalizeEnum(data.city, ["kyiv", "lviv"] as const),
+    district: nullableTrimmedString(data.district),
+    priceMin: nullableFiniteNumber(data.priceMin),
+    priceMax: nullableFiniteNumber(data.priceMax),
+    minRating: nullableFiniteNumber(data.minRating),
+    venueType: normalizeEnum(data.venueType, ["salon", "solo", "studio"] as const),
+    availability: normalizeEnum(data.availability, ["today", "tomorrow", "week"] as const),
+  };
+}
+
+export async function parseAiSearchIntent(message: string): Promise<AiSearchIntent> {
+  const query = message.trim();
+  if (!query) {
+    throw new Error("AI search query is empty");
+  }
+
+  const aiChatUrl = import.meta.env.VITE_AI_CHAT_URL?.trim() || "/ai-chat/chat";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const parserPrompt = [
+    "You are a search-intent parser for the Beauty AI marketplace.",
+    "Return ONLY one valid JSON object. Do not use markdown, code fences, comments, or prose.",
+    "Extract only information explicitly present in the user's request. Never invent missing values.",
+    "Use exactly this schema:",
+    '{"serviceQuery":string|null,"city":"kyiv"|"lviv"|null,"district":string|null,"priceMin":number|null,"priceMax":number|null,"minRating":number|null,"venueType":"salon"|"solo"|"studio"|null,"availability":"today"|"tomorrow"|"week"|null}',
+    "Normalize Київ/Kyiv to kyiv and Львів/Lviv to lviv.",
+    "venueType: салон/salon -> salon; соло-майстер/independent master -> solo; студія/studio -> studio.",
+    "availability: сьогодні/today -> today; завтра/tomorrow -> tomorrow; цього тижня/this week -> week.",
+    "Keep serviceQuery specific, for example 'жіноча стрижка' rather than only 'hair'.",
+    `User request: ${query}`,
+  ].join("\n");
+
+  const response = await fetch(aiChatUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ message: parserPrompt }),
+  });
+
+  const payload = (await response.json().catch(() => null)) as AiChatResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.detail || `AI search intent request failed (${response.status})`);
+  }
+
+  const rawText = [
+    payload?.reply,
+    payload?.response,
+    payload?.message,
+    payload?.answer,
+    payload?.content,
+  ].find((value): value is string => typeof value === "string");
+
+  if (!rawText?.trim()) {
+    throw new Error("AI search intent response is empty");
+  }
+
+  const jsonText = stripJsonCodeFence(rawText);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error("AI search intent response is not valid JSON");
+  }
+
+  return normalizeAiSearchIntent(parsed);
 }
 
 export type AppointmentReviewApi = {

@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React from "react";
 
 type Lang = "ua" | "en";
 
-type FilterState = {
+export type FilterState = {
   priceMin: string;
   priceMax: string;
   rating: string;
@@ -16,7 +16,11 @@ type FilterState = {
 
 interface FilterBarProps {
   lang?: Lang;
-  onFilterChange?: (filters: FilterState) => void;
+  value: FilterState;
+  onChange: (filters: FilterState) => void;
+  onApply: (filters: FilterState) => void;
+  onReset: (filters: FilterState) => void;
+  onCityChange?: (city: string) => void;
 }
 
 const data = {
@@ -57,11 +61,8 @@ const data = {
     ],
 
     cities: [
-      ["any", "Будь-яке місто"],
       ["kyiv", "Київ"],
       ["lviv", "Львів"],
-      ["odesa", "Одеса"],
-      ["dnipro", "Дніпро"],
     ],
 
     districts: [
@@ -126,11 +127,8 @@ const data = {
     ],
 
     cities: [
-      ["any", "Any city"],
       ["kyiv", "Kyiv"],
       ["lviv", "Lviv"],
-      ["odesa", "Odesa"],
-      ["dnipro", "Dnipro"],
     ],
 
     districts: [
@@ -159,13 +157,12 @@ const data = {
   },
 } as const;
 
-const initial: FilterState = {
+const NEUTRAL_FILTERS: Omit<FilterState, "city"> = {
   priceMin: "",
   priceMax: "",
-  rating: "from45",
-  distance: "to3km",
-  availability: "today",
-  city: "kyiv",
+  rating: "any",
+  distance: "any",
+  availability: "anytime",
   district: "any",
   service: "any",
   venueType: "any",
@@ -173,34 +170,31 @@ const initial: FilterState = {
 
 export default function FilterBar({
   lang = "ua",
-  onFilterChange,
+  value: filters,
+  onChange,
+  onApply,
+  onReset,
+  onCityChange,
 }: FilterBarProps) {
-  const [filters, setFilters] = useState<FilterState>(initial);
-
   const t = data[lang];
 
-  const update = (key: keyof FilterState, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+  const update = (key: keyof FilterState, nextValue: string) => {
+    const nextFilters = { ...filters, [key]: nextValue };
+    onChange(nextFilters);
+
+    if (key === "city") {
+      onCityChange?.(nextValue);
+    }
   };
 
   const reset = () => {
     const resetFilters: FilterState = {
-      priceMin: "",
-      priceMax: "",
-      rating: "any",
-      distance: "any",
-      availability: "anytime",
-      city: "any",
-      district: "any",
-      service: "any",
-      venueType: "any",
+      ...NEUTRAL_FILTERS,
+      city: filters.city,
     };
 
-    setFilters(resetFilters);
-    onFilterChange?.(resetFilters);
+    onChange(resetFilters);
+    onReset(resetFilters);
   };
 
   const select = (
@@ -293,7 +287,7 @@ export default function FilterBar({
         <button
           className="filter-apply-btn"
           type="button"
-          onClick={() => onFilterChange?.(filters)}
+          onClick={() => onApply(filters)}
         >
           {t.apply}
         </button>

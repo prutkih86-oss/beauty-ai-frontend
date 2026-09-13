@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import "./App.css";
 import MapSection from "./MapSection";
 import CategoryFilters from "./CategoryFilters";
-import FilterBar from './FilterBar';
+import FilterBar, { type FilterState } from './FilterBar';
 import beautyAISparkles from "./assets/beauty-ai-sparkles.svg";
 import settingsIcon from "./assets/settings.png";
 import DashboardShell from "./dashboard/DashboardShell";
@@ -13,7 +13,9 @@ import {
   fetchMasters,
   fetchSalons,
   fetchServices,
+  parseAiSearchIntent,
   sendAiChatMessage,
+  type AiSearchIntent,
   type MasterApi,
   type SalonApi,
   type ServiceApi,
@@ -140,6 +142,58 @@ const DISTRICT_FALLBACKS: Record<string, [number, number]> = {
   "Золоті ворота": [50.4483, 30.5135],
 };
 
+// Фіксований набір львівських районів для mock/discovery-карток, коли
+// selectedCity === "Львів" — самі мокові масиви (topRated/fresh/partners)
+// не редагуються, район підміняється похідним хелпером (toLvivDiscoveryCards).
+const LVIV_DISTRICTS = [
+  "Галицький",
+  "Личаківський",
+  "Франківський",
+  "Шевченківський",
+  "Сихівський",
+  "Залізничний",
+];
+
+// Іменних координат для львівських mock-назв немає (ті самі назви карток
+//("Luna Beauty House" тощо) використовуються і в київському режимі, і їхні
+// координати в LOCATION_COORDINATES — київські). Тому для Львова свідомо не
+// звіряємось із LOCATION_COORDINATES взагалі, а покладаємось на районні
+// фолбеки нижче — вони покривають усі 6 районів, яких і так набуває
+// district після toLvivDiscoveryCards.
+const LVIV_LOCATION_COORDINATES: Record<string, [number, number]> = {};
+
+const LVIV_DISTRICT_FALLBACKS: Record<string, [number, number]> = {
+  "Галицький": [49.8397, 24.0297],
+  "Личаківський": [49.8280, 24.0680],
+  "Франківський": [49.8100, 24.0150],
+  "Шевченківський": [49.8600, 24.0100],
+  "Сихівський": [49.7950, 24.0450],
+  "Залізничний": [49.8420, 23.9950],
+};
+
+// Єдине місце вибору координат для карти — і прямий клік по картці
+// (handleLocationClick), і подія beautyai:open-location мають користуватись
+// саме цим, щоб не розійтись у поведінці між містами.
+function resolveLocationCoords(
+  name: string,
+  district: string,
+  city: CityName | null
+): [number, number] {
+  if (city === "Львів") {
+    return (
+      LVIV_LOCATION_COORDINATES[name] ??
+      LVIV_DISTRICT_FALLBACKS[district] ??
+      [49.8397, 24.0297]
+    );
+  }
+
+  return (
+    LOCATION_COORDINATES[name] ??
+    DISTRICT_FALLBACKS[district] ??
+    [50.4412, 30.5390]
+  );
+}
+
 type Lang = "ua" | "en";
 type CityName = "Київ" | "Львів";
 
@@ -147,6 +201,18 @@ const CITY_STORAGE_KEY = "beautyai_selected_city";
 const CITY_CENTERS: Record<CityName, { lat: number; lng: number }> = {
   "Київ": { lat: 50.4501, lng: 30.5234 },
   "Львів": { lat: 49.8397, lng: 24.0297 },
+};
+
+// FilterBar оперує латинськими слагами міст (успадковано з його власного
+// набору опцій), а глобальний перемикач міста — українськими назвами.
+// Це єдине місце конвертації між ними, щоб не заводити другий city-стан.
+const CITY_SLUG_TO_NAME: Partial<Record<string, CityName>> = {
+  kyiv: "Київ",
+  lviv: "Львів",
+};
+const CITY_NAME_TO_SLUG: Record<CityName, string> = {
+  "Київ": "kyiv",
+  "Львів": "lviv",
 };
 
 function readStoredCity(): CityName | null {
@@ -1581,6 +1647,73 @@ function getPlaceReviews(data: CardData, t: Translations): CardReview[] {
       ];
 }
 
+function ReviewsModal({
+  data,
+  t,
+  reviews,
+  onClose,
+}: {
+  data: CardData;
+  t: Translations;
+  reviews: CardReview[];
+  onClose: () => void;
+}) {
+  const ua = t.placeModal.close === "Закрити";
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopImmediatePropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="reviews-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <div
+        className="reviews-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={ua ? `Відгуки — ${data.title}` : `Reviews — ${data.title}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button type="button" className="reviews-modal-close" onClick={onClose} aria-label={t.placeModal.close}>×</button>
+        <div className="reviews-modal-head">
+          <div>
+            <span>{ua ? "Відгуки" : "Reviews"}</span>
+            <h3>{data.title}</h3>
+          </div>
+          <div className="reviews-modal-score">
+            <strong>{data.rating.toFixed(1)}</strong>
+            <span>★</span>
+            <small>{data.reviews} {t.placeModal.reviews}</small>
+          </div>
+        </div>
+        <div className="reviews-modal-list">
+          {reviews.map((review, index) => (
+            <article className="reviews-modal-review" key={`${review.author}-${review.date ?? index}`}>
+              <div className="reviews-modal-review-head">
+                <strong>{review.author}</strong>
+                {review.date && <span>{review.date}</span>}
+              </div>
+              <div className="reviews-modal-stars" aria-label={`${review.rating} / 5`}>
+                {Array.from({ length: 5 }, (_, starIndex) => (
+                  <span key={starIndex} className={starIndex < review.rating ? "active" : ""}>★</span>
+                ))}
+              </div>
+              <p>{review.text}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function PlaceDetailsModal({
   data,
   t,
@@ -1597,15 +1730,16 @@ function PlaceDetailsModal({
   const isSolo = data.variant === "solo";
   const ua = t.placeModal.close === "Закрити";
   const reviews = getPlaceReviews(data, t);
-  const [reviewsOpen, setReviewsOpen] = useState(false);
-  const [servicesOpen, setServicesOpen] = useState(false);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
+  const [serviceRowIndex, setServiceRowIndex] = useState(0);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !reviewsModalOpen) onClose();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -1613,7 +1747,7 @@ function PlaceDetailsModal({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, reviewsModalOpen]);
 
   const aboutText =
     data.description ??
@@ -1626,7 +1760,15 @@ function PlaceDetailsModal({
           ? `${data.title} — ${data.type.toLowerCase()}.`
           : `${data.title} — ${data.type.toLowerCase()} у районі ${data.district}.`));
 
+  const serviceRowSize = 2;
+  const serviceRows = Array.from(
+    { length: Math.ceil(data.tags.length / serviceRowSize) },
+    (_, index) => data.tags.slice(index * serviceRowSize, index * serviceRowSize + serviceRowSize),
+  );
+  const visibleServiceRow = serviceRows[serviceRowIndex] ?? serviceRows[0] ?? [];
+
   return createPortal(
+    <>
     <div
       className="place-modal-overlay"
       role="presentation"
@@ -1673,22 +1815,13 @@ function PlaceDetailsModal({
               />
             )}
 
-            <span className="place-modal-role-pill">{data.type}</span>
-
             <h2 id="place-modal-title">{data.title}</h2>
 
             <button
               type="button"
               className="place-modal-rating-v4"
               aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
-              onClick={() => {
-                setReviewsOpen(true);
-                requestAnimationFrame(() => {
-                  document
-                    .querySelector(".place-modal-reviews")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                });
-              }}
+              onClick={() => setReviewsModalOpen(true)}
             >
               <span className="place-modal-rating-stars" aria-hidden="true">
                 {Array.from({ length: 5 }, (_, index) => (
@@ -1744,8 +1877,17 @@ function PlaceDetailsModal({
               />
             )}
 
-            <h3>{t.placeModal.aboutTitle}</h3>
-            <p className="place-modal-description">{aboutText}</p>
+            <h3>{isSolo ? (ua ? "Про майстра" : "About the master") : (ua ? "Про салон" : "About the salon")}</h3>
+            <p className={`place-modal-description ${aboutOpen ? "is-open" : ""}`}>{aboutText}</p>
+            {aboutText.length > 150 && (
+              <button
+                type="button"
+                className="place-modal-about-toggle"
+                onClick={() => setAboutOpen((prev) => !prev)}
+              >
+                {aboutOpen ? (ua ? "Менше" : "Less") : (ua ? "Ще" : "More")}
+              </button>
+            )}
           </section>
 
           {!!data.gallery?.length && (
@@ -1759,132 +1901,137 @@ function PlaceDetailsModal({
             </section>
           )}
 
-          {!!data.tags.length && (
-            <section className="place-modal-section">
-              <h3>{t.placeModal.servicesTitle}</h3>
-              <div className="place-modal-tags">
-                {data.tags.slice(0, servicesOpen ? data.tags.length : 8).map((tag) => (
-                  <span className="tag" key={tag}>
-                    {tag}
-                  </span>
-                ))}
-                {data.tags.length > 8 && (
-                  <button
-                    type="button"
-                    className="place-modal-tags-toggle"
-                    onClick={() => setServicesOpen((prev) => !prev)}
-                  >
-                    {servicesOpen
-                      ? (ua ? "Згорнути" : "Show less")
-                      : (ua ? `Ще ${data.tags.length - 8}` : `${data.tags.length - 8} more`)}
-                  </button>
-                )}
-              </div>
-            </section>
-          )}
-
           <section className="place-modal-section place-modal-info-v4">
             <h3>{t.placeModal.detailsTitle}</h3>
 
-            <div className="place-modal-facts place-modal-facts-v4">
-              <div>
-                <span>{t.placeModal.priceFrom}</span>
-                <strong>{data.priceFrom} грн</strong>
+            <div
+              className={`place-modal-facts place-modal-facts-v4 ${
+                isSolo ? "place-modal-facts-v4--solo" : ""
+              }`}
+            >
+              <div className="place-modal-fact-v5">
+                <span className="place-modal-fact-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M9.5 9.2c.6-.7 1.5-1.1 2.6-1.1 1.5 0 2.7.8 2.7 2s-1 1.8-2.7 2.2-2.7 1-2.7 2.2 1.2 2 2.8 2c1.1 0 2-.4 2.7-1.1M12 6.5v11" />
+                  </svg>
+                </span>
+                <span className="place-modal-fact-copy">
+                  <span>{t.placeModal.priceFrom}</span>
+                  <strong>{data.priceFrom} грн</strong>
+                </span>
               </div>
 
               {(data.experience ?? data.mastersCount) && (
-                <div>
-                  <span>{isSolo ? (ua ? "Стаж" : "Experience") : t.placeModal.experience}</span>
-                  <strong>{data.experience ?? data.mastersCount}</strong>
+                <div className="place-modal-fact-v5">
+                  <span className="place-modal-fact-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                  </span>
+                  <span className="place-modal-fact-copy">
+                    <span>{isSolo ? (ua ? "Стаж" : "Experience") : t.placeModal.experience}</span>
+                    <strong>{data.experience ?? data.mastersCount}</strong>
+                  </span>
                 </div>
+                
               )}
-
+              {!isSolo && (
+                <div className="place-modal-fact-separator" aria-hidden="true" />
+              )}
               {isSolo && data.locationNote && (
-                <div>
-                  <span>{ua ? "Формат" : "Format"}</span>
-                  <strong>{data.locationNote}</strong>
+                <div className="place-modal-fact-v5">
+                  <span className="place-modal-fact-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="M8 9h8M8 13h5" />
+                    </svg>
+                  </span>
+                  <span className="place-modal-fact-copy">
+                    <span>{ua ? "Формат" : "Format"}</span>
+                    <strong>{data.locationNote}</strong>
+                  </span>
                 </div>
               )}
 
               {!isSolo && data.avgCheck && (
-                <div>
-                  <span>{t.placeModal.averageCheck}</span>
-                  <strong>{data.avgCheck}</strong>
+                <div className="place-modal-fact-v5">
+                  <span className="place-modal-fact-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="6" width="16" height="13" rx="2" />
+                      <path d="M8 6V4h8v2M8 11h8M8 15h4" />
+                    </svg>
+                  </span>
+                  <span className="place-modal-fact-copy">
+                    <span>{t.placeModal.averageCheck}</span>
+                    <strong>{data.avgCheck}</strong>
+                  </span>
                 </div>
               )}
             </div>
           </section>
 
-          <section className="place-modal-section place-modal-reviews">
-            <div className="place-modal-reviews-heading-v4">
-              <h3>{t.placeModal.reviewsTitle}</h3>
-              {reviews.length > 1 && (
-                <button
-                  type="button"
-                  className="place-modal-show-all-v4"
-                  onClick={() => setReviewsOpen((prev) => !prev)}
-                  aria-expanded={reviewsOpen}
-                >
-                  {reviewsOpen
-                    ? t.placeModal.hideReviews
-                    : ua
-                      ? `Показати ще ${Math.min(2, reviews.length - 1)}`
-                      : `Show ${Math.min(2, reviews.length - 1)} more`}
-                  <span aria-hidden="true">›</span>
-                </button>
-              )}
-            </div>
-
-            <div className="place-modal-review-list">
-              {reviews.slice(0, reviewsOpen ? 3 : 1).map((review, index) => (
-                <article
-                  className="place-modal-review"
-                  key={`${review.author}-${review.date ?? index}`}
-                >
-                  <div className="place-modal-review-head">
-                    <strong>{review.author}</strong>
-                    {review.date && <span>{review.date}</span>}
-                  </div>
-
-                  <div
-                    className="place-modal-review-stars"
-                    aria-label={`${review.rating} / 5`}
-                  >
-                    {Array.from({ length: 5 }, (_, starIndex) => (
-                      <span
-                        key={starIndex}
-                        className={starIndex < review.rating ? "active" : ""}
+          {!!data.tags.length && (
+            <section className="place-modal-section place-modal-services-v5">
+              <div className="place-modal-section-heading place-modal-services-heading">
+                <h3>{t.placeModal.servicesTitle}</h3>
+                {serviceRows.length > 1 && (
+                  <div className="place-modal-service-row-controls">
+                    {serviceRowIndex > 0 && (
+                      <button
+                        type="button"
+                        className="place-modal-service-row-btn"
+                        onClick={() => setServiceRowIndex((index) => Math.max(0, index - 1))}
+                        aria-label={ua ? "Попередній ряд послуг" : "Previous services row"}
                       >
-                        ★
-                      </span>
-                    ))}
+                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="M5.5 12.5 10 8l4.5 4.5" />
+                        </svg>
+                      </button>
+                    )}
+                    {serviceRowIndex < serviceRows.length - 1 && (
+                      <button
+                        type="button"
+                        className="place-modal-service-row-btn"
+                        onClick={() => setServiceRowIndex((index) => Math.min(serviceRows.length - 1, index + 1))}
+                        aria-label={ua ? "Наступний ряд послуг" : "Next services row"}
+                      >
+                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="m5.5 7.5 4.5 4.5 4.5-4.5" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-
-                  <p>{review.text}</p>
-                </article>
-              ))}
-            </div>
-          </section>
+                )}
+              </div>
+              <div className="place-modal-tags place-modal-service-row">
+                {visibleServiceRow.map((tag) => (
+                  <span className="tag" key={`${serviceRowIndex}-${tag}`}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           <button type="button" className="cta-btn place-modal-cta" onClick={onBook}>
             {t.placeModal.book}
-            <span className="place-modal-cta-arrow" aria-hidden="true">→</span>
           </button>
 
-          {!isSolo && (
-            <p className="place-modal-booking-note">
-              {ua
-                ? data.website
-                  ? "Запис відкриється у системі бронювання салону."
-                  : "Онлайн-запис для цього салону ще підключається."
-                : data.website
-                  ? "Booking will open in the salon’s booking system."
-                  : "Online booking for this salon is being connected."}
-            </p>
-          )}
         </div>
       </div>
-    </div>,
+    </div>
+    {reviewsModalOpen && (
+      <ReviewsModal
+        data={data}
+        t={t}
+        reviews={reviews}
+        onClose={() => setReviewsModalOpen(false)}
+      />
+    )}
+    </>,
     document.body,
   );
 }
@@ -2197,7 +2344,7 @@ const LOCAL_MASTER_IMAGES: Record<string, string> = {
   "Гринчук Соломія": "/masters/female/Hrynchuk_Solomiia.webp",
   "Самойленко Дарина": "/masters/female/Samoilenko_Daryna.webp",
   "Гнатенко Данило": "/masters/male/Hnatenko_Danylo.webp",
-  "Гречаник Максим": "/masters/male/Hrechanyk_Maksym .webp",
+  "Гречаник Максим": "/masters/male/Hrechanyk_Maksym.webp",
   "Заєць Микита": "/masters/male/Zaiets_Mykita.webp",
   "Дашенко Венедикт": "/masters/male/Dashenko_Venedikt.webp",
   "Іщак Трохим": "/masters/male/Ishchak_Trokhym.webp",
@@ -2256,6 +2403,144 @@ function masterToCard(
     backendServices: master.services ?? [],
   };
 }
+
+// ---- FilterBar -> CardData matching ----
+// Один явний список ключових слів на групу послуг — щоб не розкидати
+// перевірки по тексту в різних місцях. Значення — те саме, що в
+// FilterBar.tsx (service: hair/nails/brows/makeup/massage/any).
+const SERVICE_FILTER_KEYWORDS: Record<string, string[]> = {
+  hair: ["волосс", "стриж", "фарбува", "уклад", "кератин"],
+  nails: ["манікюр", "педикюр", "нігт", "гель-лак"],
+  brows: ["бров", "вії", "вія"],
+  makeup: ["макіяж", "візаж"],
+  massage: ["масаж", "spa", "спа"],
+};
+
+// Те саме — для district (значення district у FilterBar.tsx), звірка йде
+// підрядковим збігом з реальним card.district, що приходить з бекенду
+// (salon.district). Список районів у FilterBar — тільки київські, тож для
+// інших міст (Львів) жоден варіант свідомо не заматчиться.
+const DISTRICT_FILTER_STEMS: Record<string, string> = {
+  pecherskyi: "печерськ",
+  shevchenkivskyi: "шевченківськ",
+  podilskyi: "поділ",
+  holosiivskyi: "голосіїв",
+};
+
+const RATING_FILTER_THRESHOLDS: Record<string, number> = {
+  any: 0,
+  from40: 4.0,
+  from45: 4.5,
+  from49: 4.9,
+};
+
+function cardMatchesPrice(card: CardData, priceMin: string, priceMax: string): boolean {
+  const price = Number(card.priceFrom);
+  // Немає реальної ціни на картці — не виключаємо картку "про всяк випадок",
+  // це було б вигадуванням підстави для фільтрації.
+  if (!Number.isFinite(price) || price <= 0) return true;
+  if (priceMin && price < Number(priceMin)) return false;
+  if (priceMax && price > Number(priceMax)) return false;
+  return true;
+}
+
+function cardMatchesRating(card: CardData, rating: string): boolean {
+  const threshold = RATING_FILTER_THRESHOLDS[rating] ?? 0;
+  return card.rating >= threshold;
+}
+
+function cardMatchesDistrict(card: CardData, district: string): boolean {
+  if (district === "any") return true;
+  const stem = DISTRICT_FILTER_STEMS[district];
+  if (!stem) return true;
+  return card.district.toLowerCase().includes(stem);
+}
+
+function cardMatchesVenueType(card: CardData, venueType: string): boolean {
+  if (venueType === "any") return true;
+  // "studio" не має жодного відповідника в реальних даних — не фільтруємо.
+  if (venueType === "studio") return true;
+  if (venueType === "solo") return card.variant === "solo";
+  if (venueType === "salon") return card.variant !== "solo";
+  return true;
+}
+
+function cardMatchesServiceGroup(card: CardData, service: string): boolean {
+  if (service === "any") return true;
+  const keywords = SERVICE_FILTER_KEYWORDS[service];
+  if (!keywords) return true;
+  return card.tags.some((tag) => keywords.some((keyword) => tag.toLowerCase().includes(keyword)));
+}
+
+// "availability" (сьогодні/завтра/цього тижня) свідомо НЕ звіряється тут:
+// на картці немає жодних даних про дату/розклад доступності, лише
+// openNow (поточний стан "відкрито зараз") — це інша семантика, і
+// підміняти ним фільтр за датою означало б видавати вигадане за реальне.
+function cardMatchesFilters(card: CardData, filters: FilterState): boolean {
+  const districtMatches = card.variant === "solo"
+    ? true
+    : cardMatchesDistrict(card, filters.district);
+
+  return (
+    cardMatchesPrice(card, filters.priceMin, filters.priceMax) &&
+    cardMatchesRating(card, filters.rating) &&
+    districtMatches &&
+    cardMatchesVenueType(card, filters.venueType) &&
+    cardMatchesServiceGroup(card, filters.service)
+  );
+}
+
+function mapAiRatingToFilter(minRating: number | null): string {
+  if (minRating == null) return "any";
+  if (minRating >= 4.9) return "from49";
+  if (minRating >= 4.5) return "from45";
+  if (minRating >= 4.0) return "from40";
+  return "any";
+}
+
+function cardMatchesAiService(card: CardData, serviceQuery: string | null): boolean {
+  if (serviceQuery === null) return true;
+
+  const query = serviceQuery.trim().toLowerCase();
+  if (!query) return true;
+
+  const serviceNames = [
+    ...card.tags,
+    ...(card.backendServices?.map((service) => service.name) ?? []),
+  ];
+
+  return serviceNames.some((serviceName) => {
+    const normalized = serviceName.trim().toLowerCase();
+    return Boolean(normalized) &&
+      (normalized.includes(query) || query.includes(normalized));
+  });
+}
+
+function cardMatchesLocalSearch(card: CardData, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+
+  const searchableValues = [
+    ...card.tags,
+    ...(card.backendServices?.map((service) => service.name) ?? []),
+  ];
+
+  return searchableValues.some((value) =>
+    value.trim().toLowerCase().includes(normalizedQuery)
+  );
+}
+
+const NEUTRAL_FILTERS: FilterState = {
+  priceMin: "",
+  priceMax: "",
+  rating: "any",
+  distance: "any",
+  availability: "anytime",
+  city: "any",
+  district: "any",
+  service: "any",
+  venueType: "any",
+};
 
 const recommendations: CardData[] = [
   {
@@ -2780,6 +3065,17 @@ const fresh: CardData[] = [
 ];
 
 
+// Похідна підміна district для mock/discovery-карток у львівському режимі —
+// самі масиви (topRated/fresh/partners) не редагуються, district
+// перезаписується детерміновано (по колу з LVIV_DISTRICTS) тільки для
+// відображення у Львові; в Києві функція просто не викликається.
+function toLvivDiscoveryCards<T extends { district: string }>(cards: T[]): T[] {
+  return cards.map((card, index) => ({
+    ...card,
+    district: LVIV_DISTRICTS[index % LVIV_DISTRICTS.length],
+  }));
+}
+
 function RecommendationCarousel({
   cards,
   t,
@@ -2852,9 +3148,13 @@ function RecommendationCarousel({
     });
   };
 
+  const isShortList = cards.length > 0 && cards.length < 4;
+
   return (
     <div
-      className={`recommendation-carousel recommendation-carousel-${variant}`}
+      className={`recommendation-carousel recommendation-carousel-${variant}${
+        isShortList ? " is-short-list" : ""
+      }`}
     >
       <div
         className="carousel-track"
@@ -3516,6 +3816,15 @@ export default function App() {
   const [locationPending, setLocationPending] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const initialFilterState: FilterState = {
+    ...NEUTRAL_FILTERS,
+    rating: "from45",
+    distance: "to3km",
+    availability: "today",
+    city: selectedCity ? CITY_NAME_TO_SLUG[selectedCity] : "kyiv",
+  };
+  const [activeFilters, setActiveFilters] = useState<FilterState>(initialFilterState);
+  const [filterDraft, setFilterDraft] = useState<FilterState>(initialFilterState);
   const [assistantEnabled, setAssistantEnabled] = useState(() => {
     try {
       return localStorage.getItem("beautyai_assistant_enabled") !== "false";
@@ -3545,9 +3854,16 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [marketplaceError, setMarketplaceError] = useState(false);
+  const [marketplaceRetrying, setMarketplaceRetrying] = useState(false);
+  const [marketplaceReloadKey, setMarketplaceReloadKey] = useState(0);
+  const marketplaceRetryTimerRef = useRef<number | null>(null);
+  const marketplaceHasRespondedRef = useRef(false);
   const [pendingSearchQuery, setPendingSearchQuery] = useState<string | null>(null);
+  const [citySearchPending, setCitySearchPending] = useState(false);
   const [conversationId, setConversationId] = useState<string | number | null>(() => readAiConversationId());
   const [aiReplyText, setAiReplyText] = useState("");
+  const [aiSearchIntent, setAiSearchIntent] = useState<AiSearchIntent | null>(null);
+  const [aiSearchError, setAiSearchError] = useState(false);
   const searchStartedAtRef = useRef(0);
   const aiRequestIdRef = useRef(0);
   const searchFinishTimeoutRef = useRef<number | null>(null);
@@ -3561,7 +3877,22 @@ export default function App() {
   const t = dict[lang];
 
   const chooseCity = (city: CityName) => {
+    const citySlug = CITY_NAME_TO_SLUG[city];
+    const cityChanged = city !== selectedCity;
+
+    if (cityChanged) {
+      if (searchFinishTimeoutRef.current !== null) {
+        window.clearTimeout(searchFinishTimeoutRef.current);
+        searchFinishTimeoutRef.current = null;
+      }
+      searchStartedAtRef.current = performance.now();
+      setCitySearchPending(true);
+      setIsSearching(true);
+    }
+
     setSelectedCity(city);
+    setActiveFilters((prev) => ({ ...prev, city: citySlug, district: "any" }));
+    setFilterDraft((prev) => ({ ...prev, city: citySlug, district: "any" }));
     setCityPickerOpen(false);
     setLocationError("");
     try {
@@ -3615,11 +3946,33 @@ export default function App() {
     (card.city || "").trim().toLowerCase() === selectedCity.toLowerCase();
 
   const citySalonCards = salonCards.filter(cityMatches);
-  const filteredSalons = appliedSearch.trim()
-    ? citySalonCards.filter((card) =>
-        card.tags.some((tag) => tag.toLowerCase().includes(appliedSearch.trim().toLowerCase()))
-      )
-    : citySalonCards;
+
+  // Для Києва секція лишається на моковому "nearby" без змін. Для Львова
+  // показуємо реальні салони (citySalonCards уже відфільтровані по місту
+  // через card.city, яке приходить із salonToCard/getSalonCityName), а не
+  // мокові київські картки.
+  const cityTopCards: CardData[] =
+    selectedCity === "Львів"
+      ? [...citySalonCards]
+          .sort((a, b) => b.rating - a.rating || b.reviews - a.reviews)
+          .slice(0, nearby.length)
+      : nearby;
+
+  // Ті самі мокові topRated/fresh/partners лишаються контентом і для Львова —
+  // міняється тільки district (реальні salon cards тут ні до чого, це не
+  // "Найкращі у ..." секція, а суто discovery-вітрина).
+  const topRatedCards = selectedCity === "Львів" ? toLvivDiscoveryCards(topRated) : topRated;
+  const freshCards = selectedCity === "Львів" ? toLvivDiscoveryCards(fresh) : fresh;
+  const partnersCards = selectedCity === "Львів" ? toLvivDiscoveryCards(partners) : partners;
+
+  const searchedSalons = citySalonCards.filter((card) => {
+    if (aiSearchError) {
+      return cardMatchesLocalSearch(card, appliedSearch);
+    }
+
+    return cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null);
+  });
+  const filteredSalons = searchedSalons.filter((card) => cardMatchesFilters(card, activeFilters));
   const hasSearch = appliedSearch.trim().length > 0;
 
   const runSearch = () => {
@@ -3641,26 +3994,52 @@ export default function App() {
     setIsSearching(true);
     setPendingSearchQuery(query);
     setAiReplyText("");
+    setAiSearchIntent(null);
+    setAiSearchError(false);
 
-    // Локальна фільтрація карток (нижче, filteredSalons/filteredMasters) лишається
-    // головним джерелом результатів — цей виклик лише дає AI-репліку для бульбашки
-    // помічника. Якщо AI-сервіс недоступний, помічник просто покаже локальний
-    // підрахунок (assistantResultMessage) замість цього тексту — без AI пошук усе одно працює.
     const requestId = ++aiRequestIdRef.current;
 
-    void sendAiChatMessage(query, conversationId)
-      .then(({ text, conversationId: nextConversationId }) => {
+    void parseAiSearchIntent(query)
+      .then((intent) => {
         if (requestId !== aiRequestIdRef.current) return;
 
-        setAiReplyText(text);
-        setConversationId(nextConversationId);
-        writeAiConversationId(nextConversationId);
+        const citySlug = intent.city ?? activeFilters.city;
+        const cityName = intent.city ? CITY_SLUG_TO_NAME[intent.city] : undefined;
+        const nextFilters: FilterState = {
+          ...activeFilters,
+          city: citySlug,
+          district: "any",
+          availability: "anytime",
+          priceMin: intent.priceMin != null ? String(intent.priceMin) : "",
+          priceMax: intent.priceMax != null ? String(intent.priceMax) : "",
+          rating: mapAiRatingToFilter(intent.minRating),
+          venueType: intent.venueType ?? "any",
+        };
+
+        setAiSearchIntent(intent);
+        setActiveFilters(nextFilters);
+        setFilterDraft(nextFilters);
+
+        if (cityName) {
+          setSelectedCity(cityName);
+          setCityPickerOpen(false);
+          setLocationError("");
+          try {
+            localStorage.setItem(CITY_STORAGE_KEY, cityName);
+          } catch {
+            // Storage may be unavailable in private/restricted browser modes.
+          }
+        }
       })
       .catch((error) => {
         if (requestId !== aiRequestIdRef.current) return;
 
-        console.error("AI chat is unavailable", error);
+        console.error("AI search intent parsing failed; falling back to local search", error);
+        setAiSearchIntent(null);
+        // AI failure is not a user-facing search error: continue with local card matching.
+        setAiSearchError(true);
       });
+
   };
 
   const resetSearch = () => {
@@ -3680,6 +4059,8 @@ export default function App() {
     setActiveCategory(null);
     setRecommendationFiltersOpen(false);
     setAiReplyText("");
+    setAiSearchIntent(null);
+    setAiSearchError(false);
   };
   const liveMasterRecommendations = buildStoredMasterCards(masterCards);
   const cityMasterCards = liveMasterRecommendations.filter((card) =>
@@ -3688,23 +4069,15 @@ export default function App() {
     card.city.trim().toLowerCase() === selectedCity.toLowerCase()
   );
 
-  const filteredMasters = appliedSearch.trim()
-    ? cityMasterCards
-        .filter((card) =>
-          card.tags.some((tag) =>
-            tag.toLowerCase().includes(appliedSearch.trim().toLowerCase())
-          )
-        )
-        .map((card) => {
-          const matchedService = card.tags.find((tag) =>
-            tag.toLowerCase().includes(appliedSearch.trim().toLowerCase())
-          );
+  const filteredMasters = cityMasterCards
+    .filter((card) => {
+      if (aiSearchError) {
+        return cardMatchesLocalSearch(card, appliedSearch);
+      }
 
-          return matchedService
-            ? { ...card, type: matchedService }
-            : card;
-        })
-    : cityMasterCards;
+      return cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null);
+    })
+    .filter((card) => cardMatchesFilters(card, activeFilters));
 
   const searchDraftChanged =
     searchQuery.trim() !== appliedSearch.trim();
@@ -3835,98 +4208,141 @@ export default function App() {
           .filter(Boolean)
           .join(" and ")} for your request`;
 
-  // Показуємо реальну відповідь AI, якщо вона встигла прийти й запит не змінився
-  // відтоді; інакше — той самий локальний підрахунок карток, що й раніше.
-  const finalAssistantMessage = aiReplyText || assistantResultMessage;
+  // Visible assistant copy is deterministic and short. AI prose stays internal.
+  const finalAssistantMessage = assistantResultMessage;
+  void aiReplyText;
 
   void masterRegistryVersion;
 
+  const handleApplyFilters = (filters: FilterState) => {
+    setActiveFilters(filters);
+    setRecommendationFiltersOpen(false);
+    setGreetingDismissed(true);
+  };
+
+  const handleResetFilters = (filters: FilterState) => {
+    setFilterDraft(filters);
+    setActiveFilters(filters);
+  };
+
+  const retryMarketplaceNow = () => {
+    if (marketplaceRetryTimerRef.current !== null) {
+      window.clearTimeout(marketplaceRetryTimerRef.current);
+      marketplaceRetryTimerRef.current = null;
+    }
+
+    setMarketplaceError(false);
+    setMarketplaceReloadKey((value) => value + 1);
+  };
+
   useEffect(() => {
     let cancelled = false;
-    let salonsFailed = false;
-    let mastersFailed = false;
+    let retryIndex = 0;
+    const retryDelays = [3000, 6000, 12000, 24000, 30000];
 
-    setMarketplaceLoading(true);
-    setMarketplaceError(false);
+    const clearRetryTimer = () => {
+      if (marketplaceRetryTimerRef.current !== null) {
+        window.clearTimeout(marketplaceRetryTimerRef.current);
+        marketplaceRetryTimerRef.current = null;
+      }
+    };
 
-    Promise.all([
-      fetchSalons().catch((error) => {
-        salonsFailed = true;
-        console.error("Salons are unavailable", error);
-        return [] as SalonApi[];
-      }),
-      fetchMasters().catch((error) => {
-        mastersFailed = true;
-        console.error("Masters are unavailable", error);
-        return [] as MasterApi[];
-      }),
-      fetchServices().catch((error) => {
-        console.warn("Service prices are unavailable", error);
-        return [] as ServiceApi[];
-      }),
-    ])
-      .then(([salons, masters, services]) => {
-        if (cancelled) return;
+    const loadMarketplace = async (isRetry: boolean) => {
+      if (cancelled) return;
 
-        setMarketplaceError(salonsFailed && mastersFailed);
+      if (isRetry) {
+        setMarketplaceRetrying(true);
+      } else {
+        setMarketplaceLoading(true);
+      }
 
-        if (import.meta.env.DEV) {
-          console.info("[Beauty AI marketplace]", {
-            salons: salons.length,
-            masters: masters.length,
-            services: services.length,
-            selectedCity,
-          });
+      const [salonsResult, mastersResult, servicesResult] = await Promise.all([
+        fetchSalons()
+          .then((data) => ({ ok: true as const, data }))
+          .catch((error) => {
+            console.error("Salons are unavailable", error);
+            return { ok: false as const, data: null };
+          }),
+        fetchMasters()
+          .then((data) => ({ ok: true as const, data }))
+          .catch((error) => {
+            console.error("Masters are unavailable", error);
+            return { ok: false as const, data: null };
+          }),
+        fetchServices()
+          .then((data) => ({ ok: true as const, data }))
+          .catch((error) => {
+            console.warn("Service prices are unavailable", error);
+            return { ok: false as const, data: [] as ServiceApi[] };
+          }),
+      ]);
+
+      if (cancelled) return;
+
+      const salonsFailed = !salonsResult.ok;
+      const mastersFailed = !mastersResult.ok;
+      const salons = salonsResult.data ?? [];
+      const masters = mastersResult.data ?? [];
+      const services = servicesResult.data;
+
+      if (salonsResult.ok || mastersResult.ok) {
+        marketplaceHasRespondedRef.current = true;
+      }
+
+      setMarketplaceError(
+        salonsFailed && mastersFailed && !marketplaceHasRespondedRef.current
+      );
+
+      if (import.meta.env.DEV) {
+        console.info("[Beauty AI marketplace]", {
+          salons: salonsResult.ok ? salons.length : "unavailable",
+          masters: mastersResult.ok ? masters.length : "unavailable",
+          services: servicesResult.ok ? services.length : "unavailable",
+          selectedCity,
+          retry: isRetry,
+        });
+      }
+
+      const salonTagsById = new Map<number, Set<string>>();
+      const masterPricesById = new Map<number, number[]>();
+      const masterServicesById = new Map<number, Set<string>>();
+      const servicePriceById = new Map<number, number>();
+      const servicePriceByName = new Map<string, number>();
+
+      services.forEach((service: ServiceApi) => {
+        const catalogPrice = Number(service.price);
+        if (Number.isFinite(catalogPrice) && catalogPrice > 0) {
+          servicePriceById.set(service.id, catalogPrice);
+          servicePriceByName.set(service.name.trim().toLowerCase(), catalogPrice);
         }
 
-        const salonTagsById = new Map<number, Set<string>>();
-        const salonCityById = new Map<number, string>(
-          salons
-            .map((salon) => [salon.id, getSalonCityName(salon)] as const)
-            .filter(([, city]) => Boolean(city))
-        );
-        const masterPricesById = new Map<number, number[]>();
-        const masterServicesById = new Map<number, Set<string>>();
+        const price = Number(service.price);
+        const hasValidPrice = Number.isFinite(price) && price > 0;
 
-        const servicePriceById = new Map<number, number>();
-        const servicePriceByName = new Map<string, number>();
+        service.masters?.forEach((masterRef) => {
+          const rawId =
+            typeof masterRef === "object" && masterRef
+              ? masterRef.id
+              : masterRef;
 
-        services.forEach((service: ServiceApi) => {
-          const catalogPrice = Number(service.price);
-          if (Number.isFinite(catalogPrice) && catalogPrice > 0) {
-            servicePriceById.set(service.id, catalogPrice);
-            servicePriceByName.set(service.name.trim().toLowerCase(), catalogPrice);
+          const masterId = Number(rawId);
+          if (!Number.isFinite(masterId)) return;
+
+          const serviceNames =
+            masterServicesById.get(masterId) ?? new Set<string>();
+
+          serviceNames.add(service.name);
+          masterServicesById.set(masterId, serviceNames);
+
+          if (hasValidPrice) {
+            const prices = masterPricesById.get(masterId) ?? [];
+            prices.push(price);
+            masterPricesById.set(masterId, prices);
           }
-
-          const price = Number(service.price);
-          const hasValidPrice = Number.isFinite(price) && price > 0;
-
-          service.masters?.forEach((masterRef) => {
-            const rawId =
-              typeof masterRef === "object" && masterRef
-                ? masterRef.id
-                : masterRef;
-
-            const masterId = Number(rawId);
-
-            if (!Number.isFinite(masterId)) return;
-
-            const serviceNames =
-              masterServicesById.get(masterId) ?? new Set<string>();
-
-            serviceNames.add(service.name);
-            masterServicesById.set(masterId, serviceNames);
-
-            if (hasValidPrice) {
-              const prices =
-                masterPricesById.get(masterId) ?? [];
-
-              prices.push(price);
-              masterPricesById.set(masterId, prices);
-            }
-          });
         });
+      });
 
+      if (mastersResult.ok) {
         masters.forEach((master) => {
           const serviceNames =
             master.services
@@ -3934,27 +4350,25 @@ export default function App() {
               .filter(Boolean) ?? [];
 
           master.salons?.forEach((salon) => {
-            const tags =
-              salonTagsById.get(salon.id) ??
-              new Set<string>();
-
-            serviceNames.forEach((serviceName) =>
-              tags.add(serviceName)
-            );
-
+            const tags = salonTagsById.get(salon.id) ?? new Set<string>();
+            serviceNames.forEach((serviceName) => tags.add(serviceName));
             salonTagsById.set(salon.id, tags);
           });
         });
+      }
 
+      // Partial success is intentional: a failed endpoint never wipes data that
+      // another successful request already loaded on a previous attempt.
+      if (salonsResult.ok) {
         setSalonCards(
           salons.map((salon) => {
-            const salonMasterIds = masters
-              .filter((master) =>
-                master.salons?.some(
-                  (item) => item.id === salon.id
-                )
-              )
-              .map((master) => master.id);
+            const salonMasterIds = mastersResult.ok
+              ? masters
+                  .filter((master) =>
+                    master.salons?.some((item) => item.id === salon.id)
+                  )
+                  .map((master) => master.id)
+              : [];
 
             const salonPrices = salonMasterIds.flatMap((masterId) => {
               const master = masters.find((item) => item.id === masterId);
@@ -3980,14 +4394,14 @@ export default function App() {
 
             return salonToCard(
               salon,
-              Array.from(
-                salonTagsById.get(salon.id) ?? []
-              ),
+              Array.from(salonTagsById.get(salon.id) ?? []),
               salonPrices
             );
           })
         );
+      }
 
+      if (mastersResult.ok) {
         setMasterCards(
           masters
             .filter((master) => !master.salons?.length)
@@ -4020,23 +4434,62 @@ export default function App() {
               );
             })
         );
-      })
-      .catch((error) => {
-        console.error("Failed to load marketplace cards from API", error);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setMarketplaceLoading(false);
-        }
-      });
+      }
+
+      setMarketplaceLoading(false);
+      setMarketplaceRetrying(false);
+
+      if (salonsFailed || mastersFailed) {
+        const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
+        retryIndex += 1;
+        clearRetryTimer();
+        marketplaceRetryTimerRef.current = window.setTimeout(() => {
+          marketplaceRetryTimerRef.current = null;
+          void loadMarketplace(true);
+        }, delay);
+      } else {
+        retryIndex = 0;
+        clearRetryTimer();
+        setMarketplaceError(false);
+      }
+    };
+
+    void loadMarketplace(false);
 
     return () => {
       cancelled = true;
+      clearRetryTimer();
+      setMarketplaceRetrying(false);
     };
-  }, [selectedCity]);
+  }, [selectedCity, marketplaceReloadKey]);
 
   useEffect(() => {
-    if (marketplaceLoading || !pendingSearchQuery) {
+    if (marketplaceLoading || !citySearchPending) return;
+
+    const minimumAnimationMs = 2200;
+    const elapsed = performance.now() - searchStartedAtRef.current;
+    const remaining = Math.max(0, minimumAnimationMs - elapsed);
+
+    searchFinishTimeoutRef.current = window.setTimeout(() => {
+      setCitySearchPending(false);
+      setIsSearching(false);
+      searchFinishTimeoutRef.current = null;
+    }, remaining);
+
+    return () => {
+      if (searchFinishTimeoutRef.current !== null) {
+        window.clearTimeout(searchFinishTimeoutRef.current);
+        searchFinishTimeoutRef.current = null;
+      }
+    };
+  }, [marketplaceLoading, citySearchPending]);
+
+  useEffect(() => {
+    if (
+      marketplaceLoading ||
+      !pendingSearchQuery ||
+      (!aiSearchIntent && !aiSearchError)
+    ) {
       return;
     }
 
@@ -4057,7 +4510,13 @@ export default function App() {
         searchFinishTimeoutRef.current = null;
       }
     };
-  }, [marketplaceLoading, pendingSearchQuery]);
+  }, [marketplaceLoading, pendingSearchQuery, aiSearchIntent, aiSearchError]);
+
+  useEffect(() => {
+    return () => {
+      aiRequestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle(
@@ -4161,16 +4620,16 @@ export default function App() {
     const onOpenLocation = (event: Event) => {
       const detail = (event as CustomEvent<{ name?: string; district?: string; distance?: string }>).detail;
       if (!detail?.name || !detail.district) return;
-      const coords = LOCATION_COORDINATES[detail.name] ?? DISTRICT_FALLBACKS[detail.district] ?? [50.4412, 30.5390];
+      const coords = resolveLocationCoords(detail.name, detail.district, selectedCity);
       setSelectedMapLocation({ name: detail.name, district: detail.district, distance: detail.distance || "", lat: coords[0], lng: coords[1] });
       setView("home");
     };
     window.addEventListener("beautyai:open-location", onOpenLocation as EventListener);
     return () => window.removeEventListener("beautyai:open-location", onOpenLocation as EventListener);
-  }, []);
+  }, [selectedCity]);
 
   const handleLocationClick = (name: string, district: string, distance: string) => {
-    const coords = LOCATION_COORDINATES[name] ?? DISTRICT_FALLBACKS[district] ?? [50.4412, 30.5390];
+    const coords = resolveLocationCoords(name, district, selectedCity);
 
     setSelectedMapLocation({
       name,
@@ -4211,6 +4670,11 @@ export default function App() {
         toggleClientFavorite(pendingClientAction.data);
       }
       setPendingClientAction(null);
+      setView("home");
+      return;
+    }
+
+    if (nextUser.role === "client") {
       setView("home");
       return;
     }
@@ -4263,6 +4727,11 @@ export default function App() {
           ))}
         </nav>
         <div className="header-right">
+          <div
+            className={`header-context ${
+              user ? "header-context--logged-in" : "header-context--logged-out"
+            }`}
+          >
           <button
             type="button"
             className="city-selector"
@@ -4297,9 +4766,11 @@ export default function App() {
             onClick={() => setLang(lang === "ua" ? "en" : "ua")}
             aria-label="Switch language"
           >
-            {lang === "ua" ? "UA" : "EN"} 
+            {lang === "ua" ? "UA" : "EN"}
           </button>
-          
+          </div>
+
+          <div className="header-account-slot">
           {user ? (
             <div className="account-menu-wrap">
               <button
@@ -4343,6 +4814,7 @@ export default function App() {
               {t.loginGoogle}
             </button>
           )}
+          </div>
         </div>
       </header>
 
@@ -4433,6 +4905,90 @@ export default function App() {
       </section>
 
     <section className="section ai-recommendations" id="salons">
+      {!isSearching && hasSearch && (
+        <div
+          className={`recommendations-global-filter${
+            recommendationFiltersOpen ? " is-open" : ""
+          }`}
+        >
+          <div className="recommendations-filter-menu recommendations-filter-menu-global">
+            <button
+              className={`recommendations-filter-toggle recommendations-ai-settings-toggle ${
+                recommendationFiltersOpen ? "is-open" : ""
+              }`}
+              type="button"
+              aria-expanded={recommendationFiltersOpen}
+              aria-label={
+                lang === "ua"
+                  ? "Налаштувати AI-підбір"
+                  : "Customize AI recommendations"
+              }
+              data-tooltip={
+                lang === "ua"
+                  ? "Налаштувати AI-підбір"
+                  : "Customize AI recommendations"
+              }
+              onClick={() => setRecommendationFiltersOpen((open) => !open)}
+            >
+              <img
+                src={settingsIcon}
+                alt=""
+                aria-hidden="true"
+                className="recommendations-ai-settings-icon"
+              />
+            </button>
+          </div>
+
+          {recommendationFiltersOpen && (
+            <div className="recommendations-filter-panel recommendations-filter-panel-global">
+              <div className="recommendations-filter-panel-heading">
+                <div className="recommendations-filter-heading-row">
+                  <strong>
+                    {lang === "ua" ? (
+                      <>
+                        НАЛАШТУВАННЯ{" "}
+                        <span className="recommendations-filter-ai">AI</span>
+                        {" "}ПІДБОРУ
+                      </>
+                    ) : (
+                      <>
+                        <span className="recommendations-filter-ai">AI</span>
+                        {" "}MATCH SETTINGS
+                      </>
+                    )}
+                  </strong>
+
+                  {assistantEnabled && assistantUiState === "help" && (
+                    <BeautyAssistant
+                      state="help"
+                      className="assistant-filter-help"
+                    />
+                  )}
+                </div>
+
+                <span>
+                  {lang === "ua"
+                    ? "Уточніть параметри для точніших рекомендацій"
+                    : "Refine the parameters for more accurate recommendations"}
+                </span>
+              </div>
+
+              <FilterBar
+                lang={lang}
+                value={filterDraft}
+                onChange={setFilterDraft}
+                onApply={handleApplyFilters}
+                onReset={handleResetFilters}
+                onCityChange={(slug) => {
+                  const name = CITY_SLUG_TO_NAME[slug];
+                  if (name) chooseCity(name);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {isSearching ? (
         <div
           className="recommendations-loading-panel"
@@ -4517,15 +5073,20 @@ export default function App() {
               ) : (
                 <div className="recommendations-assistant-off-copy">
                   {marketplaceError
-                    ? (lang === "ua" ? "Сталася помилка. Спробуйте ще раз." : "Something went wrong. Try again.")
+                    ? (lang === "ua" ? "Сталася помилка." : "Something went wrong.")
                     : (lang === "ua" ? "Нічого не знайдено. Спробуйте інший запит." : "Nothing found. Try another search.")}
                 </div>
               )}
+
             </div>
-          ) : (
+          ) : assistantUiState === "success" ? (
             <>
               {filteredSalons.length > 0 && (
-                <div className="recommendation-row recommendation-row-salons">
+                <div
+                  className={`recommendation-row recommendation-row-salons${
+                    filteredMasters.length === 0 ? " recommendation-row-standalone" : ""
+                  }`}
+                >
                   {assistantEnabled &&
                     assistantUiState === "success" &&
                     assistantResultTarget === "salons" &&
@@ -4537,11 +5098,7 @@ export default function App() {
                     />
                   )}
 
-                  <div
-                    className={`recommendation-intro ${
-                      recommendationFiltersOpen ? "filters-open" : ""
-                    }`}
-                  >
+                  <div className="recommendation-intro">
                     <div className="recommendation-intro-head">
                       <div className="recommendation-title-anchor">
                         <img
@@ -4552,34 +5109,6 @@ export default function App() {
                         />
                         <h2>{t.sections.recommendations.title}</h2>
                       </div>
-
-                      <div className="recommendations-filter-menu recommendations-filter-menu-inline">
-                        <button
-                          className={`recommendations-filter-toggle recommendations-ai-settings-toggle ${
-                            recommendationFiltersOpen ? "is-open" : ""
-                          }`}
-                          type="button"
-                          aria-expanded={recommendationFiltersOpen}
-                          aria-label={
-                            lang === "ua"
-                              ? "Налаштувати AI-підбір"
-                              : "Customize AI recommendations"
-                          }
-                          data-tooltip={
-                            lang === "ua"
-                              ? "Налаштувати AI-підбір"
-                              : "Customize AI recommendations"
-                          }
-                          onClick={() => setRecommendationFiltersOpen((open) => !open)}
-                        >
-                          <img
-                            src={settingsIcon}
-                            alt=""
-                            aria-hidden="true"
-                            className="recommendations-ai-settings-icon"
-                          />
-                        </button>
-                      </div>
                     </div>
 
                     <p className="section-sub">
@@ -4587,64 +5116,26 @@ export default function App() {
                         ? "Найкращі збіги за вашим запитом"
                         : "Best matches for your request"}
                     </p>
-
-                    {recommendationFiltersOpen && (
-                      <div className="recommendations-filter-panel recommendations-filter-panel-inline">
-                        <div className="recommendations-filter-panel-heading">
-                          <div className="recommendations-filter-heading-row">
-                            <strong>
-                              {lang === "ua" ? (
-                                <>
-                                  НАЛАШТУВАННЯ{" "}
-                                  <span className="recommendations-filter-ai">AI</span>
-                                  {" "}ПІДБОРУ
-                                </>
-                              ) : (
-                                <>
-                                  <span className="recommendations-filter-ai">AI</span>
-                                  {" "}MATCH SETTINGS
-                                </>
-                              )}
-                            </strong>
-
-                            {assistantEnabled &&
-                              assistantUiState === "help" && (
-                                <BeautyAssistant
-                                  state="help"
-                                  className="assistant-filter-help"
-                                />
-                              )}
-                          </div>
-
-                          <span>
-                            {lang === "ua"
-                              ? "Уточніть параметри для точніших рекомендацій"
-                              : "Refine the parameters for more accurate recommendations"}
-                          </span>
-                        </div>
-
-                        <FilterBar
-                          lang={lang}
-                          onFilterChange={(filters: any) => console.log(filters)}
-                        />
-                      </div>
-                    )}
                   </div>
 
-                  <RecommendationCarousel
-                    cards={filteredSalons}
-                    t={t}
-                    variant="salons"
-                    onLocationClick={handleLocationClick}
-                    hasSearch={hasSearch}
-                  />
+                  {filteredSalons.length > 0 && (
+                    <RecommendationCarousel
+                      cards={filteredSalons}
+                      t={t}
+                      variant="salons"
+                      onLocationClick={handleLocationClick}
+                      hasSearch={hasSearch}
+                    />
+                  )}
                 </div>
               )}
 
               {filteredMasters.length > 0 && (
                 <div
                   ref={mastersSectionRef}
-                  className="recommendation-row recommendation-row-masters"
+                  className={`recommendation-row recommendation-row-masters${
+                    filteredSalons.length === 0 ? " recommendation-row-standalone" : ""
+                  }`}
                   id="masters"
                 >
                   {assistantEnabled &&
@@ -4699,7 +5190,7 @@ export default function App() {
                 </div>
               )}
             </>
-          )}
+          ) : null}
         </>
       )}
     </section>
@@ -4713,7 +5204,7 @@ export default function App() {
           </div>
 
           <KyivTopSection
-            cards={nearby}
+            cards={cityTopCards}
             lang={lang}
             city={selectedCity || "Київ"}
             onLocationClick={handleLocationClick}
@@ -4722,7 +5213,7 @@ export default function App() {
           <PartnerOffersSection
             title={t.sections.partners.title}
             subtitle={t.sections.partners.subtitle}
-            offers={partners}
+            offers={partnersCards}
             lang={lang}
             onLocationClick={handleLocationClick}
           />
@@ -4745,7 +5236,7 @@ export default function App() {
                 <path d="M12 22c4.4 0 8-3.3 8-7.8 0-3.2-1.8-5.9-4.7-8.2.2 2.4-.8 4.3-2.7 5.5.3-3.7-1.7-7-5.5-9.5.1 3.7-1.7 6.4-3.4 8.5C2.6 11.9 2 13.6 2 15.3 2 19 6.1 22 12 22Z" />
               </svg>
             }
-            cards={topRated}
+            cards={topRatedCards}
             t={t}
             lang={lang}
             variant="worth-trying"
@@ -4762,7 +5253,7 @@ export default function App() {
                 NEW
               </span>
             }
-            cards={fresh}
+            cards={freshCards}
             t={t}
             lang={lang}
             variant="fresh"
@@ -4773,7 +5264,14 @@ export default function App() {
         </>
       )}
       
-      <section className="about-section" id="about">
+      <section
+        className={`about-section ${
+          hasSearch && !isSearching && assistantUiState === "success"
+            ? "about-section--with-results"
+            : "about-section--empty"
+        }`}
+        id="about"
+      >
         <div className="about-main">
           <h2>{t.about.title}</h2>
           <p>{t.about.description}</p>
@@ -4859,7 +5357,11 @@ export default function App() {
         <div className="booking-auth-gate-overlay" role="presentation" onMouseDown={() => setClientAuthGate(null)}>
           <div className="booking-auth-gate" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <button className="booking-auth-gate-close" type="button" onClick={() => setClientAuthGate(null)}>×</button>
-            <span className="booking-auth-gate-kicker">BEAUTY AI</span>
+            <BeautyAssistant
+              state="help"
+              className="booking-auth-gate-help"
+              ariaLabel={lang === "ua" ? "Помічник Beauty AI" : "Beauty AI helper"}
+            />
             <h3>{clientAuthGate.action === "booking" ? (lang === "ua" ? "Увійдіть, щоб записатися" : "Sign in to book") : (lang === "ua" ? "Увійдіть, щоб зберегти" : "Sign in to save")}</h3>
             <p>{clientAuthGate.action === "booking" ? (lang === "ua" ? `Щоб забронювати час у ${clientAuthGate.data.title}, увійдіть у свій акаунт або зареєструйтесь.` : `Sign in or create an account to book ${clientAuthGate.data.title}.`) : (lang === "ua" ? `Щоб додати ${clientAuthGate.data.title} у «Сподобалось», увійдіть або зареєструйтесь.` : `Sign in or create an account to save ${clientAuthGate.data.title}.`)}</p>
             <button type="button" className="cta-btn" onClick={() => { setPendingClientAction(clientAuthGate); setClientAuthGate(null); setAuthIntent({ mode: "login", role: "client" }); setAuthOpen(true); }}>
@@ -5014,7 +5516,7 @@ export default function App() {
             >
               ×
             </button>
-            <MapSection lang={lang} selectedLocation={selectedMapLocation} />
+            <MapSection lang={lang} selectedLocation={selectedMapLocation} city={selectedCity || "Київ"} />
           </div>
         </div>
       )}

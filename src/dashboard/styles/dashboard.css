@@ -1523,10 +1523,8 @@
 }
 
 .kyiv-cover-shade {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(180deg, rgba(20,15,27,.03) 0%, rgba(20,15,27,0) 60%, rgba(20,15,27,.06) 100%);
+  display: none;
+  
 }
 
 /* Heart stays in the upper-right. Ranking lives inside the ribbon. */

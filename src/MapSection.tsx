@@ -27,7 +27,7 @@ type Salon = {
   lng: number;
 };
 
-const salons: Salon[] = [
+const KYIV_SALONS: Salon[] = [
   { id: "1", name: "Luna Beauty House", lat: 50.4380, lng: 30.5325 },
   { id: "2", name: "Nails Studio", lat: 50.4412, lng: 30.5401 },
   { id: "3", name: "Beauty Room", lat: 50.4465, lng: 30.5502 },
@@ -37,9 +37,33 @@ const salons: Salon[] = [
   { id: "7", name: "Beauty Point", lat: 50.4450, lng: 30.5350 },
 ];
 
+// Ті самі декоративні pin-и, але розкидані по різних районах Львова —
+// без хоч одного київського значення координат.
+const LVIV_SALONS: Salon[] = [
+  { id: "1", name: "Luna Beauty House", lat: 49.8419, lng: 24.0315 },
+  { id: "2", name: "Nails Studio", lat: 49.8452, lng: 24.0389 },
+  { id: "3", name: "Beauty Room", lat: 49.8290, lng: 24.0668 },
+  { id: "4", name: "Mon Chéri Salon", lat: 49.8598, lng: 24.0112 },
+  { id: "5", name: "Queen Studio", lat: 49.8108, lng: 24.0148 },
+  { id: "6", name: "Shine Beauty", lat: 49.7958, lng: 24.0451 },
+  { id: "7", name: "Beauty Point", lat: 49.8424, lng: 23.9958 },
+];
+
 const KYIV_CENTER: [number, number] = [50.4412, 30.5390];
 // Demo current-user position around Pechersk. Later this can come from geolocation/API.
 const USER_LOCATION: [number, number] = [50.4395, 30.5355];
+
+type CityName = "Київ" | "Львів";
+
+// Стартова/дефолтна точка для Львова — приблизно площа Ринок. Використовується
+// і як center мапи, і як origin для маршруту/відстані, коли city === "Львів".
+const LVIV_DEFAULT_ORIGIN = {
+  lat: 49.8419,
+  lng: 24.0315,
+};
+const LVIV_CENTER: [number, number] = [LVIV_DEFAULT_ORIGIN.lat, LVIV_DEFAULT_ORIGIN.lng];
+const LVIV_ORIGIN: [number, number] = [LVIV_DEFAULT_ORIGIN.lat, LVIV_DEFAULT_ORIGIN.lng];
+
 
 type SelectedMapLocation = {
   name: string;
@@ -52,6 +76,7 @@ type SelectedMapLocation = {
 type MapSectionProps = {
   lang: "ua" | "en";
   selectedLocation?: SelectedMapLocation | null;
+  city?: CityName;
 };
 
 function haversineKm(
@@ -72,8 +97,10 @@ function haversineKm(
 }
 
 function FocusSelectedLocation({
+  origin,
   selectedLocation,
 }: {
+  origin: [number, number];
   selectedLocation?: SelectedMapLocation | null;
 }) {
   const map = useMap();
@@ -82,7 +109,7 @@ function FocusSelectedLocation({
     if (!selectedLocation) return;
 
     const target: [number, number] = [selectedLocation.lat, selectedLocation.lng];
-    const bounds = L.latLngBounds([USER_LOCATION, target]);
+    const bounds = L.latLngBounds([origin, target]);
 
     map.fitBounds(bounds, {
       padding: [55, 55],
@@ -90,17 +117,22 @@ function FocusSelectedLocation({
       animate: true,
       duration: 0.8,
     });
-  }, [map, selectedLocation]);
+  }, [map, origin, selectedLocation]);
 
   return null;
 }
 
-export default function MapSection({ lang, selectedLocation }: MapSectionProps) {
+export default function MapSection({ lang, selectedLocation, city = "Київ" }: MapSectionProps) {
+  const isLviv = city === "Львів";
+  const origin: [number, number] = isLviv ? LVIV_ORIGIN : USER_LOCATION;
+  const mapCenter: [number, number] = isLviv ? LVIV_CENTER : KYIV_CENTER;
+
   const target: [number, number] | null = selectedLocation
     ? [selectedLocation.lat, selectedLocation.lng]
     : null;
 
-  const distanceKm = target ? haversineKm(USER_LOCATION, target) : null;
+  const distanceKm = target ? haversineKm(origin, target) : null;
+  const mapSalons = isLviv ? LVIV_SALONS : KYIV_SALONS;
 
   return (
     <div className="map-section" id="map">
@@ -133,14 +165,14 @@ export default function MapSection({ lang, selectedLocation }: MapSectionProps) 
 
             {selectedLocation
               ? selectedLocation.name
-              : lang === "ua"
-                ? "Печерський"
-                : "Pechersk"}
+              : isLviv
+                ? (lang === "ua" ? "Галицький" : "Halytskyi")
+                : (lang === "ua" ? "Печерський" : "Pechersk")}
           </span>
         </div>
 
         <MapContainer
-          center={KYIV_CENTER}
+          center={mapCenter}
           zoom={13}
           scrollWheelZoom={true}
           zoomControl={false}
@@ -151,13 +183,14 @@ export default function MapSection({ lang, selectedLocation }: MapSectionProps) 
           }}
         >
           <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            attribution='&copy; OpenStreetMap contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          <FocusSelectedLocation selectedLocation={selectedLocation} />
+          <FocusSelectedLocation origin={origin} selectedLocation={selectedLocation} />
 
-          {salons.map((salon) => (
+          {!selectedLocation &&
+            mapSalons.map((salon) => (
             <Marker
               key={salon.id}
               position={[salon.lat, salon.lng]}
@@ -170,7 +203,7 @@ export default function MapSection({ lang, selectedLocation }: MapSectionProps) 
           {target && selectedLocation && (
             <>
               <CircleMarker
-                center={USER_LOCATION}
+                center={origin}
                 radius={7}
                 pathOptions={{
                   color: "#ffffff",
@@ -180,13 +213,18 @@ export default function MapSection({ lang, selectedLocation }: MapSectionProps) 
                 }}
                 className="map-user-dot"
               >
-                <Tooltip direction="top" offset={[0, -8]}>
+                <Tooltip
+                  permanent
+                  direction="top"
+                  offset={[0, -10]}
+                  className="map-user-location-label"
+                >
                   {lang === "ua" ? "Ви тут" : "You are here"}
                 </Tooltip>
               </CircleMarker>
 
               <Polyline
-                positions={[USER_LOCATION, target]}
+                positions={[origin, target]}
                 pathOptions={{
                   color: "#735a92",
                   weight: 3,
