@@ -374,8 +374,7 @@ export async function updateMyProfilePhoto(file: Blob | File): Promise<UserProfi
 
 export type ClientAppointmentApi = {
   id: number;
-  start: string;
-  end: string;
+  master_id?: number | null;
   status: string;
   created_at: string;
   appointment_date: string;
@@ -389,14 +388,16 @@ export type ClientAppointmentApi = {
 };
 
 type ClientAppointmentListApi = {
-  id: number;
-  master: number;
-  salon?: number | null;
-  service: number;
-  start: string;
-  end: string;
-  status: string;
-  created_at: string;
+  appointment_id: number;
+  appointment_date?: string | null;
+  appointment_time?: string | null;
+  client_name?: string | null;
+  master_name?: string | null;
+  salon_name?: string | null;
+  service_name?: string | null;
+  appointment_status: string;
+  total_price?: string | null;
+  created_date: string;
 };
 
 type AppointmentDetailApi = {
@@ -408,6 +409,7 @@ type AppointmentDetailApi = {
   service_price: string;
   salon_name: string;
   salon_address: string;
+  master_id?: number | null;
   master_name?: string | null;
   created_date: string;
 };
@@ -437,43 +439,41 @@ export async function fetchMyAppointments(): Promise<ClientAppointmentApi[]> {
 
   return Promise.all(
     rows.map(async (row) => {
-      const fallback = appointmentDateParts(row.start);
+      const id = row.appointment_id;
 
       try {
         const detail = await apiGet<AppointmentDetailApi>(
-          `/api/appointments/${row.id}/`
+          `/api/appointments/${id}/`
         );
 
         return {
-          id: row.id,
-          start: row.start,
-          end: row.end,
-          status: row.status,
-          created_at: row.created_at,
-          appointment_date: detail.appointment_date || fallback.date,
-          appointment_time: detail.appointment_time || fallback.time,
-          appointment_status: detail.appointment_status || row.status,
-          service_name: detail.service_name || "—",
-          service_price: detail.service_price || "0",
-          salon_name: detail.salon_name || "",
+          id,
+          master_id: detail.master_id ?? null,
+          status: detail.appointment_status || row.appointment_status,
+          created_at: detail.created_date || row.created_date,
+          appointment_date: detail.appointment_date || row.appointment_date || "",
+          appointment_time: detail.appointment_time || row.appointment_time || "",
+          appointment_status: detail.appointment_status || row.appointment_status,
+          service_name: detail.service_name || row.service_name || "—",
+          service_price: detail.service_price || row.total_price || "0",
+          salon_name: detail.salon_name || row.salon_name || "",
           salon_address: detail.salon_address || "",
-          master_name: detail.master_name || "",
+          master_name: detail.master_name || row.master_name || "",
         };
       } catch {
         return {
-          id: row.id,
-          start: row.start,
-          end: row.end,
-          status: row.status,
-          created_at: row.created_at,
-          appointment_date: fallback.date,
-          appointment_time: fallback.time,
-          appointment_status: row.status,
-          service_name: "—",
-          service_price: "0",
-          salon_name: "",
+          id,
+          master_id: null,
+          status: row.appointment_status,
+          created_at: row.created_date,
+          appointment_date: row.appointment_date || "",
+          appointment_time: row.appointment_time || "",
+          appointment_status: row.appointment_status,
+          service_name: row.service_name || "—",
+          service_price: row.total_price || "0",
+          salon_name: row.salon_name || "",
           salon_address: "",
-          master_name: "",
+          master_name: row.master_name || "",
         };
       }
     })
@@ -939,4 +939,11 @@ export async function fetchAppointmentReview(
 
 export async function deleteAppointmentReview(appointmentId: number | string): Promise<void> {
   await apiDelete(`/api/appointments/${appointmentId}/review/`);
+}
+export async function fetchPublicMasterReviews(masterId: number): Promise<AppointmentReviewApi[]> {
+  const all = await fetchAllPages<AppointmentReviewApi>("/api/reviews/");
+  return all.filter((review) => review.master === masterId);
+}
+export async function fetchAllPublicReviews(): Promise<AppointmentReviewApi[]> {
+  return fetchAllPages<AppointmentReviewApi>("/api/reviews/");
 }

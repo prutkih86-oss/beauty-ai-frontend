@@ -11,6 +11,8 @@ import {
   createAppointment,
   fetchAvailableSlots,
   fetchMasters,
+  fetchPublicMasterReviews,
+  fetchAllPublicReviews,
   fetchSalons,
   fetchServices,
   requestAiSearch,
@@ -678,7 +680,42 @@ function saveClientBooking(data: CardData, service: string, date: string, time: 
   };
   writeClientState({ ...state, bookings: [booking, ...state.bookings], notifications: [notification, ...state.notifications] });
 }
+function saveBackendClientBooking(
+  createdId: number | string | undefined,
+  data: CardData,
+  service: string,
+  date: string,
+  time: string,
+  phone: string
+) {
+  const currentUser = readStoredUser();
+  if (!currentUser?.email) return;
 
+  const key = `beautyai_client_state:${currentUser.email.trim().toLowerCase()}`;
+  let state: ClientState;
+  try {
+    const raw = localStorage.getItem(key);
+    state = raw ? { ...emptyClientState(), ...JSON.parse(raw) } : emptyClientState();
+  } catch {
+    state = emptyClientState();
+  }
+
+  const booking: ClientBooking = {
+    id: String(createdId ?? `pending-${Date.now()}`),
+    title: data.title, type: data.type, image: data.image, service, date, time, phone,
+    district: data.district, priceFrom: data.priceFrom, status: "confirmed",
+    code: String(createdId ?? ""), createdAt: new Date().toISOString(),
+  };
+  const notification: ClientNotification = {
+    id: `booking-${booking.id}`, title: "Запис підтверджено",
+    text: `${data.title} · ${service} · ${date} ${time}`,
+    createdAt: new Date().toISOString(), read: false,
+  };
+
+  const next = { ...state, bookings: [booking, ...state.bookings], notifications: [notification, ...state.notifications] };
+  localStorage.setItem(key, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("beautyai:client-state", { detail: { email: currentUser.email.trim().toLowerCase(), state: next } }));
+}
 type AuthTokens = { access: string; refresh: string };
 
 function saveAuthTokens(tokens: AuthTokens) {
@@ -1185,12 +1222,6 @@ function AuthModal({
           {ua ? "Продовжити з Google" : "Continue with Google"}
         </button>
 
-        <p className="auth-demo-note">
-          {ua
-            ? "Вхід і реєстрація клієнта через email/пароль підключені до бекенду. Google і реєстрація майстра — поки демо."
-            : "Client email/password sign-in and registration are wired to the backend. Google and master registration are still demo."}
-        </p>
-
           </>
         )}
       </div>
@@ -1459,12 +1490,13 @@ function BookingModal({
     setBookingError("");
 
     try {
-      await createAppointment({
-        master_id: data.backendMasterId,
-        service_id: selectedBackendService.id,
-        appointment_date: date,
-        appointment_time: time.length === 5 ? `${time}:00` : time,
-      });
+            const created = await createAppointment({
+              master_id: data.backendMasterId,
+              service_id: selectedBackendService.id,
+              appointment_date: date,
+              appointment_time: time.length === 5 ? `${time}:00` : time,
+            });
+      saveBackendClientBooking(created.id, { ...data, priceFrom: selectedPriceFrom }, service, date, time, phone);
       setConfirmed(true);
     } catch (error) {
       console.error("Failed to create appointment", error);
@@ -1675,11 +1707,13 @@ function ReviewsModal({
   data,
   t,
   reviews,
+  loading = false,
   onClose,
 }: {
   data: CardData;
   t: Translations;
   reviews: CardReview[];
+  loading?: boolean;
   onClose: () => void;
 }) {
   const ua = t.placeModal.close === "Закрити";
@@ -1713,11 +1747,15 @@ function ReviewsModal({
           <div className="reviews-modal-score">
             <strong>{data.rating.toFixed(1)}</strong>
             <span>★</span>
-            <small>{data.reviews} {t.placeModal.reviews}</small>
+            <small>{reviews.length} {t.placeModal.reviews}</small>
           </div>
         </div>
         <div className="reviews-modal-list">
-          {reviews.map((review, index) => (
+          {loading ? (
+            <p className="reviews-modal-empty">{ua ? "Завантаження відгуків…" : "Loading reviews…"}</p>
+          ) : reviews.length === 0 ? (
+            <p className="reviews-modal-empty">{ua ? "Ще немає відгуків." : "No reviews yet."}</p>
+          ) : reviews.map((review, index) => (
             <article className="reviews-modal-review" key={`${review.author}-${review.date ?? index}`}>
               <div className="reviews-modal-review-head">
                 <strong>{review.author}</strong>
@@ -2078,8 +2116,10 @@ function Card({
   const [showReason, setShowReason] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
+  const [showReviews, setShowReviews] = useState(false);
+  const [realReviews, setRealReviews] = useState<CardReview[] | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const isSolo = data.variant === "solo";
-
   const handleBook = () => {
     if (isSolo) {
       setShowProfile(false);
@@ -2116,7 +2156,28 @@ function Card({
   };
 
   const uaForCard = t.placeModal.close === "Закрити";
-
+  const openReviews = () => {
+    setShowReviews(true);
+    if (data.backendMasterId && realReviews === null && !reviewsLoading) {
+      setReviewsLoading(true);
+      fetchPublicMasterReviews(data.backendMasterId)
+        .then((rows) => {
+          setRealReviews(
+            rows
+              .slice()
+              .sort((a, b) => b.created_at.localeCompare(a.created_at))
+              .map((row) => ({
+                author: uaForCard ? "Клієнт Beauty AI" : "Beauty AI client",
+                rating: row.rating,
+                text: row.comment || "",
+                date: new Date(row.created_at).toLocaleDateString(uaForCard ? "uk-UA" : "en-GB"),
+              }))
+          );
+        })
+        .catch(() => setRealReviews([]))
+        .finally(() => setReviewsLoading(false));
+    }
+  };
   return (
     <div className={`card ${isSolo ? "card-solo" : ""}`}>
       <div
@@ -2146,12 +2207,12 @@ function Card({
           <button
             type="button"
             className="card-rating card-rating-button"
-            onClick={() => setShowProfile(true)}
-            aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
+            onClick={openReviews}
+            aria-label={`${data.rating.toFixed(1)}, ${realReviews?.length ?? data.reviews} ${t.placeModal.reviews}`}
           >
             <span className="star">★</span>
             <span>{data.rating.toFixed(1)}</span>
-            <span className="count">({data.reviews})</span>
+            <span className="count">({realReviews?.length ?? data.reviews})</span>
           </button>
         </div>
 
@@ -2231,7 +2292,14 @@ function Card({
           </div>
         )}
       </div>
-
+      {showReviews && (
+              <ReviewsModal
+                data={data}
+                t={t}
+                reviews={getPlaceReviews(data, t)}
+                onClose={() => setShowReviews(false)}
+              />
+            )}
       {showProfile && (
         <PlaceDetailsModal
           data={data}
@@ -2384,7 +2452,8 @@ const LOCAL_MASTER_IMAGES: Record<string, string> = {
 function masterToCard(
   master: MasterApi,
   prices: number[] = [],
-  serviceNamesFromApi: string[] = []
+  serviceNamesFromApi: string[] = [],
+  reviewsCount = 0
 ): CardData {
   const name =
     `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim();
@@ -2425,7 +2494,7 @@ function masterToCard(
       ? `Майстер · ${serviceNames[0]}`
       : "Майстер",
     rating: master.average_rating ?? 0,
-    reviews: 0,
+    reviews: reviewsCount,
     district: workplaceDistrict || workplaceCity || "Соло-майстер",
     city: workplaceCity || undefined,
     distance: "",
@@ -4739,7 +4808,7 @@ export default function App() {
         setMarketplaceLoading(true);
       }
 
-      const [salonsResult, mastersResult, servicesResult] = await Promise.all([
+      const [salonsResult, mastersResult, servicesResult, reviewsResult] = await Promise.all([
         fetchSalons()
           .then((data) => ({ ok: true as const, data }))
           .catch((error) => {
@@ -4757,6 +4826,12 @@ export default function App() {
           .catch((error) => {
             console.warn("Service prices are unavailable", error);
             return { ok: false as const, data: [] as ServiceApi[] };
+          }),
+        fetchAllPublicReviews()
+          .then((data) => ({ ok: true as const, data }))
+          .catch((error) => {
+            console.warn("Master reviews are unavailable", error);
+            return { ok: false as const, data: [] };
           }),
       ]);
 

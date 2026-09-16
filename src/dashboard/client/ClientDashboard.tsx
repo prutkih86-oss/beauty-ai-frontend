@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
-import { ApiError, cancelMyAppointment, createAppointmentReview, deleteAppointmentReview, fetchAppointmentReview, fetchMyAppointments, fetchMyProfile, updateAppointmentReview, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
+import { ApiError, cancelMyAppointment, createAppointmentReview, deleteAppointmentReview, fetchAppointmentReview, fetchMasters, fetchMyAppointments, fetchMyProfile, updateAppointmentReview, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
 
 type ClientFavorite = {
   title: string;
@@ -26,6 +26,7 @@ type ClientBooking = {
   time: string;
   phone: string;
   district: string;
+  hasSalon: boolean;
   priceFrom: string;
   status: "confirmed" | "completed" | "cancelled";
   code: string;
@@ -356,8 +357,8 @@ useEffect(() => {
       if (apiProfile.phone) setProfilePhone(apiProfile.phone);
       if (apiProfile.email) setProfileEmail(apiProfile.email);
       setProfileAvatar((currentAvatar) =>
-        apiProfile.photo ||
         savedProfile.avatar ||
+        apiProfile.photo ||
         initialClientState.profileAvatar ||
         currentAvatar ||
         makeInitialsAvatar(fullName || user.name)
@@ -373,34 +374,51 @@ useEffect(() => {
 
     (async () => {
       try {
-        const apiBookings = await fetchMyAppointments();
+        const [apiBookings, apiMasters] = await Promise.all([
+          fetchMyAppointments(),
+          fetchMasters().catch(() => []),
+        ]);
         if (cancelled) return;
 
         const cachedById = new Map(
           readClientState(user.email).bookings.map((booking) => [booking.id, booking])
         );
+        const mastersById = new Map(apiMasters.map((master) => [master.id, master]));
 
         const bookings: ClientBooking[] = apiBookings.map((appointment) => {
           const id = String(appointment.id);
           const cached = cachedById.get(id);
-          const masterName = appointment.master_name || (ua ? "Майстер" : "Master");
+          const master = appointment.master_id != null
+            ? mastersById.get(appointment.master_id)
+            : undefined;
+          const apiMasterName = master
+            ? `${master.first_name || ""} ${master.last_name || ""}`.trim()
+            : "";
+          const masterName =
+            appointment.master_name ||
+            apiMasterName ||
+            cached?.type ||
+            (ua ? "Майстер" : "Master");
           const salonName = appointment.salon_name || "";
           const title = salonName || masterName;
+          const masterPhoto =
+            master?.photo ||
+            findStoredMasterState(masterName)?.profile?.avatar ||
+            cached?.image ||
+            makeInitialsAvatar(masterName);
 
           return {
             id,
             title,
             type: masterName,
-            image:
-              findStoredMasterState(masterName)?.profile?.avatar ||
-              cached?.image ||
-              user.avatar,
+            image: masterPhoto,
             service: appointment.service_name || "—",
             date: appointment.appointment_date,
             time: appointment.appointment_time,
             phone: cached?.phone || "",
             district: appointment.salon_address || cached?.district || "—",
             priceFrom: String(Number(appointment.service_price || 0)),
+            hasSalon: Boolean(salonName),
             status: clientBookingStatus(
               appointment.appointment_status || appointment.status
             ),
@@ -581,12 +599,19 @@ useEffect(() => {
     setSelectedBooking(next.bookings.find((booking) => booking.id === id) ?? null);
   };
 
-  const submitReview = async (booking: ClientBooking) => {
-    if (booking.status !== "completed" || !reviewDraft.master || !reviewDraft.salon || reviewSaving) return;
+    const submitReview = async (booking: ClientBooking) => {
+    if (
+      booking.status !== "completed" ||
+      !reviewDraft.master ||
+      (booking.hasSalon && !reviewDraft.salon) ||
+      reviewSaving
+    ) return;
     const isEditing = Boolean(booking.reviewSubmitted);
     // Бекенд приймає лише одну загальну оцінку (1-5), а не окремо майстер/сервіс —
-    // тож надсилаємо середнє з двох мокових оцінок, округлене до цілого.
-    const overallRating = Math.round((reviewDraft.master + reviewDraft.salon) / 2);
+    // для соло-майстра (без салону) беремо лише оцінку майстра, інакше — середнє.
+    const overallRating = booking.hasSalon
+      ? Math.round((reviewDraft.master + reviewDraft.salon) / 2)
+      : reviewDraft.master;
     const comment = reviewDraft.comment.trim();
 
     setReviewSaving(true);
@@ -974,10 +999,28 @@ useEffect(() => {
                         </div>
 
                         <div className="client-liked-meta">
-                          <span>⌖ {item.distance}</span>
-                          <i>•</i>
-                          <span>{item.district}</span>
+                          <button
+                            type="button"
+                            className="card-location-link client-liked-location"
+                            onClick={() =>
+                              window.dispatchEvent(
+                                new CustomEvent("beautyai:open-location", {
+                                  detail: { name: item.title, district: item.district, distance: item.distance },
+                                })
+                              )
+                            }
+                            title={ua ? "Відкрити на карті" : "Open on map"}
+                          >
+                            <span className="district-pin">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+                                <circle cx="12" cy="10" r="2.5" />
+                              </svg>
+                            </span>
+                            {item.district}
+                          </button>
                         </div>
+                        
                       </div>
                     </article>
                   ))}
@@ -1127,14 +1170,16 @@ useEffect(() => {
                                 readonly
                               />
                             </div>
-                            <div>
-                              <span>{ua ? "Сервіс" : "Service"}</span>
-                              <Stars
-                                value={booking.reviewSalonRating ?? 0}
-                                label={ua ? "Оцінка сервісу" : "Service rating"}
-                                readonly
-                              />
-                            </div>
+                            {booking.hasSalon && (
+                              <div>
+                                <span>{ua ? "Сервіс" : "Service"}</span>
+                                <Stars
+                                  value={booking.reviewSalonRating ?? 0}
+                                  label={ua ? "Оцінка сервісу" : "Service rating"}
+                                  readonly
+                                />
+                              </div>
+                            )}
                           </aside>
                         </div>
                       )}
@@ -1153,16 +1198,18 @@ useEffect(() => {
                               />
                             </div>
 
-                            <div className="review-rating-block">
-                              <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
-                              <Stars
-                                value={reviewDraft.salon}
-                                onChange={(salon) =>
-                                  setReviewDraft((draft) => ({ ...draft, salon }))
-                                }
-                                label={ua ? "Рейтинг сервісу" : "Service rating"}
-                              />
-                            </div>
+                            {booking.hasSalon && (
+                              <div className="review-rating-block">
+                                <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
+                                <Stars
+                                  value={reviewDraft.salon}
+                                  onChange={(salon) =>
+                                    setReviewDraft((draft) => ({ ...draft, salon }))
+                                  }
+                                  label={ua ? "Рейтинг сервісу" : "Service rating"}
+                                />
+                              </div>
+                            )}
                           </div>
 
                           <label className="review-comment">
@@ -1415,16 +1462,18 @@ useEffect(() => {
                               />
                             </div>
 
-                            <div className="review-rating-block">
-                              <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
-                              <Stars
-                                value={reviewDraft.salon}
-                                onChange={(salon) =>
-                                  setReviewDraft((draft) => ({ ...draft, salon }))
-                                }
-                                label={ua ? "Рейтинг сервісу" : "Service rating"}
-                              />
-                            </div>
+                            {booking.hasSalon && (
+                              <div className="review-rating-block">
+                                <span>{ua ? "Салон / сервіс" : "Salon / service"}</span>
+                                <Stars
+                                  value={reviewDraft.salon}
+                                  onChange={(salon) =>
+                                    setReviewDraft((draft) => ({ ...draft, salon }))
+                                  }
+                                  label={ua ? "Рейтинг сервісу" : "Service rating"}
+                                />
+                              </div>
+                            )}
                           </div>
 
                           <label className="review-comment">
@@ -1446,7 +1495,7 @@ useEffect(() => {
                             <button
                               type="button"
                               className="review-submit-btn"
-                              disabled={!reviewDraft.master || !reviewDraft.salon || reviewSaving}
+                              disabled={!reviewDraft.master || (booking.hasSalon && !reviewDraft.salon) || reviewSaving}
                               onClick={() => submitReview(booking)}
                             >
                               {reviewSaving
