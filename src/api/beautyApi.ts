@@ -160,6 +160,18 @@ export type SalonApi = {
   external_booking_url?: string | null;
 };
 
+export type MasterWorkplaceApi = {
+  id?: number;
+  country?: string | null;
+  city_name?: string | null;
+  district?: string | null;
+  address?: string | null;
+  region?: string | null;
+  coordinates?: string | null;
+  timezone?: string | null;
+  city_tier?: string | null;
+};
+
 export type MasterApi = {
   id: number;
   first_name?: string;
@@ -167,6 +179,7 @@ export type MasterApi = {
   photo?: string | null;
   average_rating?: number | null;
   years_of_experience?: number;
+  workplace?: MasterWorkplaceApi | null;
   salons?: Array<{
     id: number;
     name: string;
@@ -248,7 +261,25 @@ export type AvailableSlotApi = {
   end: string;
 };
 
+type AvailableSlotByMasterApi = {
+  start_time: string;
+  end_time: string;
+  availability_status?: string;
+};
+
 export type AvailableSlotsByDateApi = Record<string, AvailableSlotApi[]>;
+
+function slotTime(value: string): string {
+  const match = value.match(/T(\d{2}:\d{2})/);
+  if (match) return match[1];
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
 
 export async function fetchAvailableSlots(params: {
   masterId: number;
@@ -270,18 +301,25 @@ export async function fetchAvailableSlots(params: {
     return Array.isArray(data?.[params.date]) ? data[params.date] : [];
   }
 
-  // Для соло-майстра Swagger документує query у description:
-  // master_id, service_id, date. Підтримуємо цей endpoint як fallback.
+  // Соло-майстер повертає start_time/end_time як ISO datetime.
+  // Нормалізуємо відповідь до спільного для UI формату { start, end }.
   query.set("master_id", String(params.masterId));
   query.set("service_id", String(params.serviceId));
   query.set("date", params.date);
 
-  const data = await apiGet<AvailableSlotApi[] | AvailableSlotsByDateApi>(
+  const data = await apiGet<AvailableSlotByMasterApi[]>(
     `/api/appointments/available-slots/by-master/?${query.toString()}`
   );
 
-  if (Array.isArray(data)) return data;
-  return Array.isArray(data?.[params.date]) ? data[params.date] : [];
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .filter((slot) => slot?.start_time && slot?.end_time)
+    .filter((slot) => !slot.availability_status || slot.availability_status === "available")
+    .map((slot) => ({
+      start: slotTime(slot.start_time),
+      end: slotTime(slot.end_time),
+    }));
 }
 
 export type CreateAppointmentPayload = {
@@ -616,7 +654,30 @@ export type AiChatResponse = {
   answer?: string;
   content?: string;
   detail?: string;
+  intent?: unknown;
 };
+
+export class AiRequestError extends Error {
+  status: number | null;
+
+  constructor(message: string, status: number | null = null) {
+    super(message);
+    this.name = "AiRequestError";
+    this.status = status;
+  }
+}
+
+export async function checkAiHealth(): Promise<boolean> {
+  const aiChatUrl = import.meta.env.VITE_AI_CHAT_URL?.trim() || "/ai-chat/chat";
+  const healthUrl = aiChatUrl.replace(/\/chat\/?(?:\?.*)?$/, "/health");
+
+  try {
+    const response = await fetch(healthUrl, { method: "GET" });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 export type AiSearchIntent = {
   serviceQuery: string | null;
@@ -627,6 +688,8 @@ export type AiSearchIntent = {
   minRating: number | null;
   venueType: "salon" | "solo" | "studio" | null;
   availability: "today" | "tomorrow" | "week" | null;
+  date: string | null;
+  time: string | null;
 };
 
 export async function sendAiChatMessage(
@@ -647,7 +710,7 @@ export async function sendAiChatMessage(
   const payload = (await response.json().catch(() => null)) as AiChatResponse | null;
 
   if (!response.ok) {
-    throw new Error(payload?.detail || `AI chat request failed (${response.status})`);
+    throw new AiRequestError(payload?.detail || `AI chat request failed (${response.status})`, response.status);
   }
 
   const data = payload ?? {};
@@ -687,6 +750,27 @@ function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[]):
   return allowed.includes(normalized as T) ? (normalized as T) : null;
 }
 
+function normalizeIsoDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const candidate = new Date(year, month - 1, day);
+  return candidate.getFullYear() === year && candidate.getMonth() === month - 1 && candidate.getDate() === day
+    ? trimmed
+    : null;
+}
+
+function normalizeHhMm(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return null;
+  return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
 function normalizeAiSearchIntent(value: unknown): AiSearchIntent {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("AI search intent must be a JSON object");
@@ -695,18 +779,60 @@ function normalizeAiSearchIntent(value: unknown): AiSearchIntent {
   const data = value as Record<string, unknown>;
 
   return {
-    serviceQuery: nullableTrimmedString(data.serviceQuery),
+    serviceQuery: nullableTrimmedString(data.serviceQuery ?? data.service_query),
     city: normalizeEnum(data.city, ["kyiv", "lviv"] as const),
     district: nullableTrimmedString(data.district),
-    priceMin: nullableFiniteNumber(data.priceMin),
-    priceMax: nullableFiniteNumber(data.priceMax),
-    minRating: nullableFiniteNumber(data.minRating),
-    venueType: normalizeEnum(data.venueType, ["salon", "solo", "studio"] as const),
+    priceMin: nullableFiniteNumber(data.priceMin ?? data.price_min),
+    priceMax: nullableFiniteNumber(data.priceMax ?? data.price_max),
+    minRating: nullableFiniteNumber(data.minRating ?? data.min_rating),
+    venueType: normalizeEnum(data.venueType ?? data.venue_type, ["salon", "solo", "studio"] as const),
     availability: normalizeEnum(data.availability, ["today", "tomorrow", "week"] as const),
+    date: normalizeIsoDate(data.date),
+    time: normalizeHhMm(data.time),
   };
 }
 
-export async function parseAiSearchIntent(message: string): Promise<AiSearchIntent> {
+function localIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function resolveIntentDate(
+  intent: Pick<AiSearchIntent, "availability" | "date">
+): string | null {
+  if (intent.date) return intent.date;
+  if (intent.availability === "today") return localIsoDate(new Date());
+  if (intent.availability === "tomorrow") {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return localIsoDate(date);
+  }
+  return null;
+}
+
+export function slotsIncludeTime(
+  slots: AvailableSlotApi[],
+  time: string | null
+): boolean {
+  if (!slots.length) return false;
+  if (!time) return true;
+  return slots.some((slot) => slot.start.slice(0, 5) === time);
+}
+
+export type AiSearchResponse =
+  | { kind: "intent"; intent: AiSearchIntent }
+  | { kind: "clarification"; message: string };
+
+// Один-єдиний виклик /ai-chat/chat: надсилаємо ЛИШЕ текст користувача (без
+// вбудованого parser-промпту) + conversation_id. Бекенд сам вирішує: якщо
+// даних достатньо — повертає JSON structured intent; якщо ні — звичайний
+// текст-уточнення. Другого запиту на парсинг більше немає.
+export async function requestAiSearch(
+  message: string,
+  conversationId: string | number | null
+): Promise<{ result: AiSearchResponse; conversationId: string | number | null }> {
   const query = message.trim();
   if (!query) {
     throw new Error("AI search query is empty");
@@ -717,29 +843,16 @@ export async function parseAiSearchIntent(message: string): Promise<AiSearchInte
   const token = getAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const parserPrompt = [
-    "You are a search-intent parser for the Beauty AI marketplace.",
-    "Return ONLY one valid JSON object. Do not use markdown, code fences, comments, or prose.",
-    "Extract only information explicitly present in the user's request. Never invent missing values.",
-    "Use exactly this schema:",
-    '{"serviceQuery":string|null,"city":"kyiv"|"lviv"|null,"district":string|null,"priceMin":number|null,"priceMax":number|null,"minRating":number|null,"venueType":"salon"|"solo"|"studio"|null,"availability":"today"|"tomorrow"|"week"|null}',
-    "Normalize Київ/Kyiv to kyiv and Львів/Lviv to lviv.",
-    "venueType: салон/salon -> salon; соло-майстер/independent master -> solo; студія/studio -> studio.",
-    "availability: сьогодні/today -> today; завтра/tomorrow -> tomorrow; цього тижня/this week -> week.",
-    "Keep serviceQuery specific, for example 'жіноча стрижка' rather than only 'hair'.",
-    `User request: ${query}`,
-  ].join("\n");
-
   const response = await fetch(aiChatUrl, {
     method: "POST",
     headers,
-    body: JSON.stringify({ message: parserPrompt }),
+    body: JSON.stringify({ message: query, conversation_id: conversationId }),
   });
 
   const payload = (await response.json().catch(() => null)) as AiChatResponse | null;
 
   if (!response.ok) {
-    throw new Error(payload?.detail || `AI search intent request failed (${response.status})`);
+    throw new AiRequestError(payload?.detail || `AI search request failed (${response.status})`, response.status);
   }
 
   const rawText = [
@@ -750,20 +863,43 @@ export async function parseAiSearchIntent(message: string): Promise<AiSearchInte
     payload?.content,
   ].find((value): value is string => typeof value === "string");
 
+  const nextConversationId =
+    typeof payload?.conversation_id === "string" || typeof payload?.conversation_id === "number"
+      ? payload.conversation_id
+      : conversationId;
+
+  // Prefer a machine-readable intent if backend returns it alongside display text.
+  if (payload?.intent && typeof payload.intent === "object" && !Array.isArray(payload.intent)) {
+    return {
+      result: { kind: "intent", intent: normalizeAiSearchIntent(payload.intent) },
+      conversationId: nextConversationId,
+    };
+  }
+
   if (!rawText?.trim()) {
-    throw new Error("AI search intent response is empty");
+    throw new Error("AI search response is empty");
   }
 
   const jsonText = stripJsonCodeFence(rawText);
 
-  let parsed: unknown;
+  let parsed: unknown = null;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error("AI search intent response is not valid JSON");
+    parsed = null;
   }
 
-  return normalizeAiSearchIntent(parsed);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return {
+      result: { kind: "intent", intent: normalizeAiSearchIntent(parsed) },
+      conversationId: nextConversationId,
+    };
+  }
+
+  return {
+    result: { kind: "clarification", message: rawText.trim() },
+    conversationId: nextConversationId,
+  };
 }
 
 export type AppointmentReviewApi = {
@@ -804,4 +940,3 @@ export async function fetchAppointmentReview(
 export async function deleteAppointmentReview(appointmentId: number | string): Promise<void> {
   await apiDelete(`/api/appointments/${appointmentId}/review/`);
 }
-

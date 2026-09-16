@@ -13,8 +13,11 @@ import {
   fetchMasters,
   fetchSalons,
   fetchServices,
-  parseAiSearchIntent,
-  sendAiChatMessage,
+  requestAiSearch,
+  checkAiHealth,
+  AiRequestError,
+  resolveIntentDate,
+  slotsIncludeTime,
   type AiSearchIntent,
   type MasterApi,
   type SalonApi,
@@ -80,6 +83,12 @@ type CardData = {
   gallery?: string[];
   backendMasterId?: number;
   backendSalonId?: number;
+  salonWorkingHours?: Array<{
+    weekday: number;
+    opening_time?: string | null;
+    closing_time?: string | null;
+    is_closed?: boolean;
+  }>;
   backendServices?: Array<{
     id: number;
     name: string;
@@ -739,6 +748,7 @@ function AuthModal({
   initialMode = "login",
   initialRole = "client",
   initialPartnerKind,
+  initialNotice,
 }: {
   lang: Lang;
   onClose: () => void;
@@ -746,6 +756,7 @@ function AuthModal({
   initialMode?: "login" | "register";
   initialRole?: Exclude<AuthRole, "admin">;
   initialPartnerKind?: "solo" | "salon";
+  initialNotice?: string | null;
 }) {
   const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [role, setRole] = useState<Exclude<AuthRole, "admin">>(initialRole);
@@ -1129,6 +1140,12 @@ function AuthModal({
             </button>
           )}
 
+          {initialNotice && mode === "login" && (
+            <p style={{ margin: 0, color: "#16a34a", fontWeight: 600, textAlign: "center" }}>
+              {initialNotice}
+            </p>
+          )}
+
           {authError && <p className="auth-google-error">{authError}</p>}
 
           <button className="auth-primary" type="submit" disabled={authLoading}>
@@ -1361,7 +1378,14 @@ function BookingModal({
   const selectedBackendService = backendServices.find((item) => item.name === service);
   const storedTimes = (storedMaster?.windows ?? []).filter((slot) => slot.date === date).map((slot) => slot.time);
   const legacyTimes = storedMaster ? storedTimes : getAvailableTimes(data.title, date);
-  const times = hasBackendBooking ? availableSlots.map((slot) => slot.start) : legacyTimes;
+  const displayedSlots = availableSlots.filter((slot) => {
+    const minutes = Number(slot.start.split(":")[1]);
+    return minutes === 0;
+  });
+
+  const times = hasBackendBooking
+    ? displayedSlots.map((slot) => slot.start)
+    : legacyTimes;
   const selectedStoredService = storedServices.find((item) => item.name === service);
   const selectedPrice = selectedBackendService?.price ?? selectedStoredService?.price ?? data.priceFrom;
   const selectedPriceFrom = selectedPrice != null && selectedPrice !== "" ? String(selectedPrice) : data.priceFrom;
@@ -2166,8 +2190,7 @@ function Card({
 
           <div className="card-footer">
           <div className="price-block">
-            <div className="price">від {data.priceFrom} грн</div>
-            <div className="avg">{data.avgCheck ?? t.avgCheck}</div>
+            <div className="price">{data.priceFrom} грн</div>
           </div>
           <div className="masters-block">
             {(data.experience ?? data.mastersCount) && <div>🕐 {data.experience ?? data.mastersCount}</div>}
@@ -2324,6 +2347,14 @@ function salonToCard(
     description: salon.description ?? undefined,
     website: salon.external_booking_url || undefined,
     backendSalonId: salon.id,
+    salonWorkingHours: (salon as SalonApi & {
+      working_hours?: Array<{
+        weekday: number;
+        opening_time?: string | null;
+        closing_time?: string | null;
+        is_closed?: boolean;
+      }>;
+    }).working_hours ?? [],
   };
 }
 
@@ -2375,6 +2406,14 @@ function masterToCard(
     ? Math.min(...validPrices)
     : null;
 
+  const workplace = master.workplace;
+  const workplaceCity = workplace?.city_name?.trim() || "";
+  const workplaceDistrict = workplace?.district?.trim() || "";
+  const workplaceAddress = workplace?.address?.trim() || "";
+  const workplaceLocation = [workplaceDistrict, workplaceAddress]
+    .filter(Boolean)
+    .join(", ");
+
   return {
     image:
       master.photo ||
@@ -2387,7 +2426,8 @@ function masterToCard(
       : "Майстер",
     rating: master.average_rating ?? 0,
     reviews: 0,
-    district: "Соло-майстер",
+    district: workplaceDistrict || workplaceCity || "Соло-майстер",
+    city: workplaceCity || undefined,
     distance: "",
     openNow: true,
     tags: serviceNames,
@@ -2396,7 +2436,7 @@ function masterToCard(
       yearsOfExperience > 0
         ? `${yearsOfExperience} років досвіду`
         : undefined,
-    locationNote: "Соло-майстер",
+    locationNote: workplaceLocation || workplaceCity || "Соло-майстер",
     profileLinkLabel: "Профіль майстра",
     variant: "solo",
     backendMasterId: master.id,
@@ -2498,36 +2538,177 @@ function mapAiRatingToFilter(minRating: number | null): string {
   return "any";
 }
 
-function cardMatchesAiService(card: CardData, serviceQuery: string | null): boolean {
+function serviceNameMatchesQuery(serviceName: string, serviceQuery: string | null): boolean {
   if (serviceQuery === null) return true;
-
   const query = serviceQuery.trim().toLowerCase();
   if (!query) return true;
+  const normalized = serviceName.trim().toLowerCase();
+  return Boolean(normalized) && (normalized.includes(query) || query.includes(normalized));
+}
 
+function cardMatchesAiService(card: CardData, serviceQuery: string | null): boolean {
+  if (serviceQuery === null) return true;
   const serviceNames = [
     ...card.tags,
     ...(card.backendServices?.map((service) => service.name) ?? []),
   ];
-
-  return serviceNames.some((serviceName) => {
-    const normalized = serviceName.trim().toLowerCase();
-    return Boolean(normalized) &&
-      (normalized.includes(query) || query.includes(normalized));
-  });
+  return serviceNames.some((serviceName) => serviceNameMatchesQuery(serviceName, serviceQuery));
 }
 
-function cardMatchesLocalSearch(card: CardData, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return true;
+function isCenterDistrictText(district: string | null): boolean {
+  if (!district) return false;
+  return /центр|хрещатик|майдан|khreshchatyk|maidan|center|centre/i.test(district);
+}
 
-  const searchableValues = [
-    ...card.tags,
-    ...(card.backendServices?.map((service) => service.name) ?? []),
+function cardMatchesAiDistrict(card: CardData, district: string | null): boolean {
+  if (!district) return true;
+  if (isCenterDistrictText(district)) {
+    return cardMatchesDistrict(card, "pecherskyi") || cardMatchesDistrict(card, "shevchenkivskyi");
+  }
+  const mappedDistrict = mapAiDistrictToFilter(district);
+  return mappedDistrict === "any" || cardMatchesDistrict(card, mappedDistrict);
+}
+
+function cardMatchesAiRating(card: CardData, minRating: number | null): boolean {
+  return minRating == null || card.rating >= minRating;
+}
+
+function salonMatchesRequestedWorkingHours(card: CardData, intent: AiSearchIntent | null): boolean {
+  if (!intent) return true;
+  const targetDate = resolveIntentDate(intent);
+  if (!targetDate) return true;
+
+  const [year, month, day] = targetDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return true;
+
+  const weekday = date.getDay() === 0 ? 7 : date.getDay();
+  const schedule = card.salonWorkingHours?.find((item) => item.weekday === weekday);
+
+  // For a date/time-constrained search, do not claim a salon is suitable when
+  // its schedule for that day is missing or explicitly closed.
+  if (!schedule || schedule.is_closed) return false;
+  if (!intent.time) return Boolean(schedule.opening_time && schedule.closing_time);
+  if (!schedule.opening_time || !schedule.closing_time) return false;
+
+  const requested = intent.time.slice(0, 5);
+  const opens = schedule.opening_time.slice(0, 5);
+  const closes = schedule.closing_time.slice(0, 5);
+
+  if (closes > opens) return requested >= opens && requested < closes;
+  if (closes < opens) return requested >= opens || requested < closes;
+  return false;
+}
+
+function buildLocalFallbackIntent(query: string): AiSearchIntent {
+  const normalized = query.trim().toLowerCase();
+  const serviceAliases: Array<[string, string[]]> = [
+    ["манікюр", ["манікюр", "manicure", "гель-лак", "нігт"]],
+    ["педикюр", ["педикюр", "pedicure"]],
+    ["стрижка", ["стриж", "haircut"]],
+    ["фарбування", ["фарбув", "coloring", "colouring"]],
+    ["масаж", ["масаж", "massage"]],
+    ["брови", ["бров", "brow"]],
+    ["вії", ["вії", "вій", "eyelash", "lashes"]],
+    ["макіяж", ["макіяж", "makeup"]],
+    ["косметологія", ["косметолог", "cosmetolog"]],
+    ["депіляція", ["депіляц", "depilation"]],
+    ["солярій", ["соляр", "solarium"]],
+    ["чистка обличчя", ["чистка обличчя", "facial"]],
+    ["spa", ["spa", "спа"]],
   ];
+  const serviceQuery = serviceAliases.find(([, aliases]) =>
+    aliases.some((alias) => normalized.includes(alias))
+  )?.[0] ?? null;
 
-  return searchableValues.some((value) =>
-    value.trim().toLowerCase().includes(normalizedQuery)
-  );
+  const city = /львів|lviv/.test(normalized)
+    ? "lviv"
+    : /київ|киев|kyiv|kiev/.test(normalized)
+      ? "kyiv"
+      : null;
+
+  const availability = /завтра|tomorrow/.test(normalized)
+    ? "tomorrow"
+    : /сьогодні|сегодня|today/.test(normalized)
+      ? "today"
+      : /тижд|week/.test(normalized)
+        ? "week"
+        : null;
+
+  const district = /поділ|подол|podil/.test(normalized)
+    ? "podilskyi"
+    : /печерськ|печерск|pechersk/.test(normalized)
+      ? "pecherskyi"
+      : /шевченків|шевченков|shevchenk/.test(normalized)
+        ? "shevchenkivskyi"
+        : /голосіїв|голосеев|holosiiv|goloseev/.test(normalized)
+          ? "holosiivskyi"
+          : /центр|хрещатик|майдан|khreshchatyk|maidan|center|centre/.test(normalized)
+            ? "центр"
+            : null;
+
+  const priceMaxMatch = normalized.match(/(?:до|не більше|макс(?:имум)?|under|up to)\s*(\d{2,6})/i);
+  const priceMinMatch = normalized.match(/(?:від|не менше|мін(?:імум)?|from)\s*(\d{2,6})/i);
+  const ratingMatch = normalized.match(/(?:рейтинг(?:ом)?|rating)\s*(?:від|from|>=?)?\s*(\d(?:[.,]\d)?)/i);
+
+  const priceMax = priceMaxMatch ? Number(priceMaxMatch[1]) : null;
+  const priceMin = priceMinMatch ? Number(priceMinMatch[1]) : null;
+  const minRating = ratingMatch ? Number(ratingMatch[1].replace(",", ".")) : null;
+
+  const venueType: AiSearchIntent["venueType"] = /соло|solo|приватн.*майстр|майстр.*вдома/.test(normalized)
+    ? "solo"
+    : /салон|salon/.test(normalized)
+      ? "salon"
+      : /студі|studio/.test(normalized)
+        ? "studio"
+        : null;
+
+  const timeMatch =
+    normalized.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/) ||
+    normalized.match(/(?:^|\s)о\s+([01]?\d|2[0-3])(?=\s|$)/);
+  const time = timeMatch
+    ? `${timeMatch[1].padStart(2, "0")}:${(timeMatch[2] ?? "00").padStart(2, "0")}`
+    : null;
+
+  const explicitDateMatch = normalized.match(/\b(\d{1,2})[.\/](\d{1,2})(?:[.\/](\d{2,4}))?\b/);
+  let date: string | null = null;
+  if (explicitDateMatch) {
+    const day = Number(explicitDateMatch[1]);
+    const month = Number(explicitDateMatch[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      const yearRaw = explicitDateMatch[3];
+      const year = yearRaw
+        ? (yearRaw.length === 2 ? `20${yearRaw}` : yearRaw)
+        : String(new Date().getFullYear());
+      const candidate = new Date(Number(year), month - 1, day);
+      if (candidate.getFullYear() === Number(year) && candidate.getMonth() === month - 1 && candidate.getDate() === day) {
+        date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+  }
+
+  return {
+    serviceQuery,
+    city,
+    district,
+    priceMin: Number.isFinite(priceMin) ? priceMin : null,
+    priceMax: Number.isFinite(priceMax) ? priceMax : null,
+    minRating: Number.isFinite(minRating) ? minRating : null,
+    venueType,
+    availability,
+    date,
+    time,
+  };
+}
+
+function mapAiDistrictToFilter(district: string | null): string {
+  if (!district) return "any";
+  const normalized = district.trim().toLowerCase();
+  if (/podil|поділ|подол/.test(normalized)) return "podilskyi";
+  if (/pechersk|печерськ|печерск/.test(normalized)) return "pecherskyi";
+  if (/shevchenk|шевченків|шевченков/.test(normalized)) return "shevchenkivskyi";
+  if (/holosiiv|goloseev|голосіїв|голосеев/.test(normalized)) return "holosiivskyi";
+  return "any";
 }
 
 const NEUTRAL_FILTERS: FilterState = {
@@ -3798,6 +3979,7 @@ function filterByCategory(cards: CardData[], category: string): CardData[] {
 export default function App() {
   const [lang, setLang] = useState<Lang>("ua");
   const [authOpen, setAuthOpen] = useState(false);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [authIntent, setAuthIntent] = useState<{
     mode: "login" | "register";
     role: Exclude<AuthRole, "admin">;
@@ -3832,6 +4014,13 @@ export default function App() {
       return true;
     }
   });
+  const [showAiReply, setShowAiReply] = useState(() => {
+    try {
+      return localStorage.getItem("beautyai_show_ai_reply") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [greetingDismissed, setGreetingDismissed] = useState(() => {
     try {
       const alreadyShown =
@@ -3852,6 +4041,8 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [appliedSearch, setAppliedSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [isResettingSearch, setIsResettingSearch] = useState(false);
+  const resetTransitionTimeoutRef = useRef<number | null>(null);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [marketplaceError, setMarketplaceError] = useState(false);
   const [marketplaceRetrying, setMarketplaceRetrying] = useState(false);
@@ -3864,6 +4055,8 @@ export default function App() {
   const [aiReplyText, setAiReplyText] = useState("");
   const [aiSearchIntent, setAiSearchIntent] = useState<AiSearchIntent | null>(null);
   const [aiSearchError, setAiSearchError] = useState(false);
+  const [aiStatus, setAiStatus] = useState<"checking" | "ok" | "limited" | "offline">("checking");
+  const [aiClarificationMessage, setAiClarificationMessage] = useState<string | null>(null);
   const searchStartedAtRef = useRef(0);
   const aiRequestIdRef = useRef(0);
   const searchFinishTimeoutRef = useRef<number | null>(null);
@@ -3875,6 +4068,70 @@ export default function App() {
   const [salonCards, setSalonCards] = useState<CardData[]>([]);
   const [masterCards, setMasterCards] = useState<CardData[]>([]);
   const t = dict[lang];
+
+  useEffect(() => {
+    const path = window.location.pathname.replace(/\/+$/, "");
+    if (path !== "/verify-email" && path !== "/beauty.ai/verify-email") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    const token = params.get("token");
+
+    setAuthIntent({ mode: "login", role: "client" });
+    setAuthOpen(true);
+
+    if (!id || !token) {
+      setAuthNotice(null);
+      return;
+    }
+
+    let cancelled = false;
+    void fetch(`${API_BASE_URL}/api/users/verify-email/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, token }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw new Error(body?.detail || "Email verification failed");
+        }
+        if (cancelled) return;
+        setAuthNotice(lang === "ua"
+          ? "Email підтверджено. Тепер увійдіть у свій акаунт."
+          : "Email verified. You can now sign in.");
+        window.history.replaceState({}, "", "/");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthNotice(lang === "ua"
+          ? "Не вдалося підтвердити email. Посилання недійсне або застаріло."
+          : "Could not verify email. The link is invalid or expired.");
+      });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshAiHealth = () => {
+      void checkAiHealth().then((healthy) => {
+        if (cancelled) return;
+        setAiStatus((current) => {
+          if (!healthy) return "offline";
+          return current === "limited" ? "limited" : "ok";
+        });
+      });
+    };
+
+    refreshAiHealth();
+    const intervalId = window.setInterval(refreshAiHealth, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const chooseCity = (city: CityName) => {
     const citySlug = CITY_NAME_TO_SLUG[city];
@@ -3965,17 +4222,19 @@ export default function App() {
   const freshCards = selectedCity === "Львів" ? toLvivDiscoveryCards(fresh) : fresh;
   const partnersCards = selectedCity === "Львів" ? toLvivDiscoveryCards(partners) : partners;
 
-  const searchedSalons = citySalonCards.filter((card) => {
-    if (aiSearchError) {
-      return cardMatchesLocalSearch(card, appliedSearch);
-    }
-
-    return cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null);
-  });
-  const filteredSalons = searchedSalons.filter((card) => cardMatchesFilters(card, activeFilters));
+  const searchedSalons = citySalonCards
+    .filter((card) => cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null))
+    .filter((card) => cardMatchesAiDistrict(card, aiSearchIntent?.district ?? null))
+    .filter((card) => cardMatchesAiRating(card, aiSearchIntent?.minRating ?? null));
   const hasSearch = appliedSearch.trim().length > 0;
 
   const runSearch = () => {
+    if (resetTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(resetTransitionTimeoutRef.current);
+      resetTransitionTimeoutRef.current = null;
+      setIsResettingSearch(false);
+    }
+
     const query = searchQuery.trim();
 
     if (!query) {
@@ -3994,22 +4253,98 @@ export default function App() {
     setIsSearching(true);
     setPendingSearchQuery(query);
     setAiReplyText("");
-    setAiSearchIntent(null);
+    // Keep the previous intent/filters active while a refinement request is in flight.
+    // This keeps the current result cards visible until the new intent arrives.
     setAiSearchError(false);
+    setAiClarificationMessage(null);
+
+    const localIntent = buildLocalFallbackIntent(query);
+    const canResolveLocally = Boolean(
+      localIntent.serviceQuery &&
+      (localIntent.date || localIntent.time || localIntent.availability === "today" || localIntent.availability === "tomorrow")
+    );
+
+    if (canResolveLocally) {
+      aiRequestIdRef.current += 1;
+      const citySlug =
+        localIntent.city ?? (selectedCity ? CITY_NAME_TO_SLUG[selectedCity] : "");
+      const cityName = localIntent.city ? CITY_SLUG_TO_NAME[localIntent.city] : undefined;
+      const nextFilters: FilterState = {
+        ...activeFilters,
+        city: citySlug,
+        district: mapAiDistrictToFilter(localIntent.district),
+        availability: localIntent.availability ?? "anytime",
+        priceMin: localIntent.priceMin != null ? String(localIntent.priceMin) : "",
+        priceMax: localIntent.priceMax != null ? String(localIntent.priceMax) : "",
+        rating: mapAiRatingToFilter(localIntent.minRating),
+        venueType: localIntent.venueType ?? "any",
+      };
+
+      setAiSearchIntent(localIntent);
+      setActiveFilters(nextFilters);
+      setFilterDraft(nextFilters);
+      setAiSearchError(false);
+      setAiClarificationMessage(null);
+      setAiReplyText(`Local intent: ${JSON.stringify(localIntent)}`);
+
+      if (cityName) {
+        setSelectedCity(cityName);
+        setCityPickerOpen(false);
+        setLocationError("");
+        try {
+          localStorage.setItem(CITY_STORAGE_KEY, cityName);
+        } catch {
+          // Storage is optional.
+        }
+      }
+      return;
+    }
 
     const requestId = ++aiRequestIdRef.current;
 
-    void parseAiSearchIntent(query)
-      .then((intent) => {
+    void requestAiSearch(query, conversationId)
+      .then(({ result, conversationId: nextConversationId }) => {
         if (requestId !== aiRequestIdRef.current) return;
 
-        const citySlug = intent.city ?? activeFilters.city;
+        setAiStatus("ok");
+        setConversationId(nextConversationId);
+        writeAiConversationId(nextConversationId);
+
+        // Search never waits for a second user message. If AI returns prose instead
+        // of a structured intent, use the local parser for filtering and keep the
+        // raw AI text only as a temporary debug bubble.
+        const localHints = buildLocalFallbackIntent(query);
+        const intent = result.kind === "intent"
+          ? {
+              ...result.intent,
+              serviceQuery: result.intent.serviceQuery ?? localHints.serviceQuery,
+              city: result.intent.city ?? localHints.city,
+              district: result.intent.district ?? localHints.district,
+              priceMin: result.intent.priceMin ?? localHints.priceMin,
+              priceMax: result.intent.priceMax ?? localHints.priceMax,
+              minRating: result.intent.minRating ?? localHints.minRating,
+              venueType: result.intent.venueType ?? localHints.venueType,
+              availability: result.intent.availability ?? localHints.availability,
+              date: result.intent.date ?? localHints.date,
+              time: result.intent.time ?? localHints.time,
+            }
+          : localHints;
+
+        setAiClarificationMessage(null);
+        setAiReplyText(
+          result.kind === "intent"
+            ? `AI intent: ${JSON.stringify(result.intent)}`
+            : `AI raw: ${result.message} | fallback: ${JSON.stringify(intent)}`
+        );
+
+        const citySlug =
+          intent.city ?? (selectedCity ? CITY_NAME_TO_SLUG[selectedCity] : "");
         const cityName = intent.city ? CITY_SLUG_TO_NAME[intent.city] : undefined;
         const nextFilters: FilterState = {
           ...activeFilters,
           city: citySlug,
-          district: "any",
-          availability: "anytime",
+          district: mapAiDistrictToFilter(intent.district),
+          availability: intent.availability ?? "anytime",
           priceMin: intent.priceMin != null ? String(intent.priceMin) : "",
           priceMax: intent.priceMax != null ? String(intent.priceMax) : "",
           rating: mapAiRatingToFilter(intent.minRating),
@@ -4034,10 +4369,47 @@ export default function App() {
       .catch((error) => {
         if (requestId !== aiRequestIdRef.current) return;
 
-        console.error("AI search intent parsing failed; falling back to local search", error);
-        setAiSearchIntent(null);
-        // AI failure is not a user-facing search error: continue with local card matching.
-        setAiSearchError(true);
+        console.error("AI search request failed", error);
+
+        const isLimited = error instanceof AiRequestError && error.status === 429;
+        setAiStatus(isLimited ? "limited" : "offline");
+
+        // AI недоступний — не блокуємо пошук. Локально витягуємо базові
+        // service/city/date hints і запускаємо той самий marketplace filtering.
+        const fallbackIntent = buildLocalFallbackIntent(query);
+        const citySlug =
+          fallbackIntent.city ??
+          (selectedCity ? CITY_NAME_TO_SLUG[selectedCity] : "");
+        const cityName = fallbackIntent.city ? CITY_SLUG_TO_NAME[fallbackIntent.city] : undefined;
+        const nextFilters: FilterState = {
+          ...activeFilters,
+          city: citySlug,
+          district: mapAiDistrictToFilter(fallbackIntent.district),
+          availability: fallbackIntent.availability ?? "anytime",
+          priceMin: fallbackIntent.priceMin != null ? String(fallbackIntent.priceMin) : "",
+          priceMax: fallbackIntent.priceMax != null ? String(fallbackIntent.priceMax) : "",
+          rating: mapAiRatingToFilter(fallbackIntent.minRating),
+          venueType: fallbackIntent.venueType ?? "any",
+        };
+
+        setAiSearchIntent(fallbackIntent);
+        setActiveFilters(nextFilters);
+        setFilterDraft(nextFilters);
+        setAiSearchError(false);
+        setAiClarificationMessage(null);
+        setAiReplyText(
+          `${isLimited ? "AI 429" : "AI offline"} | fallback: ${JSON.stringify(fallbackIntent)}`
+        );
+
+        if (cityName) {
+          setSelectedCity(cityName);
+          setCityPickerOpen(false);
+          try {
+            localStorage.setItem(CITY_STORAGE_KEY, cityName);
+          } catch {
+            // Storage is optional.
+          }
+        }
       });
 
   };
@@ -4049,18 +4421,30 @@ export default function App() {
       window.clearTimeout(searchFinishTimeoutRef.current);
       searchFinishTimeoutRef.current = null;
     }
+    if (resetTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(resetTransitionTimeoutRef.current);
+    }
 
+    // First let the current result state leave gracefully. Only after the
+    // short fade do we collapse the search state and expand the idle hero.
     setSearchQuery("");
-    setAppliedSearch("");
-    setPendingSearchQuery(null);
     setIsSearching(false);
     setSearchFocused(false);
-    setGreetingDismissed(true);
-    setActiveCategory(null);
     setRecommendationFiltersOpen(false);
-    setAiReplyText("");
-    setAiSearchIntent(null);
-    setAiSearchError(false);
+    setIsResettingSearch(true);
+
+    resetTransitionTimeoutRef.current = window.setTimeout(() => {
+      setAppliedSearch("");
+      setPendingSearchQuery(null);
+      setGreetingDismissed(true);
+      setActiveCategory(null);
+      setAiReplyText("");
+      setAiSearchIntent(null);
+      setAiSearchError(false);
+      setAiClarificationMessage(null);
+      setIsResettingSearch(false);
+      resetTransitionTimeoutRef.current = null;
+    }, 220);
   };
   const liveMasterRecommendations = buildStoredMasterCards(masterCards);
   const cityMasterCards = liveMasterRecommendations.filter((card) =>
@@ -4069,15 +4453,109 @@ export default function App() {
     card.city.trim().toLowerCase() === selectedCity.toLowerCase()
   );
 
-  const filteredMasters = cityMasterCards
-    .filter((card) => {
-      if (aiSearchError) {
-        return cardMatchesLocalSearch(card, appliedSearch);
-      }
+  const [availabilityEligible, setAvailabilityEligible] = useState<Set<string> | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const availabilityCheckIdRef = useRef(0);
 
-      return cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null);
-    })
-    .filter((card) => cardMatchesFilters(card, activeFilters));
+  useEffect(() => {
+    const intent = aiSearchIntent;
+    const wantsCheck = Boolean(
+      intent && (intent.date || intent.time || intent.availability === "today" || intent.availability === "tomorrow")
+    );
+
+    if (!wantsCheck || !intent) {
+      availabilityCheckIdRef.current += 1;
+      setAvailabilityEligible(null);
+      setCheckingAvailability(false);
+      return;
+    }
+
+    const targetDate = resolveIntentDate(intent);
+    if (!targetDate) {
+      setAvailabilityEligible(null);
+      setCheckingAvailability(false);
+      return;
+    }
+
+    const checkId = ++availabilityCheckIdRef.current;
+    setAvailabilityEligible(null);
+    setCheckingAvailability(true);
+
+    const masterCandidates = cityMasterCards
+      .filter((card) =>
+        cardMatchesAiService(card, intent.serviceQuery) &&
+        cardMatchesAiDistrict(card, intent.district) &&
+        cardMatchesAiRating(card, intent.minRating) &&
+        cardMatchesFilters(card, activeFilters) &&
+        card.backendMasterId != null
+      )
+      .flatMap((card) =>
+        (card.backendServices ?? [])
+          .filter((service) => serviceNameMatchesQuery(service.name, intent.serviceQuery))
+          .map((service) => ({
+            key: `master:${card.backendMasterId}`,
+            masterId: card.backendMasterId as number,
+            serviceId: service.id,
+            salonId: undefined as number | undefined,
+          }))
+      );
+
+    const uniqueCandidates = Array.from(
+      new Map(
+        masterCandidates.map((candidate) => [
+          `${candidate.key}:${candidate.masterId}:${candidate.serviceId}:solo`,
+          candidate,
+        ])
+      ).values()
+    );
+
+    if (!uniqueCandidates.length) {
+      setAvailabilityEligible(new Set());
+      setCheckingAvailability(false);
+      return;
+    }
+
+    const runChecks = async () => {
+      const eligible = new Set<string>();
+      let cursor = 0;
+      const workerCount = Math.min(6, uniqueCandidates.length);
+
+      const worker = async () => {
+        while (cursor < uniqueCandidates.length) {
+          const candidate = uniqueCandidates[cursor++];
+          try {
+            const slots = await fetchAvailableSlots({
+              masterId: candidate.masterId,
+              serviceId: candidate.serviceId,
+              date: targetDate,
+              salonId: candidate.salonId,
+            });
+            if (slotsIncludeTime(slots, intent.time)) eligible.add(candidate.key);
+          } catch (error) {
+            console.warn("Availability check failed", candidate, error);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      if (checkId !== availabilityCheckIdRef.current) return;
+      setAvailabilityEligible(eligible);
+      setCheckingAvailability(false);
+    };
+
+    void runChecks();
+  }, [aiSearchIntent, activeFilters, selectedCity, salonCards, masterCards]);
+
+  const filteredSalons = searchedSalons
+    .filter((card) => cardMatchesFilters(card, activeFilters))
+    .filter((card) => salonMatchesRequestedWorkingHours(card, aiSearchIntent));
+
+  const filteredMasters = cityMasterCards
+    .filter((card) => cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null))
+    .filter((card) => cardMatchesAiDistrict(card, aiSearchIntent?.district ?? null))
+    .filter((card) => cardMatchesAiRating(card, aiSearchIntent?.minRating ?? null))
+    .filter((card) => cardMatchesFilters(card, activeFilters))
+    .filter((card) => !availabilityEligible || availabilityEligible.has(`master:${card.backendMasterId}`));
 
   const searchDraftChanged =
     searchQuery.trim() !== appliedSearch.trim();
@@ -4088,22 +4566,26 @@ export default function App() {
     filteredSalons.length === 0 &&
     filteredMasters.length === 0;
 
+  const hasVisibleResults =
+    hasSearch &&
+    (filteredSalons.length > 0 || filteredMasters.length > 0);
+
   const assistantUiState =
-    isSearching
+    isSearching || checkingAvailability || (marketplaceError && marketplaceRetrying)
       ? "search"
-      : marketplaceError && hasSearch && !searchDraftChanged
+      : (marketplaceError || aiSearchError) && hasSearch && !searchDraftChanged
         ? "error"
         : hasSearch && hasNoResults && !searchDraftChanged
           ? "no-result"
-          : recommendationFiltersOpen && hasSearch && !searchDraftChanged
-            ? "help"
-            : hasSearch && !searchDraftChanged
-              ? "success"
-              : searchFocused || activeCategory !== null
-                ? "what-you-doing"
-                : !greetingDismissed
-                  ? "greeting"
-                  : "waiting";
+            : recommendationFiltersOpen && hasSearch && !searchDraftChanged
+              ? "help"
+              : hasSearch && !searchDraftChanged
+                ? "success"
+                : searchFocused || activeCategory !== null
+                  ? "what-you-doing"
+                  : !greetingDismissed
+                    ? "greeting"
+                    : "waiting";
 
   const showWhatYouDoing =
     assistantEnabled &&
@@ -4208,9 +4690,10 @@ export default function App() {
           .filter(Boolean)
           .join(" and ")} for your request`;
 
-  // Visible assistant copy is deterministic and short. AI prose stays internal.
-  const finalAssistantMessage = assistantResultMessage;
-  void aiReplyText;
+  // AI reply display is optional. By default the assistant shows the stable
+  // marketplace result count; the separate AI toggle switches to the raw AI reply.
+  const finalAssistantMessage =
+    showAiReply && aiReplyText ? aiReplyText : assistantResultMessage;
 
   void masterRegistryVersion;
 
@@ -4437,9 +4920,9 @@ export default function App() {
       }
 
       setMarketplaceLoading(false);
-      setMarketplaceRetrying(false);
 
       if (salonsFailed || mastersFailed) {
+        setMarketplaceRetrying(true);
         const delay = retryDelays[Math.min(retryIndex, retryDelays.length - 1)];
         retryIndex += 1;
         clearRetryTimer();
@@ -4450,6 +4933,7 @@ export default function App() {
       } else {
         retryIndex = 0;
         clearRetryTimer();
+        setMarketplaceRetrying(false);
         setMarketplaceError(false);
       }
     };
@@ -4487,6 +4971,8 @@ export default function App() {
   useEffect(() => {
     if (
       marketplaceLoading ||
+      checkingAvailability ||
+      (marketplaceError && marketplaceRetrying) ||
       !pendingSearchQuery ||
       (!aiSearchIntent && !aiSearchError)
     ) {
@@ -4510,7 +4996,15 @@ export default function App() {
         searchFinishTimeoutRef.current = null;
       }
     };
-  }, [marketplaceLoading, pendingSearchQuery, aiSearchIntent, aiSearchError]);
+  }, [
+    marketplaceLoading,
+    marketplaceError,
+    marketplaceRetrying,
+    checkingAvailability,
+    pendingSearchQuery,
+    aiSearchIntent,
+    aiSearchError,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -4818,7 +5312,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className="hero-full-width">
+      <section className={`hero-full-width${hasSearch && !isSearching ? " is-active" : " is-idle"}`}>
         <div className="hero-overlay-content">
           <div className="hero-content">
 
@@ -4839,6 +5333,46 @@ export default function App() {
               {t.heroSubtitle}
             </p>
 
+            {assistantEnabled && !showWhatYouDoing && (
+              isSearching ? (
+                <BeautyAssistant
+                  state="search"
+                  message={lang === "ua" ? "Я шукаю…" : "I'm searching…"}
+                  className="hero-search-assistant"
+                />
+              ) : hasSearch && (assistantUiState === "error" || assistantUiState === "no-result") ? (
+                <BeautyAssistant
+                  state={assistantUiState === "error" ? "error" : "no-result"}
+                  message={
+                    marketplaceError || aiSearchError
+                      ? (lang === "ua"
+                          ? "Упс! Сталася помилка. Спробуй ще раз."
+                          : "Oops! Something went wrong. Try again.")
+                      : (aiSearchIntent && (aiSearchIntent.date || aiSearchIntent.time || aiSearchIntent.availability === "today" || aiSearchIntent.availability === "tomorrow")
+                          ? (lang === "ua"
+                              ? "На даний час запису немає."
+                              : "There are no bookings available for this time.")
+                          : (lang === "ua"
+                              ? "Я нічого не знайшов. Давай спробуємо інший запит."
+                              : "I couldn't find anything. Let's try another search."))
+                  }
+                  className="hero-search-assistant"
+                />
+              ) : !hasSearch ? (
+                <BeautyAssistant
+                  state={assistantUiState === "greeting" ? "greeting" : "waiting"}
+                  message={
+                    assistantUiState === "greeting"
+                      ? (lang === "ua"
+                          ? "Привіт! Я Beauty AI. Опиши, що тобі потрібно."
+                          : "Hi! I'm Beauty AI. Tell me what you need.")
+                      : (lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request")
+                  }
+                  className="hero-search-assistant"
+                />
+              ) : null
+            )}
+
             {showWhatYouDoing && (
               <BeautyAssistant
                 state="what-you-doing"
@@ -4850,7 +5384,7 @@ export default function App() {
                 }
               />
             )}
-          <div className="search-bar">
+          <div className={`search-bar${isSearching ? " is-searching" : ""}`}>
             <input
               type="text"
               placeholder={t.searchPlaceholder}
@@ -4860,10 +5394,19 @@ export default function App() {
                 setSearchFocused(true);
               }}
               onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") runSearch();
-                }}
-              />
+              onKeyDown={(event) => {
+                if (event.key === "Enter") runSearch();
+              }}
+            />
+
+            {isSearching && (
+              <div className="search-bar-ai-loader" aria-hidden="true">
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+                <span className="ai-sparkle" />
+              </div>
+            )}
               {(searchQuery || appliedSearch) && (
                 <button
                   type="button"
@@ -4904,7 +5447,7 @@ export default function App() {
         </div>
       </section>
 
-    <section className="section ai-recommendations" id="salons">
+    <section className={`section ai-recommendations${isResettingSearch ? " is-leaving" : ""}`} id="salons">
       {!isSearching && hasSearch && (
         <div
           className={`recommendations-global-filter${
@@ -4961,16 +5504,15 @@ export default function App() {
                   {assistantEnabled && assistantUiState === "help" && (
                     <BeautyAssistant
                       state="help"
+                      message={
+                        lang === "ua"
+                          ? "Уточніть параметри для точніших рекомендацій"
+                          : "Refine the parameters for more accurate recommendations"
+                      }
                       className="assistant-filter-help"
                     />
                   )}
                 </div>
-
-                <span>
-                  {lang === "ua"
-                    ? "Уточніть параметри для точніших рекомендацій"
-                    : "Refine the parameters for more accurate recommendations"}
-                </span>
               </div>
 
               <FilterBar
@@ -4989,97 +5531,9 @@ export default function App() {
         </div>
       )}
 
-      {isSearching ? (
-        <div
-          className="recommendations-loading-panel"
-          role="status"
-          aria-live="polite"
-        >
-          {assistantEnabled ? (
-            <div className="assistant-search-stage">
-              <BeautyAssistant
-                state="search"
-                message={lang === "ua" ? "Я шукаю…" : "I'm searching…"}
-                className="assistant-searching"
-              />
-
-              <div
-                className="ai-sparkle-loader assistant-search-loader"
-                aria-hidden="true"
-              >
-                <span className="ai-sparkle" />
-                <span className="ai-sparkle" />
-                <span className="ai-sparkle" />
-                <span className="ai-sparkle" />
-              </div>
-            </div>
-          ) : (
-            <div className="ai-sparkle-loader" aria-hidden="true">
-              <span className="ai-sparkle" />
-              <span className="ai-sparkle" />
-              <span className="ai-sparkle" />
-              <span className="ai-sparkle" />
-            </div>
-          )}
-        </div>
-      ) : !hasSearch ? (
-        <div className="recommendations-idle-panel recommendations-greeting-panel">
-          {assistantEnabled && assistantUiState === "greeting" ? (
-            <BeautyAssistant
-              state="greeting"
-              message={
-                lang === "ua"
-                  ? "Привіт! Я Beauty AI. Скористайся пошуком, щоб я підібрав для тебе найкращі варіанти."
-                  : "Hi! I'm Beauty AI. Use search and I'll find the best options for you."
-              }
-              className="assistant-greeting-state"
-            />
-          ) : assistantEnabled && assistantUiState === "waiting" ? (
-            <BeautyAssistant
-              state="waiting"
-              message={
-                lang === "ua"
-                  ? "Очікуємо ваш запит"
-                  : "Waiting for your request"
-              }
-              className="assistant-greeting-state"
-            />
-          ) : (
-            <div className="recommendations-idle-copy">
-              <strong>
-                {lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request"}
-              </strong>
-            </div>
-          )}
-        </div>
-      ) : (
+      {!hasSearch ? null : (
         <>
-          {assistantUiState === "error" || assistantUiState === "no-result" ? (
-            <div className="recommendations-idle-panel recommendations-state-panel">
-              {assistantEnabled ? (
-                <BeautyAssistant
-                  state={assistantUiState === "error" ? "error" : "no-result"}
-                  message={
-                    marketplaceError
-                      ? (lang === "ua"
-                          ? "Упс! Сталася помилка. Спробуй ще раз."
-                          : "Oops! Something went wrong. Try again.")
-                      : (lang === "ua"
-                          ? "Я нічого не знайшов. Давай спробуємо інший запит."
-                          : "I couldn't find anything. Let's try another search.")
-                  }
-                  className="assistant-result-state"
-                />
-              ) : (
-                <div className="recommendations-assistant-off-copy">
-                  {marketplaceError
-                    ? (lang === "ua" ? "Сталася помилка." : "Something went wrong.")
-                    : (lang === "ua" ? "Нічого не знайдено. Спробуйте інший запит." : "Nothing found. Try another search.")}
-                </div>
-              )}
-
-            </div>
-          ) : assistantUiState === "success" ? (
+          {hasVisibleResults ? (
             <>
               {filteredSalons.length > 0 && (
                 <div
@@ -5194,7 +5648,7 @@ export default function App() {
         </>
       )}
     </section>
-      {hasSearch && !isSearching && assistantUiState === "success" && (
+      {hasVisibleResults && (
         <>
           <div
             className="section-divider section-divider-results"
@@ -5266,7 +5720,7 @@ export default function App() {
       
       <section
         className={`about-section ${
-          hasSearch && !isSearching && assistantUiState === "success"
+          hasVisibleResults
             ? "about-section--with-results"
             : "about-section--empty"
         }`}
@@ -5494,6 +5948,7 @@ export default function App() {
           initialMode={authIntent.mode}
           initialRole={authIntent.role}
           initialPartnerKind={authIntent.partnerKind}
+          initialNotice={authNotice}
         />
       )}
 
@@ -5522,6 +5977,52 @@ export default function App() {
       )}
       <button
         type="button"
+        aria-pressed={showAiReply}
+        aria-label={
+          showAiReply
+            ? (lang === "ua" ? "Показувати кількість результатів" : "Show result count")
+            : (lang === "ua" ? "Показувати відповідь AI" : "Show AI reply")
+        }
+        title={
+          showAiReply
+            ? (lang === "ua" ? "AI-відповідь увімкнена" : "AI reply enabled")
+            : (lang === "ua" ? "Увімкнути AI-відповідь" : "Enable AI reply")
+        }
+        onClick={() =>
+          setShowAiReply((enabled) => {
+            const next = !enabled;
+            try {
+              localStorage.setItem("beautyai_show_ai_reply", next ? "true" : "false");
+            } catch {
+              // Preference persistence is optional.
+            }
+            return next;
+          })
+        }
+        style={{
+          position: "fixed",
+          right: "24px",
+          bottom: "88px",
+          width: "52px",
+          height: "52px",
+          borderRadius: "50%",
+          border: showAiReply ? "2px solid #9840F0" : "1px solid rgba(148, 64, 240, 0.25)",
+          background: showAiReply ? "#9840F0" : "#fff",
+          color: showAiReply ? "#fff" : "#9840F0",
+          display: "grid",
+          placeItems: "center",
+          fontWeight: 800,
+          fontSize: "14px",
+          cursor: "pointer",
+          zIndex: 1001,
+          boxShadow: "0 8px 24px rgba(61, 28, 93, 0.16)",
+        }}
+      >
+        AI
+      </button>
+
+      <button
+        type="button"
         className={`assistant-toggle ${assistantEnabled ? "is-on" : "is-off"}`}
         onClick={() => setAssistantEnabled((enabled) => !enabled)}
         aria-pressed={assistantEnabled}
@@ -5541,7 +6042,24 @@ export default function App() {
           alt=""
           aria-hidden="true"
         />
-        <span className="assistant-toggle-status" aria-hidden="true" />
+        <span
+          className="assistant-toggle-status"
+          title={
+            aiStatus === "ok"
+              ? (lang === "ua" ? "AI працює" : "AI online")
+              : aiStatus === "limited"
+                ? (lang === "ua" ? "AI тимчасово обмежений — працює локальний пошук" : "AI rate-limited — local search is active")
+                : aiStatus === "offline"
+                  ? (lang === "ua" ? "AI недоступний — працює локальний пошук" : "AI offline — local search is active")
+                  : (lang === "ua" ? "Перевіряємо AI" : "Checking AI")
+          }
+          style={{
+            backgroundColor:
+              aiStatus === "ok" ? "#22c55e" :
+              aiStatus === "limited" ? "#f59e0b" :
+              aiStatus === "offline" ? "#ef4444" : "#94a3b8",
+          }}
+        />
       </button>
     </div>
   );

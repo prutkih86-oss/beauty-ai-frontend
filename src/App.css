@@ -222,7 +222,7 @@ body {
   margin: 0;
 
   border-radius: 0 0 16px 16px;
-  overflow: hidden;
+  overflow: visible;
 
   box-shadow: 0 18px 50px rgba(45, 34, 66, 0.055);
 }
@@ -347,6 +347,7 @@ body {
 }
 /* ---------- Search Bar ---------- */
 .search-bar {
+  position: relative;
   display: flex;
   align-items: center;
   width: 100%;
@@ -364,6 +365,19 @@ body {
     0 0 12px rgba(109, 40, 217, 0.06);
 
   backdrop-filter: blur(8px);
+}
+
+
+.search-bar-ai-loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  z-index: 4;
+  pointer-events: none;
 }
 
 .search-bar input {
@@ -1129,18 +1143,13 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-  /* margin-top: auto;  <-- ПРИБЕРІТЬ ЦЕЙ РЯДОК З ФУТЕРА */
   padding-top: 12px;
 }
 
 .price-block .price {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-}
-
-.price-block .avg {
-  font-size: 11px;
-  color: var(--text-light);
+  transform: translateX(4px);
 }
 
 .masters-block {
@@ -1455,10 +1464,6 @@ more-filters-text-btn {
     position: relative;
     z-index: 1;
     padding-top: 10px !important;
-    min-height: 410px;
-    padding: 32px 22px 24px;
-    min-height: 500px;
-    padding: 30px 20px 18px;
     gap: 20px;
     min-height: 390px !important;
     padding: 72px 18px 24px !important;
@@ -1550,7 +1555,6 @@ more-filters-text-btn {
   .hero-overlay-content {
     padding: 38px 32px 32px;
     min-height: 420px;
-    padding: 38px 32px 18px;
     gap: 24px;
   }
 
@@ -3012,12 +3016,28 @@ more-filters-text-btn {
   box-shadow: 0 2px 7px rgba(36, 27, 55, 0.035);
 }
 .filter-field select {
-  padding: 0 36px 0 12px;
+  padding: 0 42px 0 12px;
   font: inherit;
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 600;
   outline: none;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+
+  background-image:
+    linear-gradient(45deg, transparent 50%, #625a6d 50%),
+    linear-gradient(135deg, #625a6d 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 15px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.filter-field select option {
+  color: #2d2340;
+  font-size: 13px;
+  font-weight: 600;
 }
 .filter-field select:hover,
 .filter-field select:focus,
@@ -3038,13 +3058,13 @@ more-filters-text-btn {
   gap: 4px;
 }
 .filter-price-inputs > label > span {
-  color: var(--text-light);
+  color: var(--text-dark);
   font-size: 10.5px;
   font-weight: 600;
 }
 .filter-price-dash {
   padding-bottom: 13px;
-  color: var(--text-light);
+  color: var(--text-dark);
 }
 .filter-price-box {
   display: flex;
@@ -3514,7 +3534,7 @@ more-filters-text-btn {
 }
 .recommendations-filter-panel-heading {
   width: 100%;
-  margin: 0 0 18px;
+  margin: 0 0 60px;
   text-align: center;
 }
 
@@ -3529,13 +3549,7 @@ more-filters-text-btn {
   letter-spacing: 0.04em;
 }
 
-.recommendations-filter-panel-heading span {
-   display: block;
-  color: var(--text-gray);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.3;
-}
+
 .recommendation-row-salons .recommendation-intro-head {
   position: relative;
   display: flex;
@@ -3725,9 +3739,10 @@ more-filters-text-btn {
 .filter-price-prefix {
   padding-left: 10px;
   margin-right: 6px;
-  color: #8d8597;
-  font-size: 12px;
+  color: var(--text-dark);
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
 }
 .open-now,
 .solo-availability {
@@ -4865,6 +4880,7 @@ button .place-modal-reviews-summary {
   border: 1px solid rgba(113, 53, 232, 0.12);
   border-radius: 18px;
   box-sizing: border-box;
+  margin-bottom: 10px;
 }
 
 .ai-sparkle-loader {
@@ -5035,7 +5051,7 @@ button .place-modal-reviews-summary {
 }
 .recommendations-filter-panel-heading .recommendations-filter-ai {
   display: inline;
-  color: #9840f0;
+  color:  #2d2340;
   font-size: 1.05em;
   font-weight: 800;
   vertical-align: -0.02em;
@@ -6286,11 +6302,26 @@ button .place-modal-reviews-summary {
 }
 
 .assistant-results-success .beauty-assistant-bubble {
-  max-width: 230px;
+  width: max-content;
+  min-width: 200px;
+  max-width: 56px;
+
   font-size: 12px;
-  position: relative;
-  top: -5px;
-  left: 0px;
+  line-height: 1.45;
+
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+
+  position: absolute;
+  right: 78px;
+
+  top: 50%;
+  transform: translateY(-50%);
+
+  left: auto;
+  z-index: 21;
+  max-height: none;
 }
 
 .recommendations-filter-heading-row {
@@ -6303,12 +6334,14 @@ button .place-modal-reviews-summary {
 
 .recommendations-filter-heading-row > strong {
   margin: 0;
+  transform: translateY(21px);
 }
 
 
 .assistant-filter-help .beauty-assistant-character {
-  width: 75px;
+  width: 90px;
 }
+
 
 .booking-success-icon {
   display: none;
@@ -6508,7 +6541,6 @@ button .place-modal-reviews-summary {
   top: -5px;
   right: 60px;
   z-index: 20;
-
   margin: 0;
 }
 
@@ -6547,11 +6579,11 @@ button .place-modal-reviews-summary {
 
 .assistant-filter-help {
   position: absolute;
-  left: calc(50% + 150px);
+  left: calc(50% + 230px);
   top: 50%;
   z-index: 8;
 
-  transform: translateY(-40%);
+  transform: translateY(-30%);
 }
 
 /* Booking success */
@@ -6643,8 +6675,8 @@ button .place-modal-reviews-summary {
   overflow: visible;
 }
 .state-what-you-doing-2.assistant-results-success {
-  right: 135px;
-  top: -70px;
+  right: 60px;
+  top: -5px;
 }
 
 /* ==========================================================
@@ -7536,4 +7568,186 @@ button .place-modal-reviews-summary {
 
 .map-user-location-label::before {
   display: none !important;
+}
+
+
+/* ==========================================================
+   HOME IDLE HERO — full-screen assistant composition
+   Only affects the pre-search state and its transition.
+   ========================================================== */
+.hero-full-width {
+  transition:
+    min-height 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms ease;
+  will-change: min-height;
+}
+
+.hero-full-width.is-idle {
+  min-height: 713px;
+}
+
+/* Keep the existing hero copy/search/chips anchored where they already are.
+   The extra idle height grows below them instead of redistributing the layout. */
+.hero-full-width.is-idle .hero-overlay-content {
+  min-height: 440px;
+  justify-content: space-between;
+}
+
+.hero-full-width.is-idle .hero-categories {
+  margin-top: 0px;
+}
+
+.hero-search-assistant {
+  position: absolute;
+  left: 310px;
+  bottom: 50px;
+  z-index: 12;
+  width: max-content;
+  max-width: 330px;
+  gap: 10px;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition:
+  opacity 260ms ease 180ms,
+  transform 520ms cubic-bezier(0.22, 1, 0.36, 1) 120ms;
+}
+
+.hero-search-assistant .beauty-assistant-character {
+  width: 88px;
+}
+
+.hero-search-assistant .beauty-assistant-bubble {
+  max-width: 180px;
+  font-size: 13px;
+  line-height: 1.35; 
+  transform: translateX(12px);
+}
+.hero-search-assistant.state-search {
+  transform: translate3d(55px, -6px, 0);
+}
+
+.hero-search-assistant.state-search .beauty-assistant-character {
+  width: 110px;
+}
+
+/* The old standalone idle panel is intentionally gone: the assistant now
+   belongs to the hero. Search/result assistant states remain untouched. */
+.ai-recommendations {
+  transition:
+    opacity 220ms ease,
+    transform 220ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.ai-recommendations.is-leaving {
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-full-width,
+  .hero-idle-assistant,
+  .ai-recommendations {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-full-width.is-idle {
+    min-height: max(620px, 100svh);
+  }
+
+  .hero-search-assistant {
+    left: min(52vw, 360px);
+    bottom: 42px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-full-width.is-idle {
+    min-height: max(620px, 100svh);
+  }
+
+  .hero-search-assistant {
+    left: 50%;
+    bottom: 38px;
+    transform: translateX(-50%);
+  }
+
+  .hero-search-assistant .beauty-assistant-character {
+    width: 72px;
+  }
+
+  
+}
+.hero-full-width.is-idle + .ai-recommendations {
+  margin-top: 0 !important;
+}
+
+.hero-full-width.is-idle ~ .about-section--empty {
+  margin-top: 0 !important;
+}
+.hero-full-width.is-idle {
+  border-radius: 20px 20px 0 0;
+}
+
+.about-section--empty {
+  margin-top: 0;
+  border-radius: 0 0 20px 20px;
+}
+.hero-search-assistant.state-waiting {
+  transform: translate(-5px, 0px);
+}
+/* NO-RESULT над search bar */
+.hero-search-assistant.state-no-result {
+  transform: translate(60px, 0px);
+}
+
+.hero-search-assistant.state-no-result .beauty-assistant-character {
+  width: 95px;
+}
+
+.hero-search-assistant.state-no-result .beauty-assistant-bubble {
+  transform: translate(0px, 0px);
+}
+/* ERROR — весь асистент */
+.hero-search-assistant.state-error {
+  transform: translate(62px, 1px);
+}
+
+/* ERROR — Pokémon */
+.hero-search-assistant.state-error .beauty-assistant-character {
+  width: 95px;
+}
+
+/* ERROR — bubble */
+.hero-search-assistant.state-error .beauty-assistant-bubble {
+  transform: translate(6px, 0px);
+}
+/* =========================================
+   SUCCESS — Pokémon над результатами
+   ========================================= */
+.assistant-results-success.state-success {
+ 
+ transform: translate(10px, -5px);
+}
+
+.assistant-results-success.state-success .beauty-assistant-character {
+  width: 88px;
+}
+
+.assistant-results-success.state-success .beauty-assistant-bubble {
+  transform: translate(-12px, -36px);
+  
+}
+.filter-field > label,
+.filter-field > span {
+  text-align: center;
+}
+.filter-field select {
+  text-align: center;
+  text-align-last: center;
+   padding-left: 40px;
 }
