@@ -119,9 +119,13 @@ function isPastDateValue(value: string) {
 }
 
 function parsePrice(value: string | number) {
-  return Number(String(value).replace(/[^0-9]/g, "")) || 0;
-}
+  const normalized = String(value)
+    .replace(/\s/g, "")
+    .replace(",", ".")
+    .replace(/[^\d.-]/g, "");
 
+  return Number(normalized) || 0;
+}
 function formatMoney(value: number, ua: boolean) {
   return `${value.toLocaleString(ua ? "uk-UA" : "en-GB")} ₴`;
 }
@@ -314,7 +318,10 @@ export default function MasterDashboard({
             email: apiProfile.email || current.profile.email,
             phone: apiProfile.phone || current.profile.phone,
             about: apiProfile.bio || current.profile.about,
-            avatar: apiProfile.photo || current.profile.avatar,
+            avatar:
+              fullName === "Кароліна Савчук"
+                ? "/masters/female/karolina-savchuk.webp"
+                : apiProfile.photo || current.profile.avatar,
           },
         }));
       } catch {
@@ -581,7 +588,14 @@ export default function MasterDashboard({
 
   return (
     <DashboardFrame
-      user={{ ...user, name: masterState.profile.displayName || user.name, avatar: masterState.profile.avatar || user.avatar }}
+      user={{
+        ...user,
+        name: masterState.profile.displayName || user.name,
+        avatar:
+          masterState.profile.displayName === "Кароліна Савчук"
+            ? "/masters/female/karolina-savchuk.webp"
+            : masterState.profile.avatar || user.avatar,
+      }}
       lang={lang}
       onHome={onHome}
       onLogout={onLogout}
@@ -618,7 +632,7 @@ export default function MasterDashboard({
                     <div className="master-slot-actions-v2">
                       <span className={`master-slot-status-v2 ${booking.status}`}>{booking.status === "completed" ? (ua ? "Завершено" : "Completed") : booking.status === "cancelled" ? (ua ? "Скасовано" : "Cancelled") : (ua ? "Підтверджено" : "Confirmed")}</span>
                       {booking.status === "confirmed" && <>
-                        <button type="button" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "completed"); }}>{ua ? "Завершити" : "Complete"}</button>
+                        <button type="button" onClick={(event) => { event.stopPropagation(); setSelectedBooking(booking); }}>{ua ? "Завершити" : "Complete"}</button>
                         <button type="button" className="danger" onClick={(event) => { event.stopPropagation(); syncBookingStatus(booking.id, "cancelled"); }}>{ua ? "Скасувати" : "Cancel"}</button>
                       </>}
                     </div>
@@ -672,7 +686,14 @@ export default function MasterDashboard({
         <div className="master-gallery-page-v2">
           <section className="master-card-v2 master-public-profile-v2">
             <div className="master-card-head-v2"><div><h2>{ua ? "Публічний профіль майстра" : "Public master profile"}</h2><p>{ua ? "Цю інформацію побачить клієнт на сайті" : "Clients see this information on the website"}</p></div></div>
-            <div className="master-public-profile-top-v2"><img src={masterState.profile.avatar} alt={masterState.profile.displayName} /><div><strong>{masterState.profile.displayName || (ua ? "Без імені" : "No name")}</strong><span>{masterState.profile.specialization || (ua ? "Спеціалізацію не вказано" : "No specialization")}</span><small>{[masterState.profile.city, masterState.profile.salon].filter(Boolean).join(" • ") || (ua ? "Локацію не вказано" : "No location")}</small></div></div>
+            <div className="master-public-profile-top-v2"><img
+              src={
+                masterState.profile.displayName === "Кароліна Савчук"
+                  ? "/masters/female/karolina-savchuk.webp"
+                  : masterState.profile.avatar
+              }
+              alt={masterState.profile.displayName}
+            /><div><strong>{masterState.profile.displayName || (ua ? "Без імені" : "No name")}</strong><span>{masterState.profile.specialization || (ua ? "Спеціалізацію не вказано" : "No specialization")}</span><small>{[masterState.profile.city, masterState.profile.salon].filter(Boolean).join(" • ") || (ua ? "Локацію не вказано" : "No location")}</small></div></div>
             <div className="master-public-profile-form-v2">
               <label>{ua ? "Ім'я для клієнтів" : "Public name"}<input value={masterState.profile.displayName} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, displayName: event.target.value } }))} /></label>
               <label>{ua ? "Спеціалізація" : "Specialization"}<input value={masterState.profile.specialization} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, specialization: event.target.value } }))} /></label>
@@ -693,7 +714,14 @@ export default function MasterDashboard({
       {section === "profile" && (
         <section className="master-card-v2 master-profile-v2">
           <div className="master-card-head-v2"><div><h2>{ua ? "Особиста інформація" : "Personal information"}</h2><p>{ua ? "Дані акаунта та контактна інформація" : "Account and contact information"}</p></div></div>
-          <div className="master-profile-top-v2"><img src={masterState.profile.avatar} alt={masterState.profile.displayName} /><div><b>{masterState.profile.displayName || user.name}</b><span>{ua ? "Майстер • Beauty AI" : "Master • Beauty AI"}</span><button type="button" onClick={() => avatarInputRef.current?.click()}>{ua ? "Змінити фото" : "Change photo"}</button><input ref={avatarInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void changeAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /></div></div>
+          <div className="master-profile-top-v2"><img
+              src={
+                masterState.profile.displayName === "Кароліна Савчук"
+                  ? "/masters/female/karolina-savchuk.webp"
+                  : masterState.profile.avatar
+              }
+              alt={masterState.profile.displayName}
+            /><div><b>{masterState.profile.displayName || user.name}</b><span>{ua ? "Майстер • Beauty AI" : "Master • Beauty AI"}</span><button type="button" onClick={() => avatarInputRef.current?.click()}>{ua ? "Змінити фото" : "Change photo"}</button><input ref={avatarInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { void changeAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /></div></div>
           <div className="master-form-grid-v2">
             <label>{ua ? "Ім'я" : "Name"}<input value={masterState.profile.displayName} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, displayName: event.target.value } }))} /></label>
             <label>Email<input type="email" value={masterState.profile.email} onChange={(event) => updateMasterState((current) => ({ ...current, profile: { ...current.profile, email: event.target.value } }))} /></label>

@@ -977,7 +977,20 @@ body {
 }
 
 .badge.ai-match {
-  background: var(--indigo-800);
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a64dff 0%, #7135e8 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  box-shadow:
+    0 4px 10px rgba(113, 53, 232, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 .badge.new {
   background: var(--blue);
@@ -7706,7 +7719,7 @@ button .place-modal-reviews-summary {
 }
 /* NO-RESULT над search bar */
 .hero-search-assistant.state-no-result {
-  transform: translate(60px, 0px);
+  transform: translate(170px, 0px);
 }
 
 .hero-search-assistant.state-no-result .beauty-assistant-character {
@@ -7714,7 +7727,13 @@ button .place-modal-reviews-summary {
 }
 
 .hero-search-assistant.state-no-result .beauty-assistant-bubble {
-  transform: translate(0px, 0px);
+  position: absolute;
+  right: calc(100% + 10px);
+  left: auto;
+  top: 50%;
+  transform: translate(10px, -50%);
+  width: max-content;
+  max-width: 220px;
 }
 /* ERROR — весь асистент */
 .hero-search-assistant.state-error {
@@ -7754,4 +7773,92 @@ button .place-modal-reviews-summary {
   text-align: center;
   text-align-last: center;
    padding-left: 40px;
+}
+.state-waiting .beauty-assistant-bubble {
+  transform: translate(10px, 0px);
+}
+.hero-search-assistant.state-waiting .beauty-assistant-character {
+  width: 100px; /* підставте бажаний розмір саме для waiting */
+}
+.ai-recommendations.is-searching .recommendation-row-salons { border-radius: 0 0 18px 18px !important; }
+.assistant-results-success.state-what-you-doing-2 {
+  transform: translateY(7px);
+}
+
+/* AI Match reveal: stamp impact + accelerating domino for visible result cards only. */
+.recommendation-row-salons .badge.ai-match.ai-match-stamp-reveal,
+.recommendation-row-masters .badge.ai-match.ai-match-stamp-reveal {
+  position: relative;
+  overflow: visible;
+  transform-origin: 50% 55%;
+  animation: ai-match-stamp var(--ai-stamp-duration, 300ms) cubic-bezier(0.22, 0.9, 0.3, 1.18) var(--ai-stamp-delay, 0ms) both;
+  will-change: transform, opacity;
+}
+
+.recommendation-row-salons .badge.ai-match.ai-match-stamp-impact::before,
+.recommendation-row-masters .badge.ai-match.ai-match-stamp-impact::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 70%;
+  height: 70%;
+  border: 1.5px solid rgba(166, 77, 255, 0.72);
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.72);
+  animation: ai-match-impact-ring 280ms ease-out calc(var(--ai-stamp-delay, 0ms) + 190ms) both;
+}
+
+.recommendation-row-salons .badge.ai-match.ai-match-stamp-impact::after,
+.recommendation-row-masters .badge.ai-match.ai-match-stamp-impact::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    -18px -7px 0 rgba(166, 77, 255, 0.9),
+    18px -6px 0 rgba(113, 53, 232, 0.82),
+    -14px 10px 0 rgba(255, 255, 255, 0.95),
+    16px 11px 0 rgba(166, 77, 255, 0.78);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.55);
+  animation: ai-match-impact-sparks 260ms ease-out calc(var(--ai-stamp-delay, 0ms) + 190ms) both;
+}
+
+@keyframes ai-match-stamp {
+  0% { opacity: 0; transform: translateY(-18px) scale(1.4); }
+  32% { opacity: 1; transform: translateY(0) scale(0.86); }
+  58% { transform: translateY(0) scale(1.12); }
+  78% { transform: translateY(0) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ai-match-impact-ring {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.45); box-shadow: 0 0 0 rgba(166,77,255,0); }
+  15% { opacity: 1; box-shadow: 0 0 18px rgba(166,77,255,.85); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.4); box-shadow: 0 0 30px rgba(166,77,255,0); }
+}
+
+@keyframes ai-match-impact-sparks {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.4); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recommendation-row-salons .badge.ai-match.ai-match-stamp-reveal,
+  .recommendation-row-masters .badge.ai-match.ai-match-stamp-reveal,
+  .recommendation-row-salons .badge.ai-match.ai-match-stamp-impact::before,
+  .recommendation-row-masters .badge.ai-match.ai-match-stamp-impact::before,
+  .recommendation-row-salons .badge.ai-match.ai-match-stamp-impact::after,
+  .recommendation-row-masters .badge.ai-match.ai-match-stamp-impact::after {
+    animation: none !important;
+  }
 }

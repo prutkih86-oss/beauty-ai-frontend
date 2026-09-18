@@ -29,103 +29,62 @@ export interface DashboardData {
   activeNow: DashboardBooking[];
 }
 
-interface RawAppointment {
+interface RawSchedule {
   id?: number | string;
-  appointment_id?: number | string;
-  client_name?: string;
-  master_name?: string;
-  service_name?: string;
-  appointment_date?: string;
-  appointment_time?: string;
+  client?: string;
+  master?: string;
+  service?: string;
   date_time?: string;
-  start?: string;
-  appointment_status?: string;
   status?: string;
-  total_price?: number | string;
   price?: number | string;
 }
 
-interface AppointmentPage {
-  results?: RawAppointment[];
-  next?: string | null;
+interface RawAdminDashboard {
+  revenue_current?: number | string;
+  revenue_previous?: number | string;
+  bookings_current?: number;
+  bookings_previous?: number;
+  clients_current?: number;
+  clients_previous?: number;
+  masters_current?: number;
+  masters_previous?: number;
+  bookings_today?: number;
+  completed_today?: number;
+  cancelled_today?: number;
+  no_show_today?: number;
+  recent_bookings?: RawSchedule[];
+  today_schedule?: RawSchedule[];
+  active_now?: RawSchedule[];
 }
 
-function safeNumber(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
+function safeNumber(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseAppointmentDate(item: RawAppointment): Date | null {
-  const direct = item.date_time || item.start;
-
-  if (direct) {
-    const date = new Date(direct);
-    if (!Number.isNaN(date.getTime())) return date;
-  }
-
-  if (!item.appointment_date) return null;
-
-  const rawTime = item.appointment_time || "00:00:00";
-  const date = new Date(`${item.appointment_date}T${rawTime}`);
-
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function mapBooking(item: RawAppointment): DashboardBooking {
-  const date = parseAppointmentDate(item);
-
+function mapBooking(item: RawSchedule): DashboardBooking {
   return {
-    id: item.id ?? item.appointment_id ?? "N/A",
-    client: item.client_name || "—",
-    master: item.master_name || "—",
-    service: item.service_name || "—",
-    dateTime: date ? date.toISOString() : "",
-    status: item.appointment_status || item.status || "Pending",
-    price: safeNumber(item.total_price ?? item.price),
+    id: item.id ?? "N/A",
+    client: item.client || "—",
+    master: item.master || "—",
+    service: item.service || "—",
+    dateTime: item.date_time || "",
+    status: item.status || "Pending",
+    price: safeNumber(item.price),
   };
 }
 
-function normalizeApiPath(urlOrPath: string): string {
-  try {
-    const url = new URL(urlOrPath);
-    return `${url.pathname}${url.search}`;
-  } catch {
-    return urlOrPath;
-  }
-}
+function resolveAnchorDate(data: RawAdminDashboard): Date {
+  const dates = [
+    ...(data.recent_bookings ?? []),
+    ...(data.today_schedule ?? []),
+    ...(data.active_now ?? []),
+  ]
+    .map((item) => (item.date_time ? new Date(item.date_time) : null))
+    .filter((item): item is Date => item !== null && !Number.isNaN(item.getTime()));
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function inRange(date: Date, from: Date, to: Date) {
-  return date >= from && date <= to;
-}
-
-function statusValue(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/-/g, "_")
-    .replace(/\s+/g, "_");
-}
-
-function uniqueCount(values: string[]) {
-  return new Set(values.filter((value) => value && value !== "—")).size;
+  if (!dates.length) return new Date();
+  return new Date(Math.max(...dates.map((item) => item.getTime())));
 }
 
 export function pctChange(current: number, previous: number) {
@@ -133,192 +92,37 @@ export function pctChange(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-async function loadHistoricalWindow(): Promise<{
-  anchorDate: Date;
-  rows: Array<{ raw: RawAppointment; date: Date; booking: DashboardBooking }>;
-}> {
-  // Першу сторінку беремо окремо, щоб визначити anchorDate.
-  const first = await apiGet<AppointmentPage>(
-    "/api/appointments/?ordering=-start&page=1"
-  );
-
-  const parseRows = (items: RawAppointment[]) =>
-    items
-      .map((raw) => {
-        const date = parseAppointmentDate(raw);
-        return date ? { raw, date, booking: mapBooking(raw) } : null;
-      })
-      .filter(
-        (
-          item
-        ): item is {
-          raw: RawAppointment;
-          date: Date;
-          booking: DashboardBooking;
-        } => item !== null
-      );
-
-  const rows = parseRows(first.results ?? []);
-  const anchorDate = rows[0]?.date ?? new Date();
-  const cutoffDate = startOfDay(addDays(anchorDate, -59));
-
-  if (!first.next) {
-    return { anchorDate, rows };
-  }
-
-  // Backend page size зараз 10. Вантажимо сторінки пакетами паралельно,
-  // замість одного HTTP-запиту за іншим.
-  const BATCH_SIZE = 12;
-  const MAX_BACKEND_PAGES = 250;
-  let nextPage = 2;
-  let done = false;
-
-  while (!done && nextPage <= MAX_BACKEND_PAGES) {
-    const pageNumbers = Array.from(
-      { length: Math.min(BATCH_SIZE, MAX_BACKEND_PAGES - nextPage + 1) },
-      (_, index) => nextPage + index
-    );
-
-    const pages = await Promise.all(
-      pageNumbers.map((page) =>
-        apiGet<AppointmentPage>(
-          `/api/appointments/?ordering=-start&page=${page}`
-        )
-      )
-    );
-
-    for (const page of pages) {
-      const pageRows = parseRows(page.results ?? []);
-      rows.push(...pageRows);
-
-      const oldestOnPage =
-        pageRows.length > 0
-          ? pageRows.reduce(
-              (oldest, item) => (item.date < oldest ? item.date : oldest),
-              pageRows[0].date
-            )
-          : null;
-
-      if (!page.next || (oldestOnPage && oldestOnPage < cutoffDate)) {
-        done = true;
-        break;
-      }
-    }
-
-    nextPage += BATCH_SIZE;
-  }
-
-  return {
-    anchorDate,
-    rows: rows
-      .filter(
-        (item) =>
-          item.date >= cutoffDate &&
-          item.date <= endOfDay(anchorDate)
-      )
-      .sort((a, b) => b.date.getTime() - a.date.getTime()),
-  };
-}
-
 let dashboardDataPromise: Promise<DashboardData> | null = null;
 
 export async function getDashboardData(
   forceRefresh = false
 ): Promise<DashboardData> {
-  if (forceRefresh) {
-    dashboardDataPromise = null;
-  }
+  if (forceRefresh) dashboardDataPromise = null;
+  if (dashboardDataPromise) return dashboardDataPromise;
 
-  if (dashboardDataPromise) {
-    return dashboardDataPromise;
-  }
-
-  dashboardDataPromise = (async () => {
-    const { anchorDate, rows: parsed } = await loadHistoricalWindow();
-
-  const currentEnd = endOfDay(anchorDate);
-  const currentStart = startOfDay(addDays(anchorDate, -29));
-  const previousEnd = endOfDay(addDays(currentStart, -1));
-  const previousStart = startOfDay(addDays(currentStart, -30));
-
-  const current = parsed.filter((item) =>
-    inRange(item.date, currentStart, currentEnd)
-  );
-
-  const previous = parsed.filter((item) =>
-    inRange(item.date, previousStart, previousEnd)
-  );
-
-  const anchorDayStart = startOfDay(anchorDate);
-  const anchorDayEnd = endOfDay(anchorDate);
-
-  const todayPairs = parsed.filter((item) =>
-    inRange(item.date, anchorDayStart, anchorDayEnd)
-  );
-
-  // Для dashboard "New Clients" рахуємо клієнтів, яких не було
-  // у попередньому 30-денному вікні, але вони є в поточному.
-  const previousClients = new Set(
-    previous
-      .map((item) => item.booking.client)
-      .filter((client) => client && client !== "—")
-  );
-
-  const currentClients = new Set(
-    current
-      .map((item) => item.booking.client)
-      .filter((client) => client && client !== "—")
-  );
-
-  const newClientsCurrent = [...currentClients].filter(
-    (client) => !previousClients.has(client)
-  ).length;
-
-  const clientsPrevious = previousClients.size;
-
-  return {
-    anchorDate,
-
-    revenueCurrent: current.reduce((sum, item) => sum + item.booking.price, 0),
-    revenuePrevious: previous.reduce(
-      (sum, item) => sum + item.booking.price,
-      0
-    ),
-
-    bookingsCurrent: current.length,
-    bookingsPrevious: previous.length,
-
-    clientsCurrent: newClientsCurrent,
-    clientsPrevious,
-
-    mastersCurrent: uniqueCount(current.map((item) => item.booking.master)),
-    mastersPrevious: uniqueCount(previous.map((item) => item.booking.master)),
-
-    bookingsToday: todayPairs.length,
-    completedToday: todayPairs.filter(
-      (item) => statusValue(item.booking.status) === "completed"
-    ).length,
-    cancelledToday: todayPairs.filter(
-      (item) => statusValue(item.booking.status) === "cancelled"
-    ).length,
-    noShowToday: todayPairs.filter(
-      (item) => statusValue(item.booking.status) === "no_show"
-    ).length,
-
-    recentBookings: parsed.slice(0, 30).map((item) => item.booking),
-
-    todaySchedule: [...todayPairs]
-      .sort((a, b) => a.date.getTime() - b.date.getTime())
-      .map((item) => item.booking),
-
-    activeNow: todayPairs
-      .filter((item) => statusValue(item.booking.status) === "in_progress")
-      .map((item) => item.booking),
-    };
-  })().catch((error) => {
-    dashboardDataPromise = null;
-    throw error;
-  });
+  dashboardDataPromise = apiGet<RawAdminDashboard>("/api/admin/dashboard/")
+    .then((data) => ({
+      anchorDate: resolveAnchorDate(data),
+      revenueCurrent: safeNumber(data.revenue_current),
+      revenuePrevious: safeNumber(data.revenue_previous),
+      bookingsCurrent: safeNumber(data.bookings_current),
+      bookingsPrevious: safeNumber(data.bookings_previous),
+      clientsCurrent: safeNumber(data.clients_current),
+      clientsPrevious: safeNumber(data.clients_previous),
+      mastersCurrent: safeNumber(data.masters_current),
+      mastersPrevious: safeNumber(data.masters_previous),
+      bookingsToday: safeNumber(data.bookings_today),
+      completedToday: safeNumber(data.completed_today),
+      cancelledToday: safeNumber(data.cancelled_today),
+      noShowToday: safeNumber(data.no_show_today),
+      recentBookings: (data.recent_bookings ?? []).map(mapBooking),
+      todaySchedule: (data.today_schedule ?? []).map(mapBooking),
+      activeNow: (data.active_now ?? []).map(mapBooking),
+    }))
+    .catch((error) => {
+      dashboardDataPromise = null;
+      throw error;
+    });
 
   return dashboardDataPromise;
 }

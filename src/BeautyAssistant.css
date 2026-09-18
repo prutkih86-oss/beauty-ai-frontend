@@ -114,9 +114,3 @@
   line-height: 1.35;
   
 }
-.state-waiting .beauty-assistant-bubble {
-  transform: translate(10px, 0px);
-}
-.hero-search-assistant.state-waiting .beauty-assistant-character {
-  width: 100px; /* підставте бажаний розмір саме для waiting */
-}

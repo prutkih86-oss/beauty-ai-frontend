@@ -388,16 +388,27 @@ export type ClientAppointmentApi = {
 };
 
 type ClientAppointmentListApi = {
-  appointment_id: number;
+  id: number;
+  client?: number | null;
+  master?: number | null;
+  salon?: number | null;
+  service?: number | null;
+  start?: string | null;
+  end?: string | null;
+  status: string;
+  created_at?: string | null;
+
+  // залишаємо сумісність, якщо бекенд/serializer десь повертає старий формат
+  appointment_id?: number;
   appointment_date?: string | null;
   appointment_time?: string | null;
   client_name?: string | null;
   master_name?: string | null;
   salon_name?: string | null;
   service_name?: string | null;
-  appointment_status: string;
+  appointment_status?: string;
   total_price?: string | null;
-  created_date: string;
+  created_date?: string | null;
 };
 
 type AppointmentDetailApi = {
@@ -437,9 +448,34 @@ export async function fetchMyAppointments(): Promise<ClientAppointmentApi[]> {
     "/api/appointments/my/?ordering=-start"
   );
 
+  const [masters, services] = await Promise.all([
+    fetchMasters(),
+    fetchServices(),
+  ]);
+
   return Promise.all(
     rows.map(async (row) => {
-      const id = row.appointment_id;
+      const id = row.id;
+
+      const master = row.master != null
+        ? masters.find((item) => item.id === row.master)
+        : undefined;
+
+      const service = row.service != null
+        ? services.find((item) => item.id === row.service)
+        : undefined;
+
+      const masterName = master
+        ? [master.first_name, master.last_name].filter(Boolean).join(" ")
+        : "";
+
+      const serviceName = service?.name || "—";
+      const servicePrice =
+        service?.price != null ? String(service.price) : "0";
+
+      const salon = row.salon != null
+        ? master?.salons?.find((item) => item.id === row.salon)
+        : undefined;
 
       try {
         const detail = await apiGet<AppointmentDetailApi>(
@@ -448,32 +484,77 @@ export async function fetchMyAppointments(): Promise<ClientAppointmentApi[]> {
 
         return {
           id,
-          master_id: detail.master_id ?? null,
-          status: detail.appointment_status || row.appointment_status,
-          created_at: detail.created_date || row.created_date,
-          appointment_date: detail.appointment_date || row.appointment_date || "",
-          appointment_time: detail.appointment_time || row.appointment_time || "",
-          appointment_status: detail.appointment_status || row.appointment_status,
-          service_name: detail.service_name || row.service_name || "—",
-          service_price: detail.service_price || row.total_price || "0",
-          salon_name: detail.salon_name || row.salon_name || "",
+          master_id: detail.master_id ?? row.master ?? null,
+          status:
+            detail.appointment_status ||
+            row.status ||
+            row.appointment_status ||
+            "",
+          created_at:
+            detail.created_date ||
+            row.created_at ||
+            row.created_date ||
+            "",
+          appointment_date:
+            detail.appointment_date ||
+            row.appointment_date ||
+            (row.start ? appointmentDateParts(row.start).date : ""),
+          appointment_time:
+            detail.appointment_time ||
+            row.appointment_time ||
+            (row.start ? appointmentDateParts(row.start).time : ""),
+          appointment_status:
+            detail.appointment_status ||
+            row.status ||
+            row.appointment_status ||
+            "",
+          service_name:
+            detail.service_name ||
+            row.service_name ||
+            serviceName,
+          service_price:
+            detail.service_price ||
+            row.total_price ||
+            servicePrice,
+          salon_name:
+            detail.salon_name ||
+            row.salon_name ||
+            salon?.name ||
+            "",
           salon_address: detail.salon_address || "",
-          master_name: detail.master_name || row.master_name || "",
+          master_name:
+            detail.master_name ||
+            row.master_name ||
+            masterName,
         };
       } catch {
         return {
           id,
-          master_id: null,
-          status: row.appointment_status,
-          created_at: row.created_date,
-          appointment_date: row.appointment_date || "",
-          appointment_time: row.appointment_time || "",
-          appointment_status: row.appointment_status,
-          service_name: row.service_name || "—",
-          service_price: row.total_price || "0",
-          salon_name: row.salon_name || "",
+          master_id: row.master ?? null,
+          status: row.status || row.appointment_status || "",
+          created_at: row.created_at || row.created_date || "",
+          appointment_date:
+            row.appointment_date ||
+            (row.start ? appointmentDateParts(row.start).date : ""),
+          appointment_time:
+            row.appointment_time ||
+            (row.start ? appointmentDateParts(row.start).time : ""),
+          appointment_status:
+            row.status || row.appointment_status || "",
+          service_name:
+            row.service_name ||
+            serviceName,
+          service_price:
+            row.total_price ||
+            servicePrice,
+          salon_name:
+            row.salon_name ||
+            salon?.name ||
+            "",
           salon_address: "",
-          master_name: row.master_name || "",
+          master_name:
+            row.master_name ||
+            masterName,
         };
       }
     })
@@ -596,7 +677,6 @@ export type MasterReviewApi = {
 export async function fetchMasterReviews(): Promise<MasterReviewApi[]> {
   return fetchAllPages<MasterReviewApi>("/api/reviews/masters/me/?ordering=-created_at");
 }
-
 export type MasterProfileApi = {
   id: number;
   first_name: string;
@@ -847,6 +927,7 @@ export async function requestAiSearch(
     method: "POST",
     headers,
     body: JSON.stringify({ message: query, conversation_id: conversationId }),
+    signal: AbortSignal.timeout(10000),
   });
 
   const payload = (await response.json().catch(() => null)) as AiChatResponse | null;
@@ -913,10 +994,17 @@ export type AppointmentReviewApi = {
 };
 
 export async function createAppointmentReview(
-  appointmentId: number | string,
+  appointmentId: string | number,
   payload: { rating: number; comment?: string }
 ): Promise<AppointmentReviewApi> {
-  return apiPost<AppointmentReviewApi>(`/api/appointments/${appointmentId}/review/`, payload);
+  return apiPost<AppointmentReviewApi>(
+    "/api/reviews/",
+    {
+      appointment: Number(appointmentId),
+      rating: payload.rating,
+      comment: payload.comment,
+    }
+  );
 }
 
 export async function updateAppointmentReview(

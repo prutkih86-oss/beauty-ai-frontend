@@ -125,6 +125,18 @@ function cityName(value: unknown): string {
   return text(value, "N/A");
 }
 
+function masterCity(item: Raw): string {
+  const workplace = item.workplace;
+  if (workplace && typeof workplace === "object") {
+    const workplaceCity = cityName(workplace);
+    if (workplaceCity !== "N/A") {
+      return workplaceCity;
+    }
+  }
+
+  return cityName(item.city ?? item.location);
+}
+
 export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
   if (analyticsSourcePromise) {
     return analyticsSourcePromise;
@@ -169,7 +181,7 @@ export async function getAnalyticsSourceData(): Promise<AnalyticsSourceData> {
   const masters = mastersRaw.map((item): AnalyticsMaster => ({
     name: fullName(item),
     specialization: masterSpecialization(item),
-    city: cityName(item.city ?? item.location),
+    city: masterCity(item),
     rating: number(item.average_rating ?? item.rating),
   }));
 

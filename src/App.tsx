@@ -12,7 +12,6 @@ import {
   fetchAvailableSlots,
   fetchMasters,
   fetchPublicMasterReviews,
-  fetchAllPublicReviews,
   fetchSalons,
   fetchServices,
   requestAiSearch,
@@ -69,6 +68,9 @@ type CardData = {
   district: string;
   city?: string;
   distance: string;
+  lat?: number;
+  lng?: number;
+  aiMatchScore?: number;
   openNow?: boolean;
   tags: string[];
   priceFrom: string;
@@ -636,7 +638,18 @@ function buildStoredMasterCards(baseCards: CardData[]): CardData[] {
   }).filter((card): card is CardData => Boolean(card));
 
   const dynamicByTitle = new Map(dynamicCards.map((card) => [card.title, card]));
-  const merged = baseCards.map((card) => dynamicByTitle.get(card.title) ?? card);
+  const merged = baseCards.map((card) => {
+    const dynamic = dynamicByTitle.get(card.title);
+    if (!dynamic) return card;
+    // Бекенд-картка лишається джерелом правди для рейтингу, послуг, цін і backendMasterId.
+    // З локального кабінету беремо тільки те, що там реально редагується вручну.
+    return {
+      ...card,
+      image: dynamic.image && dynamic.image !== roleAvatars.master && !dynamic.image.startsWith("data:image/") ? dynamic.image : card.image,
+      description: dynamic.description ?? card.description,
+      gallery: dynamic.gallery?.length ? dynamic.gallery : card.gallery,
+    };
+  });
   const baseTitles = new Set(baseCards.map((card) => card.title));
   return [...dynamicCards.filter((card) => !baseTitles.has(card.title)), ...merged];
 }
@@ -941,7 +954,15 @@ function AuthModal({
   const storedDemoMaster = readStoredMasterProfile("beauty.master@gmail.com");
   const fakeGoogleAccounts: { role: AuthRole; name: string; email: string; avatar: string }[] = [
     { role: "client", name: ua ? "Ірина Клієнтка" : "Irene Client", email: "irene.client@gmail.com", avatar: roleAvatars.client },
-    { role: "master", name: storedDemoMaster?.displayName || (ua ? "Майстер Beauty" : "Beauty Master"), email: "beauty.master@gmail.com", avatar: storedDemoMaster?.avatar || roleAvatars.master },
+    {
+      role: "master",
+      name: storedDemoMaster?.displayName || (ua ? "Майстер Beauty" : "Beauty Master"),
+      email: "beauty.master@gmail.com",
+      avatar:
+        storedDemoMaster?.displayName === "Кароліна Савчук"
+          ? LOCAL_MASTER_IMAGES["Кароліна Савчук"]
+          : storedDemoMaster?.avatar || roleAvatars.master,
+    },
     { role: "admin", name: ua ? "Адмін Beauty AI" : "Beauty AI Admin", email: "admin.beautyai@gmail.com", avatar: roleAvatars.admin },
   ];
 
@@ -955,7 +976,11 @@ function AuthModal({
       const latestAvatar = account.role === "client"
         ? (readClientProfile(account as MockUser).avatar || account.avatar)
         : account.role === "master"
-          ? (storedMaster?.avatar || account.avatar)
+          ? (
+              (storedMaster?.displayName || account.name) === "Кароліна Савчук"
+                ? LOCAL_MASTER_IMAGES["Кароліна Савчук"]
+                : storedMaster?.avatar || account.avatar
+            )
           : account.avatar;
       onAuthenticated({
         name: account.role === "master" ? (storedMaster?.displayName || account.name) : account.name,
@@ -1070,7 +1095,7 @@ function AuthModal({
                 : "Sign in to manage bookings, favourites and your profile."
               : ua
                 ? role === "client"
-                  ? "Створіть реальний акаунт клієнта Beauty AI."
+                  ? "Приєднуйтесь до Beauty AI"
                   : "Реєстрація майстра поки працює в демо-режимі."
                 : role === "client"
                   ? "Create a real Beauty AI client account."
@@ -1086,17 +1111,6 @@ function AuthModal({
             {ua ? "Реєстрація" : "Register"}
           </button>
         </div>
-
-        {mode === "register" && (
-          <div className="auth-role-switch" aria-label={ua ? "Тип профілю" : "Profile type"}>
-            <button className={role === "client" ? "active" : ""} type="button" onClick={() => setRole("client")}>
-              {ua ? "Я клієнт" : "I'm a client"}
-            </button>
-            <button className={role === "master" ? "active" : ""} type="button" onClick={() => setRole("master")}>
-              {ua ? "Я майстер" : "I'm a master"}
-            </button>
-          </div>
-        )}
 
         <form className="auth-form" onSubmit={submit}>
           {mode === "register" && role === "master" && partnerKind === "salon" && (
@@ -2178,6 +2192,7 @@ function Card({
         .finally(() => setReviewsLoading(false));
     }
   };
+  if (data.title === "Кароліна Савчук") console.log("🟣 CARD KAROLINA:", data.image, data);
   return (
     <div className={`card ${isSolo ? "card-solo" : ""}`}>
       <div
@@ -2351,6 +2366,28 @@ function getMasterFallbackImage(masterId: number, firstName?: string): string {
   return `https://cdn.jsdelivr.net/gh/faker-js/assets-person-portrait/${sex}/512/${index}.jpg`;
 }
 
+function parseCoordinates(value?: string | null): { lat: number; lng: number } | null {
+  if (!value) return null;
+  const numbers = value.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+  if (numbers.length < 2 || !numbers.every(Number.isFinite)) return null;
+
+  // Backend workplace/location coordinates are stored as latitude, longitude.
+  const [lat, lng] = numbers;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+function getSalonCoordinates(salon: SalonApi): { lat: number; lng: number } | null {
+  if (salon.latitude != null && salon.longitude != null) {
+    const lat = Number(salon.latitude);
+    const lng = Number(salon.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return { lat, lng };
+    }
+  }
+  return parseCoordinates(salon.location?.coordinates);
+}
+
 function getSalonCityName(salon: SalonApi): string {
   const flatCity =
     typeof salon.city === "string"
@@ -2391,6 +2428,8 @@ function salonToCard(
       )
     : null;
 
+  const coordinates = getSalonCoordinates(salon);
+
   return {
     image: salon.logo || getSalonFallbackImage(salon.id),
     badges: [],
@@ -2401,6 +2440,8 @@ function salonToCard(
     district: salon.district || getSalonCityName(salon) || "",
     city: getSalonCityName(salon) || undefined,
     distance: "",
+    lat: coordinates?.lat,
+    lng: coordinates?.lng,
     openNow: salon.available_status === "available",
     tags,
     priceFrom: priceFrom !== null ? String(priceFrom) : "",
@@ -2482,11 +2523,12 @@ function masterToCard(
   const workplaceLocation = [workplaceDistrict, workplaceAddress]
     .filter(Boolean)
     .join(", ");
+  const coordinates = parseCoordinates(workplace?.coordinates);
 
   return {
     image:
-      master.photo ||
       LOCAL_MASTER_IMAGES[name] ||
+      master.photo ||
       getMasterFallbackImage(master.id, master.first_name),
     badges: [],
     title: name || `Майстер #${master.id}`,
@@ -2498,6 +2540,8 @@ function masterToCard(
     district: workplaceDistrict || workplaceCity || "Соло-майстер",
     city: workplaceCity || undefined,
     distance: "",
+    lat: coordinates?.lat,
+    lng: coordinates?.lng,
     openNow: true,
     tags: serviceNames,
     priceFrom: priceFrom !== null ? String(priceFrom) : "",
@@ -2511,6 +2555,108 @@ function masterToCard(
     backendMasterId: master.id,
     backendServices: master.services ?? [],
   };
+}
+
+type ClientCoordinates = { lat: number; lng: number };
+
+function rankAiMatches(
+  cards: CardData[],
+  intent: AiSearchIntent | null,
+  clientCoordinates: ClientCoordinates | null
+): CardData[] {
+  if (!cards.length) return cards;
+
+  const cleanCards = cards.map((card) => ({
+    ...card,
+    badges: card.badges.filter((badge) => badge.kind !== "ai-match"),
+  }));
+
+  const bestRating = Math.max(...cleanCards.map((card) => card.rating));
+  const reviewRankByIndex = new Map<number, number>();
+  const ratingGroups = new Map<number, number[]>();
+
+  cleanCards.forEach((card, index) => {
+    const group = ratingGroups.get(card.rating) ?? [];
+    group.push(index);
+    ratingGroups.set(card.rating, group);
+  });
+
+  ratingGroups.forEach((indexes) => {
+    indexes
+      .slice()
+      .sort((a, b) => cleanCards[b].reviews - cleanCards[a].reviews || a - b)
+      .forEach((cardIndex, rank) => reviewRankByIndex.set(cardIndex, rank));
+  });
+
+  const distanceByIndex = new Map<number, number>();
+  if (clientCoordinates) {
+    cleanCards.forEach((card, index) => {
+      if (card.lat == null || card.lng == null) return;
+      distanceByIndex.set(
+        index,
+        distanceKm(clientCoordinates.lat, clientCoordinates.lng, card.lat, card.lng)
+      );
+    });
+  }
+
+  const distanceRankByIndex = new Map<number, number>();
+  [...distanceByIndex.entries()]
+    .sort((a, b) => a[1] - b[1] || a[0] - b[0])
+    .forEach(([cardIndex], rank) => distanceRankByIndex.set(cardIndex, rank));
+
+  const useMaxBudgetRanking = intent?.priceMax != null && intent.priceMin == null;
+  const priceRankByIndex = new Map<number, number>();
+  if (useMaxBudgetRanking) {
+    cleanCards
+      .map((card, index) => ({ index, price: Number(card.priceFrom) }))
+      .filter((item) => Number.isFinite(item.price) && item.price > 0)
+      .sort((a, b) => a.price - b.price || a.index - b.index)
+      .forEach((item, rank) => priceRankByIndex.set(item.index, rank));
+  }
+
+  const ranked = cleanCards.map((card, index) => {
+    const ratingPenalty = Math.max(0, bestRating - card.rating) * 10;
+    const lowRatingPenalty =
+      card.rating < 4
+        ? 20 + Math.max(0, Math.round((3.9 - card.rating) * 10)) * 5
+        : card.rating < 4.5
+          ? Math.max(0, Math.round((4.5 - card.rating) * 10)) * 2
+          : 0;
+    const reviewsPenalty = reviewRankByIndex.get(index) ?? 0;
+    const distancePenalty = distanceRankByIndex.get(index) ?? 0;
+    const pricePenalty = useMaxBudgetRanking && priceRankByIndex.has(index)
+      ? (priceRankByIndex.get(index) ?? 0) * 2
+      : 0;
+    const aiMatchScore = Math.max(0, Math.min(100, Math.round(
+      100 - ratingPenalty - lowRatingPenalty - reviewsPenalty - distancePenalty - pricePenalty
+    )));
+
+    return {
+      card: { ...card, aiMatchScore },
+      distance: distanceByIndex.get(index) ?? Number.POSITIVE_INFINITY,
+      originalIndex: index,
+    };
+  });
+
+  ranked.sort((a, b) =>
+    (b.card.aiMatchScore ?? 0) - (a.card.aiMatchScore ?? 0) ||
+    b.card.rating - a.card.rating ||
+    b.card.reviews - a.card.reviews ||
+    a.distance - b.distance ||
+    a.originalIndex - b.originalIndex
+  );
+
+  const topScore = ranked[0]?.card.aiMatchScore ?? 100;
+  const normalizationOffset = Math.max(0, 100 - topScore);
+
+  return ranked.map(({ card }) => {
+    const normalizedScore = Math.min(100, (card.aiMatchScore ?? 0) + normalizationOffset);
+    return {
+      ...card,
+      aiMatchScore: normalizedScore,
+      badges: [{ text: `✦ AI Match ${normalizedScore}%`, kind: "ai-match" }, ...card.badges],
+    };
+  });
 }
 
 // ---- FilterBar -> CardData matching ----
@@ -2669,8 +2815,19 @@ function salonMatchesRequestedWorkingHours(card: CardData, intent: AiSearchInten
   return false;
 }
 
-function buildLocalFallbackIntent(query: string): AiSearchIntent {
+function buildLocalFallbackIntent(
+  query: string,
+  serviceCatalog: string[] = []
+): AiSearchIntent {
   const normalized = query.trim().toLowerCase();
+
+  // 1) Основне джерело: реальні назви послуг з fetchServices(), уже
+  // відсортовані найдовша→найкоротша в App() (setServiceCatalog) — тому
+  // перший знайдений тут збіг автоматично і найспецифічніший
+  // ("манікюр класичний" переможе "манікюр", якщо в тексті є обидва).
+  const catalogMatch =
+    serviceCatalog.find((name) => normalized.includes(name)) ?? null;
+
   const serviceAliases: Array<[string, string[]]> = [
     ["манікюр", ["манікюр", "manicure", "гель-лак", "нігт"]],
     ["педикюр", ["педикюр", "pedicure"]],
@@ -2681,14 +2838,20 @@ function buildLocalFallbackIntent(query: string): AiSearchIntent {
     ["вії", ["вії", "вій", "eyelash", "lashes"]],
     ["макіяж", ["макіяж", "makeup"]],
     ["косметологія", ["косметолог", "cosmetolog"]],
-    ["депіляція", ["депіляц", "depilation"]],
+    ["епіляц", ["депіляц", "епіляц", "depilation"]],
     ["солярій", ["соляр", "solarium"]],
     ["чистка обличчя", ["чистка обличчя", "facial"]],
     ["spa", ["spa", "спа"]],
   ];
-  const serviceQuery = serviceAliases.find(([, aliases]) =>
+  // 2) Fallback лише для синонімів/словоформ, яких БУКВАЛЬНО немає в
+  // назвах БД (напр. хтось пише "nails"/"гель-лак", а в базі послуга
+  // називається "Манікюр"). Каталог має пріоритет — цей список більше не
+  // єдине джерело serviceQuery.
+  const aliasMatch = serviceAliases.find(([, aliases]) =>
     aliases.some((alias) => normalized.includes(alias))
   )?.[0] ?? null;
+
+  const serviceQuery = catalogMatch ?? aliasMatch;
 
   const city = /львів|lviv/.test(normalized)
     ? "lviv"
@@ -3400,6 +3563,44 @@ function RecommendationCarousel({
 
   const isShortList = cards.length > 0 && cards.length < 4;
 
+  const aiStampRevealKey = cards
+    .map((card) => `${card.title}:${card.aiMatchScore ?? ""}`)
+    .join("|");
+
+  useEffect(() => {
+    if (!hasSearch || (variant !== "salons" && variant !== "masters")) return;
+
+    const track = trackRef.current;
+    if (!track) return;
+
+    const frame = requestAnimationFrame(() => {
+      const trackRect = track.getBoundingClientRect();
+      const visibleCards = Array.from(track.querySelectorAll<HTMLElement>(".card")).filter((card) => {
+        const rect = card.getBoundingClientRect();
+        const visibleWidth = Math.min(rect.right, trackRect.right) - Math.max(rect.left, trackRect.left);
+        return visibleWidth > 40;
+      });
+
+      visibleCards.forEach((card, index) => {
+        const badge = card.querySelector<HTMLElement>(".badge.ai-match");
+        if (!badge) return;
+
+        const delays = [0, 350, 570, 710];
+        const durations = [600, 400, 300, 220];
+        const extraIndex = Math.max(0, index - 3);
+        const delay = index < delays.length ? delays[index] : 710 + extraIndex * Math.max(50, 100 - extraIndex * 15);
+        const duration = index < durations.length ? durations[index] : 190;
+
+        badge.style.setProperty("--ai-stamp-delay", `${delay}ms`);
+        badge.style.setProperty("--ai-stamp-duration", `${duration}ms`);
+        badge.classList.add("ai-match-stamp-reveal");
+        if (index === 0) badge.classList.add("ai-match-stamp-impact");
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [aiStampRevealKey, hasSearch, variant]);
+
   return (
     <div
       className={`recommendation-carousel recommendation-carousel-${variant}${
@@ -4066,6 +4267,7 @@ export default function App() {
   const [cityPickerOpen, setCityPickerOpen] = useState(() => readStoredCity() === null);
   const [locationPending, setLocationPending] = useState(false);
   const [locationError, setLocationError] = useState("");
+  const [clientCoordinates, setClientCoordinates] = useState<ClientCoordinates | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const initialFilterState: FilterState = {
     ...NEUTRAL_FILTERS,
@@ -4123,6 +4325,7 @@ export default function App() {
   const [conversationId, setConversationId] = useState<string | number | null>(() => readAiConversationId());
   const [aiReplyText, setAiReplyText] = useState("");
   const [aiSearchIntent, setAiSearchIntent] = useState<AiSearchIntent | null>(null);
+  const [serviceCatalog, setServiceCatalog] = useState<string[]>([]);
   const [aiSearchError, setAiSearchError] = useState(false);
   const [aiStatus, setAiStatus] = useState<"checking" | "ok" | "limited" | "offline">("checking");
   const [aiClarificationMessage, setAiClarificationMessage] = useState<string | null>(null);
@@ -4243,6 +4446,10 @@ export default function App() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setClientCoordinates({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
         chooseCity(
           nearestSupportedCity(
             position.coords.latitude,
@@ -4327,7 +4534,7 @@ export default function App() {
     setAiSearchError(false);
     setAiClarificationMessage(null);
 
-    const localIntent = buildLocalFallbackIntent(query);
+    const localIntent = buildLocalFallbackIntent(query, serviceCatalog);
     const canResolveLocally = Boolean(
       localIntent.serviceQuery &&
       (localIntent.date || localIntent.time || localIntent.availability === "today" || localIntent.availability === "tomorrow")
@@ -4382,7 +4589,7 @@ export default function App() {
         // Search never waits for a second user message. If AI returns prose instead
         // of a structured intent, use the local parser for filtering and keep the
         // raw AI text only as a temporary debug bubble.
-        const localHints = buildLocalFallbackIntent(query);
+        const localHints = buildLocalFallbackIntent(query, serviceCatalog);
         const intent = result.kind === "intent"
           ? {
               ...result.intent,
@@ -4445,7 +4652,7 @@ export default function App() {
 
         // AI недоступний — не блокуємо пошук. Локально витягуємо базові
         // service/city/date hints і запускаємо той самий marketplace filtering.
-        const fallbackIntent = buildLocalFallbackIntent(query);
+        const fallbackIntent = buildLocalFallbackIntent(query, serviceCatalog);
         const citySlug =
           fallbackIntent.city ??
           (selectedCity ? CITY_NAME_TO_SLUG[selectedCity] : "");
@@ -4615,16 +4822,36 @@ export default function App() {
     void runChecks();
   }, [aiSearchIntent, activeFilters, selectedCity, salonCards, masterCards]);
 
-  const filteredSalons = searchedSalons
-    .filter((card) => cardMatchesFilters(card, activeFilters))
-    .filter((card) => salonMatchesRequestedWorkingHours(card, aiSearchIntent));
+  const aiRankingOrigin: ClientCoordinates | null = clientCoordinates ?? (
+    selectedCity
+      ? { lat: CITY_CENTERS[selectedCity].lat, lng: CITY_CENTERS[selectedCity].lng }
+      : null
+  );
 
-  const filteredMasters = cityMasterCards
-    .filter((card) => cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null))
-    .filter((card) => cardMatchesAiDistrict(card, aiSearchIntent?.district ?? null))
-    .filter((card) => cardMatchesAiRating(card, aiSearchIntent?.minRating ?? null))
-    .filter((card) => cardMatchesFilters(card, activeFilters))
-    .filter((card) => !availabilityEligible || availabilityEligible.has(`master:${card.backendMasterId}`));
+  const filteredSalons = rankAiMatches(
+    searchedSalons
+      .filter((card) => cardMatchesFilters(card, activeFilters))
+      .filter((card) => salonMatchesRequestedWorkingHours(card, aiSearchIntent)),
+    aiSearchIntent,
+    aiRankingOrigin
+  );
+
+  const filteredMasters = rankAiMatches(
+    cityMasterCards
+      .filter((card) => cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null))
+      .filter((card) => cardMatchesAiDistrict(card, aiSearchIntent?.district ?? null))
+      .filter((card) => cardMatchesAiRating(card, aiSearchIntent?.minRating ?? null))
+      .filter((card) => cardMatchesFilters(card, activeFilters))
+      .filter((card) => !availabilityEligible || availabilityEligible.has(`master:${card.backendMasterId}`))
+      .map((card) => {
+        const query = aiSearchIntent?.serviceQuery ?? null;
+        if (!query) return card;
+        const matchedTag = card.tags.find((tag) => serviceNameMatchesQuery(tag, query));
+        return matchedTag ? { ...card, type: `Майстер · ${matchedTag}` } : card;
+      }),
+    aiSearchIntent,
+    aiRankingOrigin
+  );
 
   const searchDraftChanged =
     searchQuery.trim() !== appliedSearch.trim();
@@ -4808,7 +5035,7 @@ export default function App() {
         setMarketplaceLoading(true);
       }
 
-      const [salonsResult, mastersResult, servicesResult, reviewsResult] = await Promise.all([
+      const [salonsResult, mastersResult, servicesResult] = await Promise.all([
         fetchSalons()
           .then((data) => ({ ok: true as const, data }))
           .catch((error) => {
@@ -4826,12 +5053,6 @@ export default function App() {
           .catch((error) => {
             console.warn("Service prices are unavailable", error);
             return { ok: false as const, data: [] as ServiceApi[] };
-          }),
-        fetchAllPublicReviews()
-          .then((data) => ({ ok: true as const, data }))
-          .catch((error) => {
-            console.warn("Master reviews are unavailable", error);
-            return { ok: false as const, data: [] };
           }),
       ]);
 
@@ -4867,12 +5088,17 @@ export default function App() {
       const servicePriceById = new Map<number, number>();
       const servicePriceByName = new Map<string, number>();
 
+      const catalogNames = new Set<string>();
+
       services.forEach((service: ServiceApi) => {
         const catalogPrice = Number(service.price);
         if (Number.isFinite(catalogPrice) && catalogPrice > 0) {
           servicePriceById.set(service.id, catalogPrice);
           servicePriceByName.set(service.name.trim().toLowerCase(), catalogPrice);
         }
+
+        const catalogName = service.name?.trim().toLowerCase();
+        if (catalogName) catalogNames.add(catalogName);
 
         const price = Number(service.price);
         const hasValidPrice = Number.isFinite(price) && price > 0;
@@ -4991,6 +5217,12 @@ export default function App() {
                 )
               );
             })
+        );
+      }
+
+      if (servicesResult.ok) {
+        setServiceCatalog(
+          Array.from(catalogNames).sort((a, b) => b.length - a.length)
         );
       }
 
@@ -5213,8 +5445,19 @@ export default function App() {
     const clientProfile = nextUser.role === "client" ? readClientProfile(nextUser) : {};
     const clientAvatar = nextUser.role === "client" ? clientProfile.avatar : undefined;
     const masterProfile = nextUser.role === "master" ? readStoredMasterProfile(nextUser.email) : null;
+    const masterDisplayName =
+      nextUser.role === "master"
+        ? masterProfile?.displayName || nextUser.name
+        : nextUser.name;
     const hydratedUser = nextUser.role === "master"
-      ? { ...nextUser, name: masterProfile?.displayName || nextUser.name, avatar: masterProfile?.avatar || nextUser.avatar }
+      ? {
+          ...nextUser,
+          name: masterDisplayName,
+          avatar:
+            masterDisplayName === "Кароліна Савчук"
+              ? LOCAL_MASTER_IMAGES["Кароліна Савчук"]
+              : masterProfile?.avatar || nextUser.avatar,
+        }
       : nextUser.role === "client"
         ? {
             ...nextUser,
@@ -5387,7 +5630,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className={`hero-full-width${hasSearch && !isSearching ? " is-active" : " is-idle"}`}>
+      <section className={`hero-full-width${hasVisibleResults && !isSearching ? " is-active" : " is-idle"}`}>
         <div className="hero-overlay-content">
           <div className="hero-content">
 
@@ -5423,13 +5666,9 @@ export default function App() {
                       ? (lang === "ua"
                           ? "Упс! Сталася помилка. Спробуй ще раз."
                           : "Oops! Something went wrong. Try again.")
-                      : (aiSearchIntent && (aiSearchIntent.date || aiSearchIntent.time || aiSearchIntent.availability === "today" || aiSearchIntent.availability === "tomorrow")
-                          ? (lang === "ua"
-                              ? "На даний час запису немає."
-                              : "There are no bookings available for this time.")
-                          : (lang === "ua"
-                              ? "Я нічого не знайшов. Давай спробуємо інший запит."
-                              : "I couldn't find anything. Let's try another search."))
+                      : (lang === "ua"
+                          ? "За вашим запитом збігів не знайдено."
+                          : "No matches found for your request.")
                   }
                   className="hero-search-assistant"
                 />
@@ -5522,7 +5761,7 @@ export default function App() {
         </div>
       </section>
 
-    <section className={`section ai-recommendations${isResettingSearch ? " is-leaving" : ""}`} id="salons">
+    <section className={`section ai-recommendations${isSearching ? " is-searching" : ""}${isResettingSearch ? " is-leaving" : ""}`} id="salons">
       {!isSearching && hasSearch && (
         <div
           className={`recommendations-global-filter${

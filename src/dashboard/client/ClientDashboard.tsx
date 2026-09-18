@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
-import { ApiError, cancelMyAppointment, createAppointmentReview, deleteAppointmentReview, fetchAppointmentReview, fetchMasters, fetchMyAppointments, fetchMyProfile, updateAppointmentReview, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
+import { ApiError, cancelMyAppointment, createAppointmentReview, deleteAppointmentReview, fetchAppointmentReview, fetchMasters, fetchMyAppointments, fetchMyProfile, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
 
 type ClientFavorite = {
   title: string;
@@ -400,12 +400,17 @@ useEffect(() => {
             cached?.type ||
             (ua ? "Майстер" : "Master");
           const salonName = appointment.salon_name || "";
-          const title = salonName || masterName;
+
+          const title = salonName || "";
+          const masterCity = master?.workplace?.city_name || "";
+
           const masterPhoto =
-            master?.photo ||
-            findStoredMasterState(masterName)?.profile?.avatar ||
-            cached?.image ||
-            makeInitialsAvatar(masterName);
+            masterName === "Кароліна Савчук"
+              ? "/masters/female/karolina-savchuk.webp"
+              : master?.photo ||
+                findStoredMasterState(masterName)?.profile?.avatar ||
+                cached?.image ||
+                makeInitialsAvatar(masterName);
 
           return {
             id,
@@ -416,7 +421,11 @@ useEffect(() => {
             date: appointment.appointment_date,
             time: appointment.appointment_time,
             phone: cached?.phone || "",
-            district: appointment.salon_address || cached?.district || "—",
+            district:
+              appointment.salon_address ||
+              masterCity ||
+              cached?.district ||
+              "—",
             priceFrom: String(Number(appointment.service_price || 0)),
             hasSalon: Boolean(salonName),
             status: clientBookingStatus(
@@ -606,7 +615,6 @@ useEffect(() => {
       (booking.hasSalon && !reviewDraft.salon) ||
       reviewSaving
     ) return;
-    const isEditing = Boolean(booking.reviewSubmitted);
     // Бекенд приймає лише одну загальну оцінку (1-5), а не окремо майстер/сервіс —
     // для соло-майстра (без салону) беремо лише оцінку майстра, інакше — середнє.
     const overallRating = booking.hasSalon
@@ -618,21 +626,7 @@ useEffect(() => {
     setReviewError("");
 
     try {
-      if (isEditing) {
-        await updateAppointmentReview(booking.id, { rating: overallRating, comment });
-      } else {
-        try {
-          await createAppointmentReview(booking.id, { rating: overallRating, comment });
-        } catch (error) {
-          // 400 тут найчастіше означає "відгук уже існує" (наприклад, локальний кеш
-          // втратив статус) — пробуємо один раз як оновлення, перш ніж здаватись.
-          if (error instanceof ApiError && error.status === 400) {
-            await updateAppointmentReview(booking.id, { rating: overallRating, comment });
-          } else {
-            throw error;
-          }
-        }
-      }
+      await createAppointmentReview(booking.id, { rating: overallRating, comment });
     } catch (error) {
       const status = error instanceof ApiError ? error.status : null;
       setReviewError(
@@ -652,7 +646,7 @@ useEffect(() => {
     commit((state) => {
       const notice: ClientNotification = {
         id: `review-${booking.id}-${Date.now()}`,
-        title: ua ? (isEditing ? "Відгук оновлено" : "Відгук опубліковано") : (isEditing ? "Review updated" : "Review published"),
+        title: ua ? "Відгук опубліковано" : "Review published",
         text: booking.title,
         createdAt: new Date().toISOString(),
         read: false,
@@ -791,7 +785,11 @@ useEffect(() => {
     setAllBookingsOpen(false);
      setShowAllReviews(false);
     setTab("home");
-    startReview(booking);
+    if (booking.reviewSubmitted) {
+      setReviewBookingId(null);
+    } else {
+      startReview(booking);
+    }
     window.setTimeout(() => {
       document.getElementById("client-reviews")?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 80);
@@ -994,7 +992,7 @@ useEffect(() => {
                         <div className="client-liked-title-row">
                           <h3>{item.title}</h3>
                           <span className="client-liked-rating">
-                            ★ {item.rating.toFixed(1)} <small>({item.reviews})</small>
+                            ★ {item.rating.toFixed(1)} 
                           </span>
                         </div>
 
@@ -1104,15 +1102,21 @@ useEffect(() => {
                           <div className="client-review-action-v4 client-review-actions-group-v2">
                             <button
                               type="button"
-                              className="client-review-pencil-btn"
-                              onClick={() => startReview(booking)}
-                              aria-label={ua ? "Редагувати відгук" : "Edit review"}
-                            >
-                              ✎ <span>{ua ? "Редагувати" : "Edit"}</span>
-                            </button>
-                            <button
-                              type="button"
                               className="client-review-delete-btn"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "7px 10px",
+                                border: 0,
+                                borderRadius: 8,
+                                background: "transparent",
+                                color: "#d45b68",
+                                fontFamily: "inherit",
+                                fontSize: 13,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                              }}
                               onClick={() => deleteReview(booking)}
                               aria-label={ua ? "Видалити відгук" : "Delete review"}
                             >
@@ -1231,20 +1235,20 @@ useEffect(() => {
                             <button
                               type="button"
                               className="review-submit-btn"
-                              disabled={!reviewDraft.master || !reviewDraft.salon || reviewSaving}
+                              disabled={
+                                !reviewDraft.master ||
+                                (booking.hasSalon && !reviewDraft.salon) ||
+                                reviewSaving
+                              }
                               onClick={() => submitReview(booking)}
                             >
                               {reviewSaving
                                 ? ua
                                   ? "Збереження…"
                                   : "Saving…"
-                                : booking.reviewSubmitted
-                                  ? ua
-                                    ? "Зберегти зміни"
-                                    : "Save changes"
-                                  : ua
-                                    ? "Надіслати відгук"
-                                    : "Submit review"}
+                                : ua
+                                  ? "Надіслати відгук"
+                                  : "Submit review"}
                             </button>
                           </div>
                         </div>
@@ -1368,14 +1372,6 @@ useEffect(() => {
                           </button>
                         ) : booking.reviewSubmitted ? (
                           <div className="client-review-action-v4 client-review-actions-group-v2">
-                            <button
-                              type="button"
-                              className="client-review-pencil-btn"
-                              onClick={() => openReviewFromHistory(booking)}
-                              aria-label={ua ? "Редагувати відгук" : "Edit review"}
-                            >
-                              ✎ <span>{ua ? "Редагувати" : "Edit"}</span>
-                            </button>
                             <button
                               type="button"
                               className="client-review-delete-btn"
@@ -1502,13 +1498,9 @@ useEffect(() => {
                                 ? ua
                                   ? "Збереження…"
                                   : "Saving…"
-                                : booking.reviewSubmitted
-                                  ? ua
-                                    ? "Зберегти зміни"
-                                    : "Save changes"
-                                  : ua
-                                    ? "Надіслати відгук"
-                                    : "Submit review"}
+                                : ua
+                                  ? "Надіслати відгук"
+                                  : "Submit review"}
                             </button>
                           </div>
                         </div>

@@ -128,6 +128,12 @@ const Icons = {
       <path d="M12 21c-2.5-5-2.2-9 0-13 2.2 4 2.5 8 0 13Z" />
     </IconBase>
   ),
+ Barber: () => (
+  <IconBase>
+    <path d="M12 11C10 8.5 7.2 8 5.2 9.4C4 10.2 3 10.3 2.5 9.5C2.7 12.2 5.2 13.5 7.6 12.8C9.5 12.3 10.8 11.3 12 11Z" />
+    <path d="M12 11C14 8.5 16.8 8 18.8 9.4C20 10.2 21 10.3 21.5 9.5C21.3 12.2 18.8 13.5 16.4 12.8C14.5 12.3 13.2 11.3 12 11Z" />
+  </IconBase>
+ ), 
 };
 
 interface CategoryFiltersProps {
@@ -154,7 +160,7 @@ export default function CategoryFilters({ lang = "ua", activeCategory, onCategor
     { id: "makeup", label: isEn ? "Makeup" : "Макіяж", icon: Icons.Makeup },
     { id: "cosmetology", label: isEn ? "Cosmetology" : "Косметологія", icon: Icons.Cosmetology },
     { id: "depilation", label: isEn ? "Depilation" : "Депіляція", icon: Icons.Depilation },
-    { id: "solarium", label: isEn ? "Solarium" : "Солярій", icon: Icons.Solarium },
+    { id: "barber", label: isEn ? "Barber" : "Барбер", icon: Icons.Barber },
     { id: "facial", label: isEn ? "Facial" : "Чистка обличчя", icon: Icons.Facial },
     { id: "spa", label: "SPA", icon: Icons.Spa },
   ];

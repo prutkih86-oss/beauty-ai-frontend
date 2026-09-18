@@ -19,6 +19,13 @@ interface RawMaster {
   specialization?: string;
   services?: Array<{ category?: string; name?: string }>;
   salons?: Array<{ id?: number; name?: string }>;
+  workplace?: {
+    city_name?: string;
+    address?: string | null;
+    district?: string | null;
+    region?: string | null;
+    country?: string;
+  } | null;
   average_rating?: number;
   rating?: number;
   bookings_count?: number;
@@ -50,11 +57,15 @@ function mapMaster(
 
   const isSolo = !item.salons?.length;
   const salonId = item.salons?.[0]?.id;
+
+  // New API exposes a master's own workplace, including city_name.
+  // For solo masters this is the authoritative city instead of the old "Solo" placeholder.
+  const workplaceCity = item.workplace?.city_name?.trim();
   const city = isSolo
-    ? "Solo"
+    ? workplaceCity || "N/A"
     : salonId != null
-      ? cityBySalonId.get(salonId) ?? "N/A"
-      : "N/A";
+      ? cityBySalonId.get(salonId) ?? workplaceCity ?? "N/A"
+      : workplaceCity || "N/A";
 
   return {
     name,
@@ -84,9 +95,7 @@ export async function getMastersPage(
   });
 
   return {
-    masters: masterPage.items.map((item) =>
-      mapMaster(item, cityBySalonId)
-    ),
+    masters: masterPage.items.map((item) => mapMaster(item, cityBySalonId)),
     count: masterPage.count,
   };
 }
