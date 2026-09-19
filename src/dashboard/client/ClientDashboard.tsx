@@ -643,6 +643,7 @@ useEffect(() => {
     }
 
     setReviewSaving(false);
+    window.dispatchEvent(new CustomEvent("beautyai:reviews-updated"));
     commit((state) => {
       const notice: ClientNotification = {
         id: `review-${booking.id}-${Date.now()}`,
@@ -1551,10 +1552,9 @@ useEffect(() => {
             <h3>{selectedBooking.service}</h3><p>{selectedBooking.title} · {selectedBooking.type}</p>
             <div className="client-booking-detail-grid"><div className="date-time"><span>{ua ? "Дата і час" : "Date & time"}</span><b>{formatBookingDate(selectedBooking.date, ua)} · {selectedBooking.time}</b></div><div><span>{ua ? "Локація" : "Location"}</span><button type="button" className="card-location-link client-booking-location client-booking-detail-location" onClick={() => openBookingLocation(selectedBooking)}><span className="district-pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>{selectedBooking.district}</button></div><div><span>{ua ? "Код" : "Code"}</span><b>{selectedBooking.code}</b></div></div>
             <div className="client-booking-modal-actions">
-              {selectedBooking.status === "confirmed" && <>
+              {selectedBooking.status === "confirmed" && (
                 <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(selectedBooking.id)}>{ua ? "Скасувати запис" : "Cancel booking"}</button>
-                <button type="button" className="booking-action-btn ghost" onClick={() => completeBooking(selectedBooking.id)}>{ua ? "Позначити як завершене" : "Mark completed"}</button>
-              </>}
+              )}
               {selectedBooking.status === "completed" && <><button type="button" className="booking-action-btn ghost" onClick={() => { setSelectedBooking(null); openReviewFromHistory(selectedBooking); }}>{selectedBooking.reviewSubmitted ? (ua ? "Переглянути відгук" : "View review") : (ua ? "Залишити відгук" : "Leave a review")}</button><button type="button" className="cta-btn" onClick={() => { setSelectedBooking(null); rebook(selectedBooking); }}>{ua ? "Записатися знову" : "Book again"}</button></>}
             </div>
           </div>

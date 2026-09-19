@@ -127,6 +127,7 @@ export type SalonLocationApi = {
   city_name?: string;
   address?: string | null;
   region?: string;
+  district?: string | null;
   coordinates?: string;
   timezone?: string;
   city_tier?: string;
@@ -178,6 +179,7 @@ export type MasterApi = {
   last_name?: string;
   photo?: string | null;
   average_rating?: number | null;
+  total_reviews?: number;
   years_of_experience?: number;
   workplace?: MasterWorkplaceApi | null;
   salons?: Array<{
@@ -675,7 +677,10 @@ export type MasterReviewApi = {
 };
 
 export async function fetchMasterReviews(): Promise<MasterReviewApi[]> {
-  return fetchAllPages<MasterReviewApi>("/api/reviews/masters/me/?ordering=-created_at");
+  const data = await apiGet<{ average_rating: number; total_reviews: number; reviews: MasterReviewApi[] }>(
+    "/api/reviews/masters/me/?ordering=-created_at"
+  );
+  return data.reviews ?? [];
 }
 export type MasterProfileApi = {
   id: number;
@@ -686,8 +691,8 @@ export type MasterProfileApi = {
   bio?: string | null;
   years_of_experience?: number;
   photo?: string | null;
-  average_rating?: number;
-  total_reviews?: number;
+  average_rating_property?: number;
+ total_reviews_property?: number;
   active_services?: Array<{ id: number; name: string }>;
 };
 
@@ -986,13 +991,23 @@ export async function requestAiSearch(
 export type AppointmentReviewApi = {
   id: number;
   appointment: number;
-  client: number;
+  service: {
+    id: number;
+    category: number;
+    name: string;
+    image?: string | null;
+  };
+  client: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    photo?: string | null;
+  };
   master: number;
   rating: number;
   comment?: string | null;
   created_at: string;
 };
-
 export async function createAppointmentReview(
   appointmentId: string | number,
   payload: { rating: number; comment?: string }
@@ -1029,8 +1044,10 @@ export async function deleteAppointmentReview(appointmentId: number | string): P
   await apiDelete(`/api/appointments/${appointmentId}/review/`);
 }
 export async function fetchPublicMasterReviews(masterId: number): Promise<AppointmentReviewApi[]> {
-  const all = await fetchAllPages<AppointmentReviewApi>("/api/reviews/");
-  return all.filter((review) => review.master === masterId);
+  const data = await apiGet<AppointmentReviewApi[] | PaginatedResponse<AppointmentReviewApi>>(
+    `/api/reviews/?master=${encodeURIComponent(String(masterId))}`
+  );
+  return unwrapList(data).slice(0, 3);
 }
 export async function fetchAllPublicReviews(): Promise<AppointmentReviewApi[]> {
   return fetchAllPages<AppointmentReviewApi>("/api/reviews/");

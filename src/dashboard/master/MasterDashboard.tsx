@@ -234,6 +234,8 @@ export default function MasterDashboard({
   const [selectedBooking, setSelectedBooking] = useState<ClientBooking | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [profileRating, setProfileRating] = useState(0);
+  const [profileReviewsCount, setProfileReviewsCount] = useState(0);
 
   useEffect(() => {
     writeMasterState(user, masterState);
@@ -309,6 +311,10 @@ export default function MasterDashboard({
       try {
         const apiProfile = await fetchMasterProfile();
         if (cancelled) return;
+
+        setProfileRating(apiProfile.average_rating_property ?? 0);
+        setProfileReviewsCount(apiProfile.total_reviews_property ?? 0);
+
         const fullName = `${apiProfile.first_name} ${apiProfile.last_name}`.trim();
         updateMasterState((current) => ({
           ...current,
@@ -614,7 +620,7 @@ export default function MasterDashboard({
             <article><span>{ua ? "Записи сьогодні" : "Bookings today"}</span><strong>{todayBookings.length}</strong><small>{ua ? `${todayBookings.filter((b) => b.status === "completed").length} завершено` : `${todayBookings.filter((b) => b.status === "completed").length} completed`}</small><i>✂</i></article>
             <article><span>{ua ? "Клієнти за місяць" : "Clients this month"}</span><strong>{uniqueClients}</strong><small>{ua ? "Унікальні клієнти" : "Unique clients"}</small><i>♙</i></article>
             <article><span>{ua ? "Заповненість" : "Occupancy"}</span><strong>{occupancy}%</strong><small>{ua ? "За поточний місяць" : "Current month"}</small><i>◒</i></article>
-            <article><span>{ua ? "Рейтинг" : "Rating"}</span><strong>{rating ? rating.toFixed(1) : "—"} <em>★</em></strong><small>{reviews.length} {ua ? "відгуків" : "reviews"}</small><i>☆</i></article>
+            <article><span>{ua ? "Рейтинг" : "Rating"}</span><strong>{profileRating ? profileRating.toFixed(1) : "—"} <em>★</em></strong><small>{profileReviewsCount} {ua ? "відгуків" : "reviews"}</small><i>☆</i></article>
           </div>
 
           <div className="master-main-grid-v2">

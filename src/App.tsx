@@ -1755,13 +1755,13 @@ function ReviewsModal({
         <button type="button" className="reviews-modal-close" onClick={onClose} aria-label={t.placeModal.close}>×</button>
         <div className="reviews-modal-head">
           <div>
-            <span>{ua ? "Відгуки" : "Reviews"}</span>
+            <span>{ua ? "Останні Відгуки" : "Reviews"}</span>
             <h3>{data.title}</h3>
           </div>
           <div className="reviews-modal-score">
             <strong>{data.rating.toFixed(1)}</strong>
             <span>★</span>
-            <small>{reviews.length} {t.placeModal.reviews}</small>
+            <small>{data.reviews} {t.placeModal.reviews}</small>
           </div>
         </div>
         <div className="reviews-modal-list">
@@ -1784,6 +1784,12 @@ function ReviewsModal({
             </article>
           ))}
         </div>
+
+        {data.reviews > 3 && (
+          <button type="button" className="reviews-modal-all">
+            {ua ? `Усі відгуки (${data.reviews}) ` : `All reviews (${data.reviews}) `}
+          </button>
+        )}
       </div>
     </div>,
     document.body,
@@ -1805,11 +1811,39 @@ function PlaceDetailsModal({
 }) {
   const isSolo = data.variant === "solo";
   const ua = t.placeModal.close === "Закрити";
-  const reviews = getPlaceReviews(data, t);
+  const mockReviews = getPlaceReviews(data, t);
   const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
+  const [realReviews, setRealReviews] = useState<CardReview[] | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [serviceRowIndex, setServiceRowIndex] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
 
+  const openReviews = () => {
+    setReviewsModalOpen(true);
+
+    if (!isSolo || !data.backendMasterId || realReviews !== null || reviewsLoading) return;
+
+    setReviewsLoading(true);
+    fetchPublicMasterReviews(data.backendMasterId)
+      .then((rows) => {
+        setRealReviews(
+          rows
+            .map((row) => ({
+              author:
+                `${row.client?.first_name ?? ""} ${row.client?.last_name ?? ""}`.trim() ||
+                (ua ? "Клієнт Beauty AI" : "Beauty AI client"),
+              rating: row.rating,
+              text: row.comment || "",
+              date: new Date(row.created_at).toLocaleDateString(ua ? "uk-UA" : "en-GB"),
+            }))
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to load master reviews", error);
+        setRealReviews([]);
+      })
+      .finally(() => setReviewsLoading(false));
+  };
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1897,7 +1931,7 @@ function PlaceDetailsModal({
               type="button"
               className="place-modal-rating-v4"
               aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
-              onClick={() => setReviewsModalOpen(true)}
+              onClick={openReviews}
             >
               <span className="place-modal-rating-stars" aria-hidden="true">
                 {Array.from({ length: 5 }, (_, index) => (
@@ -2103,7 +2137,8 @@ function PlaceDetailsModal({
       <ReviewsModal
         data={data}
         t={t}
-        reviews={reviews}
+        reviews={isSolo ? realReviews ?? [] : mockReviews}
+        loading={isSolo && reviewsLoading}
         onClose={() => setReviewsModalOpen(false)}
       />
     )}
@@ -2178,10 +2213,10 @@ function Card({
         .then((rows) => {
           setRealReviews(
             rows
-              .slice()
-              .sort((a, b) => b.created_at.localeCompare(a.created_at))
               .map((row) => ({
-                author: uaForCard ? "Клієнт Beauty AI" : "Beauty AI client",
+                author:
+                  `${row.client?.first_name ?? ""} ${row.client?.last_name ?? ""}`.trim() ||
+                  (uaForCard ? "Клієнт Beauty AI" : "Beauty AI client"),
                 rating: row.rating,
                 text: row.comment || "",
                 date: new Date(row.created_at).toLocaleDateString(uaForCard ? "uk-UA" : "en-GB"),
@@ -2223,11 +2258,11 @@ function Card({
             type="button"
             className="card-rating card-rating-button"
             onClick={openReviews}
-            aria-label={`${data.rating.toFixed(1)}, ${realReviews?.length ?? data.reviews} ${t.placeModal.reviews}`}
-          >
-            <span className="star">★</span>
-            <span>{data.rating.toFixed(1)}</span>
-            <span className="count">({realReviews?.length ?? data.reviews})</span>
+            aria-label={`${data.rating.toFixed(1)}, ${data.reviews} ${t.placeModal.reviews}`}
+            >
+              <span className="star">★</span>
+              <span>{data.rating.toFixed(1)}</span>
+              <span className="count">({data.reviews})</span>
           </button>
         </div>
 
@@ -2308,13 +2343,14 @@ function Card({
         )}
       </div>
       {showReviews && (
-              <ReviewsModal
-                data={data}
-                t={t}
-                reviews={getPlaceReviews(data, t)}
-                onClose={() => setShowReviews(false)}
-              />
-            )}
+        <ReviewsModal
+          data={data}
+          t={t}
+          reviews={isSolo ? realReviews ?? [] : getPlaceReviews(data, t)}
+          loading={isSolo && reviewsLoading}
+          onClose={() => setShowReviews(false)}
+        />
+      )}
       {showProfile && (
         <PlaceDetailsModal
           data={data}
@@ -2437,7 +2473,7 @@ function salonToCard(
     type: "Салон краси",
     rating: salon.average_rating ?? 0,
     reviews: salon.total_reviews ?? 0,
-    district: salon.district || getSalonCityName(salon) || "",
+    district: salon.location?.district || salon.district || getSalonCityName(salon) || "",
     city: getSalonCityName(salon) || undefined,
     distance: "",
     lat: coordinates?.lat,
@@ -2520,9 +2556,7 @@ function masterToCard(
   const workplaceCity = workplace?.city_name?.trim() || "";
   const workplaceDistrict = workplace?.district?.trim() || "";
   const workplaceAddress = workplace?.address?.trim() || "";
-  const workplaceLocation = [workplaceDistrict, workplaceAddress]
-    .filter(Boolean)
-    .join(", ");
+  const workplaceLocation = workplaceAddress;
   const coordinates = parseCoordinates(workplace?.coordinates);
 
   return {
@@ -2536,7 +2570,7 @@ function masterToCard(
       ? `Майстер · ${serviceNames[0]}`
       : "Майстер",
     rating: master.average_rating ?? 0,
-    reviews: reviewsCount,
+    reviews: master.total_reviews ?? reviewsCount,
     district: workplaceDistrict || workplaceCity || "Соло-майстер",
     city: workplaceCity || undefined,
     distance: "",
@@ -4259,6 +4293,9 @@ export default function App() {
     role: "client",
   });
   const [partnerChoiceOpen, setPartnerChoiceOpen] = useState(false);
+  const [partnerApplicationOpen, setPartnerApplicationOpen] = useState(false);
+  const [partnerApplicationKind, setPartnerApplicationKind] = useState<"solo" | "salon">("solo");
+  const [partnerApplicationSent, setPartnerApplicationSent] = useState(false);
   const [user, setUser] = useState<MockUser | null>(() => readStoredUser());
   const [view, setView] = useState<AppView>("home");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -5170,10 +5207,9 @@ export default function App() {
                   })
                   .filter((price) => Number.isFinite(price) && price > 0) ?? [];
 
-              return [
-                ...directPrices,
-                ...(masterPricesById.get(masterId) ?? []),
-              ];
+              return masterPricesById.get(masterId)?.length
+                ? masterPricesById.get(masterId)!
+                : directPrices;
             });
 
             return salonToCard(
@@ -5341,12 +5377,17 @@ export default function App() {
 
   useEffect(() => {
     const refreshMasters = () => setMasterRegistryVersion((value) => value + 1);
+    const reloadMarketplace = () => setMarketplaceReloadKey((value) => value + 1);
+
     window.addEventListener("beautyai:master-state", refreshMasters as EventListener);
     window.addEventListener("beautyai:client-state", refreshMasters as EventListener);
+    window.addEventListener("beautyai:reviews-updated", reloadMarketplace as EventListener);
     window.addEventListener("storage", refreshMasters);
+
     return () => {
       window.removeEventListener("beautyai:master-state", refreshMasters as EventListener);
       window.removeEventListener("beautyai:client-state", refreshMasters as EventListener);
+      window.removeEventListener("beautyai:reviews-updated", reloadMarketplace as EventListener);
       window.removeEventListener("storage", refreshMasters);
     };
   }, []);
@@ -5699,10 +5740,11 @@ export default function App() {
               />
             )}
           <div className={`search-bar${isSearching ? " is-searching" : ""}`}>
-            <input
+           <input
               type="text"
               placeholder={t.searchPlaceholder}
               value={searchQuery}
+              disabled={isSearching}
               onFocus={() => {
                 setGreetingDismissed(true);
                 setSearchFocused(true);
@@ -5760,7 +5802,7 @@ export default function App() {
           </div>
         </div>
       </section>
-
+    {hasSearch && (
     <section className={`section ai-recommendations${isSearching ? " is-searching" : ""}${isResettingSearch ? " is-leaving" : ""}`} id="salons">
       {!isSearching && hasSearch && (
         <div
@@ -5881,7 +5923,7 @@ export default function App() {
 
                     <p className="section-sub">
                       {lang === "ua"
-                        ? "Найкращі збіги за вашим запитом"
+                        ? "Найкращі салони за вашим запитом"
                         : "Best matches for your request"}
                     </p>
                   </div>
@@ -5962,6 +6004,7 @@ export default function App() {
         </>
       )}
     </section>
+    )}
       {hasVisibleResults && (
         <>
           <div
@@ -6092,9 +6135,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setAuthIntent({ mode: "register", role: "master", partnerKind: "solo" });
+                  setPartnerApplicationKind("solo");
+                  setPartnerApplicationSent(false);
                   setPartnerChoiceOpen(false);
-                  setAuthOpen(true);
+                  setPartnerApplicationOpen(true);
                 }}
               >
                 <span className="partner-choice-title">{lang === "ua" ? "Соло-майстер" : "Solo master"}</span>
@@ -6106,9 +6150,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  setAuthIntent({ mode: "register", role: "master", partnerKind: "salon" });
+                  setPartnerApplicationKind("salon");
+                  setPartnerApplicationSent(false);
                   setPartnerChoiceOpen(false);
-                  setAuthOpen(true);
+                  setPartnerApplicationOpen(true);
                 }}
               >
                 <span className="partner-choice-title">{lang === "ua" ? "Власник салону" : "Salon owner"}</span>
@@ -6120,7 +6165,235 @@ export default function App() {
           </div>
         </div>
       )}
+            {partnerApplicationOpen && (
+        <div
+          className="partner-application-backdrop"
+          role="presentation"
+          onMouseDown={() => setPartnerApplicationOpen(false)}
+        >
+          <div
+            className="partner-application-window"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="partner-application-close"
+              onClick={() => setPartnerApplicationOpen(false)}
+            >
+              ×
+            </button>
 
+            {!partnerApplicationSent ? (
+              <>
+                <div className="partner-application-head">
+                  <span className="partner-choice-kicker">✦ BEAUTY AI</span>
+                  <h3>
+                    {lang === "ua"
+                      ? "Заявка на партнерство"
+                      : "Partnership application"}
+                  </h3>
+                  <p>
+                    {partnerApplicationKind === "solo"
+                      ? lang === "ua"
+                        ? "Розкажіть трохи про себе — ми перевіримо заявку та зв’яжемося з вами."
+                        : "Tell us about yourself — we'll review your application and contact you."
+                      : lang === "ua"
+                        ? "Розкажіть про ваш салон — ми перевіримо заявку та зв’яжемося з вами."
+                        : "Tell us about your salon — we'll review your application and contact you."}
+                  </p>
+                </div>
+
+                <form
+                  className="partner-application-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setPartnerApplicationSent(true);
+                  }}
+                >
+                  {partnerApplicationKind === "salon" && (
+                    <label className="partner-application-field partner-application-full">
+                      <span>{lang === "ua" ? "Назва салону" : "Salon name"}</span>
+                      <input
+                        name="salonName"
+                        type="text"
+                        placeholder={lang === "ua" ? "Наприклад, Beauty Room" : "E.g. Beauty Room"}
+                        required
+                      />
+                    </label>
+                  )}
+
+                  <label className="partner-application-field">
+                    <span>{lang === "ua" ? "Ім’я" : "First name"}</span>
+                    <input name="firstName" type="text" required />
+                  </label>
+
+                  <label className="partner-application-field">
+                    <span>{lang === "ua" ? "Прізвище" : "Last name"}</span>
+                    <input name="lastName" type="text" required />
+                  </label>
+
+                  <label className="partner-application-field">
+                    <span>{lang === "ua" ? "Телефон" : "Phone"}</span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      placeholder="+380 00 000 00 00"
+                      required
+                    />
+                  </label>
+
+                  <label className="partner-application-field">
+                    <span>Email</span>
+                    <input
+                      name="email"
+                      type="email"
+                      placeholder="name@example.com"
+                      required
+                    />
+                  </label>
+
+                  <label className="partner-application-field">
+                    <span>{lang === "ua" ? "Місто" : "City"}</span>
+                    <select name="city" defaultValue="" required>
+                      <option value="" disabled>
+                        {lang === "ua" ? "Оберіть місто" : "Choose city"}
+                      </option>
+                      <option value="Київ">{lang === "ua" ? "Київ" : "Kyiv"}</option>
+                      <option value="Львів">{lang === "ua" ? "Львів" : "Lviv"}</option>
+                    </select>
+                  </label>
+
+                  {partnerApplicationKind === "solo" ? (
+                    <label className="partner-application-field">
+                      <span>{lang === "ua" ? "Досвід роботи" : "Experience"}</span>
+                      <input
+                        name="experience"
+                        type="text"
+                        placeholder={lang === "ua" ? "Наприклад, 4 роки" : "E.g. 4 years"}
+                        required
+                      />
+                    </label>
+                  ) : (
+                    <label className="partner-application-field">
+                      <span>{lang === "ua" ? "Кількість майстрів" : "Number of masters"}</span>
+                      <input name="mastersCount" type="number" min="1" required />
+                    </label>
+                  )}
+
+                  {partnerApplicationKind === "salon" && (
+                    <label className="partner-application-field partner-application-full">
+                      <span>{lang === "ua" ? "Адреса салону" : "Salon address"}</span>
+                      <input name="address" type="text" required />
+                    </label>
+                  )}
+
+                  <label className="partner-application-field partner-application-full">
+                    <span>
+                      {partnerApplicationKind === "solo"
+                        ? lang === "ua" ? "Спеціалізація" : "Specialization"
+                        : lang === "ua" ? "Основні напрямки" : "Main services"}
+                    </span>
+                    <input
+                      name="specialization"
+                      type="text"
+                      placeholder={
+                        lang === "ua"
+                          ? "Наприклад: манікюр, педикюр, nail-art"
+                          : "E.g. manicure, pedicure, nail art"
+                      }
+                      required
+                    />
+                  </label>
+
+                  <label className="partner-application-field partner-application-full">
+                    <span>Instagram / {lang === "ua" ? "сайт" : "website"}</span>
+                    <input
+                      name="social"
+                      type="text"
+                      placeholder="@beauty_master / beauty.com"
+                    />
+                  </label>
+
+                  <label className="partner-application-upload partner-application-full">
+                    <input
+                      name="documents"
+                      type="file"
+                      accept="image/*,.pdf"
+                      multiple
+                    />
+                    <span className="partner-application-upload-icon">＋</span>
+                    <strong>
+                      {lang === "ua"
+                        ? "Додати документи"
+                        : "Add documents"}
+                    </strong>
+                    <small>
+                      {lang === "ua"
+                        ? "Фото або PDF — дипломи, сертифікати чи документи про діяльність"
+                        : "Photos or PDF — diplomas, certificates or business documents"}
+                    </small>
+                  </label>
+
+                  <label className="partner-application-field partner-application-full">
+                    <span>
+                      {lang === "ua"
+                        ? "Коротко про себе"
+                        : "Additional information"}
+                    </span>
+                    <textarea
+                      name="comment"
+                      rows={3}
+                      placeholder={
+                        partnerApplicationKind === "solo"
+                          ? lang === "ua"
+                            ? "Розкажіть про свій досвід та напрямок роботи"
+                            : "Tell us about your experience"
+                          : lang === "ua"
+                            ? "Розкажіть кілька слів про ваш салон"
+                            : "Tell us a little about your salon"
+                      }
+                    />
+                  </label>
+
+                  <label className="partner-application-consent partner-application-full">
+                    <input type="checkbox" required />
+                    <span>
+                      {lang === "ua"
+                        ? "Погоджуюсь на обробку персональних даних"
+                        : "I agree to the processing of personal data"}
+                    </span>
+                  </label>
+
+                  <button
+                    type="submit"
+                    className="partner-application-submit partner-application-full"
+                  >
+                    ✦ {lang === "ua" ? "Надіслати заявку" : "Submit application"}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="partner-application-success">
+                <span>✦</span>
+                <h3>{lang === "ua" ? "Заявку надіслано" : "Application submitted"}</h3>
+                <p>
+                  {lang === "ua"
+                    ? "Дякуємо! Ми перевіримо інформацію та зв’яжемося з вами."
+                    : "Thank you! We'll review your information and contact you."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPartnerApplicationOpen(false)}
+                >
+                  {lang === "ua" ? "Готово" : "Done"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {clientAuthGate && !authOpen && (
         <div className="booking-auth-gate-overlay" role="presentation" onMouseDown={() => setClientAuthGate(null)}>
           <div className="booking-auth-gate" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
@@ -6331,8 +6604,26 @@ export default function App() {
           zIndex: 1001,
           boxShadow: "0 8px 24px rgba(61, 28, 93, 0.16)",
         }}
-      >
+           >
         AI
+        <span
+          className="ai-toggle-status"
+          title={
+            aiStatus === "ok"
+              ? (lang === "ua" ? "AI працює" : "AI online")
+              : aiStatus === "limited"
+                ? (lang === "ua" ? "AI тимчасово обмежений — працює локальний пошук" : "AI rate-limited — local search is active")
+                : aiStatus === "offline"
+                  ? (lang === "ua" ? "AI недоступний — працює локальний пошук" : "AI offline — local search is active")
+                  : (lang === "ua" ? "Перевіряємо AI" : "Checking AI")
+          }
+          style={{
+            backgroundColor:
+              aiStatus === "ok" ? "#22c55e" :
+              aiStatus === "limited" ? "#f59e0b" :
+              aiStatus === "offline" ? "#ef4444" : "#94a3b8",
+          }}
+        />
       </button>
 
       <button
@@ -6355,24 +6646,6 @@ export default function App() {
           src="/assistant/assistant-idle.png"
           alt=""
           aria-hidden="true"
-        />
-        <span
-          className="assistant-toggle-status"
-          title={
-            aiStatus === "ok"
-              ? (lang === "ua" ? "AI працює" : "AI online")
-              : aiStatus === "limited"
-                ? (lang === "ua" ? "AI тимчасово обмежений — працює локальний пошук" : "AI rate-limited — local search is active")
-                : aiStatus === "offline"
-                  ? (lang === "ua" ? "AI недоступний — працює локальний пошук" : "AI offline — local search is active")
-                  : (lang === "ua" ? "Перевіряємо AI" : "Checking AI")
-          }
-          style={{
-            backgroundColor:
-              aiStatus === "ok" ? "#22c55e" :
-              aiStatus === "limited" ? "#f59e0b" :
-              aiStatus === "offline" ? "#ef4444" : "#94a3b8",
-          }}
         />
       </button>
     </div>

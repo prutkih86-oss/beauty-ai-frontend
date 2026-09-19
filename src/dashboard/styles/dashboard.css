@@ -1427,7 +1427,7 @@
   padding: 24px 16px 20px;
   border: 1px solid rgba(81, 53, 155, 0.10);
   border-radius: 22px;
-  background: linear-gradient(135deg, rgba(247, 244, 251, 0.96) 0%, rgba(238, 233, 247, 0.72) 100%);
+   background: #0ba95b;
   overflow: visible;
 }
 
@@ -1836,9 +1836,10 @@
 .subtle-panel-section,
 .kyiv-top-section {
   background: linear-gradient(
-    135deg,
-    rgba(247, 244, 251, 0.96) 0%,
-    rgba(238, 233, 247, 0.72) 100%
+    180deg,
+    #fcfaff 0%,
+    #f6f2ff 55%,
+    #faf8ff 100%
   );
   border-color: rgba(81, 53, 155, 0.10);
 }
@@ -4065,7 +4066,7 @@
 .client-empty-state{display:flex;min-height:190px;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px;border:1px dashed rgba(81,53,155,.18);border-radius:18px;background:#fcfbfd}.client-empty-state b{color:#241a3d;font-size:15px}.client-empty-state p{max-width:430px;margin:7px 0 18px;color:#7b7286;font-size:12px;line-height:1.5}.client-empty-state.compact{min-height:500px}.client-empty-state.compact p{margin:0}
 .client-dashboard-reviews-panel{padding:22px}.client-dashboard-reviews-panel .client-review-card+.client-review-card{margin-top:14px}
 .client-points-popover{position:absolute;left:18px;right:18px;bottom:70px;z-index:6;padding:10px;border:1px solid rgba(81,53,155,.12);border-radius:14px;background:#fff;box-shadow:0 16px 40px rgba(36,26,61,.14)}.client-points-popover div{display:grid;grid-template-columns:44px 1fr;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #f0edf3}.client-points-popover div:last-child{border-bottom:0}.client-points-popover b{color:#7135e8;font-size:13px}.client-points-popover span{color:#695f76;font-size:10.5px}.client-points-popover p{margin:6px;color:#756c81;font-size:11px}
-.client-booking-modal-backdrop{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:22px;background:rgba(24,18,34,.42);backdrop-filter:blur(7px)}.client-booking-modal{position:relative;width:min(520px,100%);padding:22px;border:1px solid rgba(81,53,155,.12);border-radius:22px;background:#fff;box-shadow:0 28px 80px rgba(36,26,61,.2)}.client-booking-modal>img{width:100%;height:190px;display:block;object-fit:cover;border-radius:16px;margin-bottom:16px}.client-booking-modal-close{position:absolute;top:34px;right:34px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.94);color:#33244f;font-size:22px;cursor:pointer;box-shadow:0 5px 16px rgba(36,26,61,.12)}.client-booking-modal h3{margin:12px 0 4px;color:#1d1528;font-size:21px}.client-booking-modal>p{margin:0 0 18px;color:#756c81;font-size:12px}.client-booking-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.client-booking-detail-grid div{padding:12px;border-top:1px solid #eee9f3}.client-booking-detail-grid span{display:block;color:#91899a;font-size:10px;text-transform:uppercase;letter-spacing:.05em}.client-booking-detail-grid b{display:block;margin-top:4px;color:#2b2236;font-size:12px}.client-booking-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.client-booking-modal-actions .cta-btn{width:auto;min-width:150px}
+.client-booking-modal-backdrop{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:22px;background:rgba(24,18,34,.42);backdrop-filter:blur(7px)}.client-booking-modal{position:relative;width:min(520px,100%);padding:22px;border:1px solid rgba(81,53,155,.12);border-radius:22px;background:#fff;box-shadow:0 28px 80px rgba(36,26,61,.2)}.client-booking-modal>img{width:100%;height:190px;display:block;object-fit:cover;border-radius:16px;margin-bottom:16px}.client-booking-modal-close{position:absolute;top:34px;right:34px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.94);color:#33244f;font-size:22px;cursor:pointer;box-shadow:0 5px 16px rgba(36,26,61,.12)}.client-booking-modal h3{margin:12px 0 4px;color:#1d1528;font-size:21px}.client-booking-modal>p{margin:0 0 18px;color:#756c81;font-size:14px;font-weight: 600}.client-booking-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.client-booking-detail-grid div{padding:12px;border-top:1px solid #eee9f3}.client-booking-detail-grid span{display:block;color:#91899a;font-size:12px;font-weight: 600; text-transform:uppercase;letter-spacing:.05em}.client-booking-detail-grid b{display:block;margin-top:4px;color:#2b2236;font-size:14px}.client-booking-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.client-booking-modal-actions .cta-btn{width:auto;min-width:150px}
 .client-liked-card .client-heart-btn.active{color:#7135e8}
 @media(max-width:640px){.client-notification-menu{right:-70px}.client-booking-detail-grid{grid-template-columns:1fr}.client-booking-modal-actions{flex-direction:column}.client-booking-modal-actions .cta-btn,.client-booking-modal-actions .profile-delete-btn{width:100%}}
 
@@ -4843,13 +4844,9 @@
 }
 
 .client-liked-section {
-  order: 2;
   padding: 24px 22px 22px;
 }
 
-.client-dashboard-reviews-panel {
-  order: 3;
-}
 
 .client-reviews-head-v2 {
   align-items: flex-end;
@@ -6242,7 +6239,9 @@
   font-size: 12px;
   font-weight: 700;
 }
-
+.master-dayoffs-v2 {
+  padding-bottom: 22px;
+}
 .master-dayoffs-v2 .master-card-head-v2 button {
   min-width: 84px;
 }
@@ -6259,7 +6258,7 @@
 .master-dayoffs-list-v2 {
   display: grid;
   gap: 12px;
-  padding: 0 26px 2px;
+  padding: 0 26px 22px;
 }
 
 .master-dayoff-row-v2 {
@@ -6284,11 +6283,23 @@
   font-size: 12px;
 }
 
-.master-dayoff-row-v2 button {
+.master-dayoff-row-v2 button.danger {
   min-height: 36px;
-  padding: 8px 13px;
+  padding: 8px 14px;
+  border: 1px solid #edcbd0;
   border-radius: 10px;
+  background: #fff;
+  color: #a64e5c;
+  font: inherit;
   font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease;
+}
+
+.master-dayoff-row-v2 button.danger:hover {
+  border-color: #dfaeb6;
+  background: #fff7f8;
 }
 
 @media (max-width: 1050px) {
@@ -6412,7 +6423,7 @@
 }
 
 .client-empty-state.compact {
-  min-height: 100%;
+  min-height: 120px;
 }
 .client-review-delete {
   display: inline-flex;
