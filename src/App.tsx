@@ -2378,8 +2378,38 @@ const FALLBACK_SALON_IMAGES = [
   "https://images.pexels.com/photos/7750091/pexels-photo-7750091.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop",
 ];
 
+const LOCAL_SALON_IMAGES: Record<number, string> = {
+  1: "/salons/Mr_Colt_Barbershop.webp",
+  2: "/salons/Kondratiuk_nails.webp",
+  3: "/salons/salon_02.webp",
+  4: "/salons/salon_03.webp",
+  5: "/salons/salon_04.webp",
+  6: "/salons/salon_05.webp",
+  7: "/salons/salon_06.webp",
+  8: "/salons/salon_07.webp",
+  9: "/salons/salon_01.webp",
+  10: "/salons/salon_08.webp",
+  11: "/salons/salon_09.webp",
+  12: "/salons/salon_10.webp",
+  13: "/salons/salon_11.webp",
+  14: "/salons/salon_12.webp",
+  15: "/salons/salon_13.webp",
+  16: "/salons/salon_14.webp",
+  17: "/salons/salon_15.webp",
+  18: "/salons/salon_16.webp",
+  19: "/salons/salon_17.webp",
+  20: "/salons/salon_18.webp",
+  21: "/salons/salon_19.webp",
+  22: "/salons/salon_20.webp",
+  23: "/salons/salon_21.webp",
+  24: "/salons/salon_22.webp",
+  25: "/salons/salon_23.webp",
+  26: "/salons/salon_24.webp",
+  27: "/salons/salon_25.webp",
+};
+
 function getSalonFallbackImage(salonId: number): string {
-  return FALLBACK_SALON_IMAGES[Math.abs(salonId) % FALLBACK_SALON_IMAGES.length];
+  return LOCAL_SALON_IMAGES[salonId] ?? FALLBACK_SALON_IMAGES[Math.abs(salonId) % FALLBACK_SALON_IMAGES.length];
 }
 
 const MALE_NAME_EXCEPTIONS = new Set([
@@ -2467,7 +2497,7 @@ function salonToCard(
   const coordinates = getSalonCoordinates(salon);
 
   return {
-    image: salon.logo || getSalonFallbackImage(salon.id),
+    image: getSalonFallbackImage(salon.id),
     badges: [],
     title: salon.name,
     type: "Салон краси",
@@ -2479,7 +2509,9 @@ function salonToCard(
     lat: coordinates?.lat,
     lng: coordinates?.lng,
     openNow: salon.available_status === "available",
-    tags,
+    tags: salon.id === 1
+      ? [...new Set([...tags, "Чоловіча стрижка (барбер)", "Чоловічий догляд за бородою"])]
+      : tags,
     priceFrom: priceFrom !== null ? String(priceFrom) : "",
     mastersCount:
       salon.masters_count != null
@@ -2490,7 +2522,9 @@ function salonToCard(
         ? `${avgPrice} грн`
         : undefined,
     description: salon.description ?? undefined,
-    website: salon.external_booking_url || undefined,
+    website: salon.id === 2
+      ? "https://n163127.alteg.io/company/168399/personal/menu"
+      : salon.external_booking_url || undefined,
     backendSalonId: salon.id,
     salonWorkingHours: (salon as SalonApi & {
       working_hours?: Array<{
@@ -2533,7 +2567,7 @@ function masterToCard(
   reviewsCount = 0
 ): CardData {
   const name =
-    `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim();
+   `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim().split(/\s+/).slice(0, 2).join(" ");
 
   const serviceNames = Array.from(
     new Set([
@@ -2556,7 +2590,9 @@ function masterToCard(
   const workplaceCity = workplace?.city_name?.trim() || "";
   const workplaceDistrict = workplace?.district?.trim() || "";
   const workplaceAddress = workplace?.address?.trim() || "";
-  const workplaceLocation = workplaceAddress;
+  const workplaceLocation = workplaceAddress
+    .replace(/Богдана Хмельницького/gi, "Б. Хмельницького")
+    .replace(/Велика Васильківська/gi, "В. Васильківська");
   const coordinates = parseCoordinates(workplace?.coordinates);
 
   return {
@@ -2795,15 +2831,19 @@ function serviceNameMatchesQuery(serviceName: string, serviceQuery: string | nul
   return Boolean(normalized) && (normalized.includes(query) || query.includes(normalized));
 }
 
+// СТАЛО
 function cardMatchesAiService(card: CardData, serviceQuery: string | null): boolean {
   if (serviceQuery === null) return true;
+  const query = serviceQuery.trim().toLowerCase();
+  if (!query) return true;
   const serviceNames = [
     ...card.tags,
     ...(card.backendServices?.map((service) => service.name) ?? []),
   ];
-  return serviceNames.some((serviceName) => serviceNameMatchesQuery(serviceName, serviceQuery));
+  const matchesService = serviceNames.some((serviceName) => serviceNameMatchesQuery(serviceName, serviceQuery));
+  const matchesTitle = card.title.trim().toLowerCase().includes(query);
+  return matchesService || matchesTitle;
 }
-
 function isCenterDistrictText(district: string | null): boolean {
   if (!district) return false;
   return /центр|хрещатик|майдан|khreshchatyk|maidan|center|centre/i.test(district);
@@ -2865,6 +2905,7 @@ function buildLocalFallbackIntent(
   const serviceAliases: Array<[string, string[]]> = [
     ["манікюр", ["манікюр", "manicure", "гель-лак", "нігт"]],
     ["педикюр", ["педикюр", "pedicure"]],
+    ["стрижка чоловіча", ["барбер", "barber", "чоловіча стрижка", "чоловічу стрижку", "чоловіча стрижка (барбер)", "чоловічий догляд за бородою", "борода", "бороду", "бороди", "beard"]],
     ["стрижка", ["стриж", "haircut"]],
     ["фарбування", ["фарбув", "coloring", "colouring"]],
     ["масаж", ["масаж", "massage"]],
@@ -2885,7 +2926,7 @@ function buildLocalFallbackIntent(
     aliases.some((alias) => normalized.includes(alias))
   )?.[0] ?? null;
 
-  const serviceQuery = catalogMatch ?? aliasMatch;
+  const serviceQuery = catalogMatch ?? aliasMatch ?? (normalized || null);
 
   const city = /львів|lviv/.test(normalized)
     ? "lviv"
@@ -5671,7 +5712,7 @@ export default function App() {
         </div>
       </header>
 
-      <section className={`hero-full-width${hasVisibleResults && !isSearching ? " is-active" : " is-idle"}`}>
+      <section className={`hero-full-width${hasSearch && !isSearching ? " is-active" : " is-idle"}`}>
         <div className="hero-overlay-content">
           <div className="hero-content">
 
@@ -5802,9 +5843,9 @@ export default function App() {
           </div>
         </div>
       </section>
-    {hasSearch && (
+    {hasSearch && !isSearching && hasVisibleResults && (
     <section className={`section ai-recommendations${isSearching ? " is-searching" : ""}${isResettingSearch ? " is-leaving" : ""}`} id="salons">
-      {!isSearching && hasSearch && (
+      {!isSearching && hasVisibleResults && (
         <div
           className={`recommendations-global-filter${
             recommendationFiltersOpen ? " is-open" : ""
@@ -6005,7 +6046,7 @@ export default function App() {
       )}
     </section>
     )}
-      {hasVisibleResults && (
+      {!isSearching && hasVisibleResults && (
         <>
           <div
             className="section-divider section-divider-results"
@@ -6123,9 +6164,19 @@ export default function App() {
           onMouseDown={() => setPartnerChoiceOpen(false)}
         >
           <div className="partner-choice-window" onMouseDown={(event) => event.stopPropagation()}>
-            <span className="partner-choice-kicker">✦ BEAUTY AI</span>
-            <h3>{lang === "ua" ? "Хто ви?" : "Who are you?"}</h3>
-            <p>
+            <div className="partner-choice-header">
+              <div className="partner-choice-bubble">
+                {lang === "ua" ? "Хто ви?" : "Who are you?"}
+              </div>
+
+              <BeautyAssistant
+                state="help"
+                className="partner-choice-assistant"
+                ariaLabel={lang === "ua" ? "Помічник Beauty AI" : "Beauty AI helper"}
+              />
+            </div>
+
+            <p className="partner-choice-subtitle">
               {lang === "ua"
                 ? "Оберіть, як вам зручніше приєднатись до Beauty AI"
                 : "Choose how you'd like to join Beauty AI"}
@@ -6188,7 +6239,7 @@ export default function App() {
             {!partnerApplicationSent ? (
               <>
                 <div className="partner-application-head">
-                  <span className="partner-choice-kicker">✦ BEAUTY AI</span>
+
                   <h3>
                     {lang === "ua"
                       ? "Заявка на партнерство"

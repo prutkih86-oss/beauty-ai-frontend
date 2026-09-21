@@ -2552,16 +2552,13 @@ more-filters-text-btn {
   letter-spacing: 0.06em;
 }
 
-.partner-choice-window h3 {
-  margin: 8px 0 4px;
-  font-size: 22px;
-  font-family: "Cormorant Garamond", Georgia, serif !important;
-}
+
 
 .partner-choice-window > p {
   margin: 0 0 20px;
-  color: var(--text-gray);
-  font-size: 13px;
+  color: #625a6b;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .partner-choice-options {
@@ -7940,8 +7937,10 @@ button .place-modal-reviews-summary {
 
 .partner-application-head {
   padding-right: 42px;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
+  text-align: left;
 }
+
 
 .partner-application-head h3 {
   margin: 7px 0 7px;
@@ -7951,7 +7950,7 @@ button .place-modal-reviews-summary {
 }
 
 .partner-application-head p {
-  max-width: 570px;
+ max-width: none;
   margin: 0;
   color: #6f6a78;
   font-size: 13px;
@@ -7982,10 +7981,10 @@ button .place-modal-reviews-summary {
   width: 100%;
   min-height: 46px;
   padding: 11px 13px;
-  border: 1px solid #e6e0eb;
+  border: 1px solid #cfc8d6;
   border-radius: 12px;
   outline: none;
-  background: #faf7fc;
+  background: #fff;
   color: #191721;
   font-size: 13px;
   transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
@@ -8184,19 +8183,10 @@ button .place-modal-reviews-summary {
   letter-spacing: .06em;
 }
 
-.partner-choice-window h3 {
-  margin: 0 0 7px;
-  color: #191721;
-  font-family: "Manrope", sans-serif !important;
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
 .partner-choice-window > p {
   margin: 0 0 24px;
-  color: #6f6a78;
-  font-size: 13px;
+  color: #191721;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -8211,48 +8201,16 @@ button .place-modal-reviews-summary {
   min-height: 142px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 68px 20px 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   border: 1px solid #e6e0eb;
   border-radius: 18px;
-  background: #faf7fc;
+  background:  #f8f4ff;
   color: #191721;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
-}
-
-.partner-choice-options > button::before {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: #eee9f7;
-  color: #7135e8;
-  font-size: 19px;
-}
-
-.partner-choice-options > button:first-child::before {
-  content: "✦";
-}
-
-.partner-choice-options > button:last-child::before {
-  content: "⌂";
-}
-
-.partner-choice-options > button::after {
-  content: "→";
-  position: absolute;
-  right: 18px;
-  bottom: 19px;
-  color: #9a95a2;
-  font-size: 18px;
-  transition: transform .18s ease, color .18s ease;
 }
 
 .partner-choice-options > button:hover {
@@ -8262,29 +8220,28 @@ button .place-modal-reviews-summary {
   box-shadow: 0 10px 25px rgba(81, 53, 155, .09);
 }
 
-.partner-choice-options > button:hover::after {
-  color: #7135e8;
-  transform: translateX(3px);
-}
-
 .partner-choice-title {
-  padding-right: 0;
   color: #241a3d;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
 .partner-choice-desc {
-  max-width: 165px;
-  margin-top: 5px;
-  padding-right: 15px;
-  color: #7b7483;
-  font-size: 11px;
-  font-weight: 500;
+  max-width: 190px;
+  margin-top: 8px;
+  color: #625a6b;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1.45;
+  text-align: center;
 }
-
+.partner-choice-bubble {
+  font-size: 22px;
+  font-weight: 700;
+  color: #191721;
+  text-align: center;
+}
 @keyframes partner-choice-in {
   from { opacity: 0; transform: translateY(8px) scale(.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
