@@ -2547,6 +2547,25 @@ const LOCAL_MASTER_IMAGES: Record<string, string> = {
   "Микита Заєць": "/masters/male/Zaiets_Mykita.webp",
   "Венедикт Дашенко": "/masters/male/Dashenko_Venedikt.webp",
   "Трохим Іщак": "/masters/male/Ishchak_Trokhym.webp",
+  "Богдан Савчук": "/masters/male/Savchuk_Bohdan.webp",
+  "Георгій Приходько": "/masters/male/Prykhodko_Heorhii.webp",
+  "Софія Коваленко": "/masters/female/Kovalenko_Sofiia.webp",
+  "Лілія Кравець": "/masters/female/Kravets_Liliia.webp",
+  "Тарас Дудник": "/masters/male/Dudnyk_Taras.webp",
+  "Анастасія Лисенко": "/masters/female/Lysenko_Anastasiia.webp",
+  "Лариса Деревʼянко": "/masters/female/Derevianko_Larysa.webp",
+  "Євген Мороз": "/masters/male/Moroz_Yevhen.webp",
+  "Сергій Олійник": "/masters/male/Oliinyk_Serhii.webp",
+  "Руслан Бойчук": "/masters/male/Boichuk_Ruslan.webp",
+  "Павло Руденко": "/masters/male/Rudenko_Pavlo.webp",
+  "Вікторія Поліщук": "/masters/female/Polishchuk_Viktoriia.webp",
+  "Вікторія Поліщук2": "/masters/female/Polishchuk_Viktoriia_2.webp",
+  "Тетяна Гнатюк": "/masters/female/Hnatiuk_Tetiana.webp",
+  "Аліна Гринчук": "/masters/female/Hrynchuk_Alina.webp",
+  "Богдана Литвин": "/masters/female/Lytvyn_Bohdana.webp",
+  "Богданна Вдовенко": "/masters/female/Vdovenko_Bohdanna.webp",
+  "Максим Коваленко": "/masters/male/Kovalenko_Maksym.webp",
+  "Назар Заєць": "/masters/male/Zaiets_Nazar.webp",
 
   // На випадок, якщо бекенд поверне прізвище та імʼя у зворотному порядку.
   "Савчук Кароліна": "/masters/female/karolina-savchuk.webp",
@@ -2597,9 +2616,13 @@ function masterToCard(
 
   return {
     image:
-      LOCAL_MASTER_IMAGES[name] ||
-      master.photo ||
-      getMasterFallbackImage(master.id, master.first_name),
+      name === "Вікторія Поліщук" && workplaceDistrict === "Солом'янський"
+        ? "/masters/female/Polishchuk_Viktoriia.webp"
+        : name === "Вікторія Поліщук" && workplaceDistrict === "Дарницький"
+          ? "/masters/female/Polishchuk_Viktoriia_2.webp"
+          : LOCAL_MASTER_IMAGES[name] ||
+            master.photo ||
+            getMasterFallbackImage(master.id, master.first_name),
     badges: [],
     title: name || `Майстер #${master.id}`,
     type: serviceNames.length
@@ -4613,6 +4636,7 @@ export default function App() {
     setAiClarificationMessage(null);
 
     const localIntent = buildLocalFallbackIntent(query, serviceCatalog);
+    setAiSearchIntent(localIntent);
     const canResolveLocally = Boolean(
       localIntent.serviceQuery &&
       (localIntent.date || localIntent.time || localIntent.availability === "today" || localIntent.availability === "tomorrow")
