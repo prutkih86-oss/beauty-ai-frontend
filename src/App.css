@@ -1036,6 +1036,20 @@ body {
   color: #3a2c05 !important;
 }
 
+/* Новинки на платформі — бейджі як у партнерських картках */
+#fresh .card-badges {
+  top: auto;
+  bottom: 0;
+  left: 0;
+  gap: 0;
+}
+
+#fresh .badge {
+  padding: 8px 14px;
+  border-radius: 0 4px 0 0;
+  font-weight: 700;
+}
+
 .fav-btn {
   position: absolute;
   top: 10px;
@@ -5491,13 +5505,19 @@ button .place-modal-reviews-summary {
 .beauty-ai-marker .beauty-ai-pin {
   background: #9840F0 !important;
 }
+.partner-offers-section .card-badges {
+  top: auto;
+  bottom: 0;
+  left: 0;
+}
+
 .partner-offers-section .badge.discount {
   background: #C94F63;
   font-size: 20px;
   font-weight: 700;
-  padding: 5px 10px;
+  padding: 6px 12px;
+  border-radius: 0 4px 0 0;
 }
-
 
 /* ==========================================================
    CITY SELECTOR — header + first-visit city picker

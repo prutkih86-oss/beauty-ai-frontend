@@ -73,6 +73,7 @@ type CardData = {
   aiMatchScore?: number;
   openNow?: boolean;
   tags: string[];
+  categories?: string[];
   priceFrom: string;
   mastersCount?: string;
   avgCheck?: string;
@@ -454,6 +455,51 @@ const roleAvatars: Record<AuthRole, string> = {
 // Прод-білд: proxy не існує (це чиста статика), тож б'ємо напряму в бекенд —
 // бекенд для цього має дозволити прод-домен у CORS_ALLOWED_ORIGINS.
 const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiservice.polandcentral.cloudapp.azure.com";
+
+type PromotionApi = {
+  id: number;
+  name: string;
+  description: string;
+  discount_percent: number;
+  start_date: string;
+  end_date: string;
+  salon: number;
+};
+
+type PromotionsApiPage = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: PromotionApi[];
+};
+
+async function fetchAllPromotions(): Promise<PromotionApi[]> {
+  const all: PromotionApi[] = [];
+  let path: string | null = "/api/promotions/";
+
+  while (path) {
+    const res = await fetch(`${API_BASE_URL}${path}`);
+    if (!res.ok) throw new Error(`Promotions request failed: ${res.status}`);
+    const page: PromotionsApiPage = await res.json();
+    all.push(...(page.results ?? []));
+
+    // Бекенд повертає "next" з http:// та власним хостом, а фронтенд може
+    // працювати через https/проксі — тож беремо з "next" лише pathname+search
+    // і завжди йдемо через API_BASE_URL, щоб запит лишався https.
+    if (page.next) {
+      try {
+        const nextUrl = new URL(page.next, API_BASE_URL || window.location.origin);
+        path = `${nextUrl.pathname}${nextUrl.search}`;
+      } catch {
+        path = null;
+      }
+    } else {
+      path = null;
+    }
+  }
+
+  return all;
+}
 
 const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
 
@@ -2477,7 +2523,8 @@ function getSalonCityName(salon: SalonApi): string {
 function salonToCard(
   salon: SalonApi,
   tags: string[] = [],
-  prices: number[] = []
+  prices: number[] = [],
+  categories: string[] = []
 ): CardData {
   const validPrices = prices.filter(
     (price) => Number.isFinite(price) && price > 0
@@ -2512,6 +2559,7 @@ function salonToCard(
     tags: salon.id === 1
       ? [...new Set([...tags, "Чоловіча стрижка (барбер)", "Чоловічий догляд за бородою"])]
       : tags,
+    categories,
     priceFrom: priceFrom !== null ? String(priceFrom) : "",
     mastersCount:
       salon.masters_count != null
@@ -2522,9 +2570,20 @@ function salonToCard(
         ? `${avgPrice} грн`
         : undefined,
     description: salon.description ?? undefined,
-    website: salon.id === 2
-      ? "https://n163127.alteg.io/company/168399/personal/menu"
-      : salon.external_booking_url || undefined,
+    website: ({
+      1: "https://mrcolt.ua/",
+      2: "https://n163127.alteg.io/company/168399/personal/menu",
+      6: "https://www.instagram.com/salon_krasy_afrodita/",
+      15: "https://www.instagram.com/luxeskin.clinic/",
+      16: "https://nailsalon-uk.bot2site.com/#contact",
+      18: "https://www.urban-barbershop.com/",
+      19: "https://pureglow.info/",
+      20: "https://royalbrows.com/contact/",
+      21: "https://n1361719.alteg.io/company/1299692/personal/menu?o=",
+      22: "https://n1397965.alteg.io/company/1331496/personal/menu?o=",
+      25: "https://lumebeauty.ch/business",
+      26: "https://beauty-studio.com.ua/contacts",
+    } as Record<number, string>)[salon.id] ?? (salon.external_booking_url || undefined),
     backendSalonId: salon.id,
     salonWorkingHours: (salon as SalonApi & {
       working_hours?: Array<{
@@ -2566,6 +2625,7 @@ const LOCAL_MASTER_IMAGES: Record<string, string> = {
   "Богданна Вдовенко": "/masters/female/Vdovenko_Bohdanna.webp",
   "Максим Коваленко": "/masters/male/Kovalenko_Maksym.webp",
   "Назар Заєць": "/masters/male/Zaiets_Nazar.webp",
+  "Оксана Мельник": "/masters/female/Melnyk_Oksana.webp",
 
   // На випадок, якщо бекенд поверне прізвище та імʼя у зворотному порядку.
   "Савчук Кароліна": "/masters/female/karolina-savchuk.webp",
@@ -2583,7 +2643,8 @@ function masterToCard(
   master: MasterApi,
   prices: number[] = [],
   serviceNamesFromApi: string[] = [],
-  reviewsCount = 0
+  reviewsCount = 0,
+  categoriesFromApi: string[] = []
 ): CardData {
   const name =
    `${master.first_name ?? ""} ${master.last_name ?? ""}`.trim().split(/\s+/).slice(0, 2).join(" ");
@@ -2637,6 +2698,7 @@ function masterToCard(
     lng: coordinates?.lng,
     openNow: true,
     tags: serviceNames,
+    categories: categoriesFromApi,
     priceFrom: priceFrom !== null ? String(priceFrom) : "",
     experience:
       yearsOfExperience > 0
@@ -2773,6 +2835,12 @@ const DISTRICT_FILTER_STEMS: Record<string, string> = {
   shevchenkivskyi: "шевченківськ",
   podilskyi: "поділ",
   holosiivskyi: "голосіїв",
+  obolonskyi: "оболон",
+  darnytskyi: "дарницьк",
+  desnianskyi: "деснянськ",
+  dniprovskyi: "дніпровськ",
+  sviatoshynskyi: "святошинськ",
+  solomianskyi: "солом'янськ",
 };
 
 const RATING_FILTER_THRESHOLDS: Record<string, number> = {
@@ -2973,9 +3041,21 @@ function buildLocalFallbackIntent(
         ? "shevchenkivskyi"
         : /голосіїв|голосеев|holosiiv|goloseev/.test(normalized)
           ? "holosiivskyi"
-          : /центр|хрещатик|майдан|khreshchatyk|maidan|center|centre/.test(normalized)
-            ? "центр"
-            : null;
+          : /оболон|obolon/.test(normalized)
+            ? "obolonskyi"
+            : /дарницьк|дарниц|darnytsk|darnyts/.test(normalized)
+              ? "darnytskyi"
+              : /деснянськ|деснян|desnian|desnyan/.test(normalized)
+                ? "desnianskyi"
+                : /дніпровськ|днепровск|dniprov/.test(normalized)
+                  ? "dniprovskyi"
+                  : /святошинськ|святошин|sviatosh|svyatosh/.test(normalized)
+                    ? "sviatoshynskyi"
+                    : /солом'янськ|соломянськ|соломенск|solomian|solomyan/.test(normalized)
+                      ? "solomianskyi"
+                      : /центр|хрещатик|майдан|khreshchatyk|maidan|center|centre/.test(normalized)
+                        ? "центр"
+                        : null;
 
   const priceMaxMatch = normalized.match(/(?:до|не більше|макс(?:имум)?|under|up to)\s*(\d{2,6})/i);
   const priceMinMatch = normalized.match(/(?:від|не менше|мін(?:імум)?|from)\s*(\d{2,6})/i);
@@ -3038,6 +3118,12 @@ function mapAiDistrictToFilter(district: string | null): string {
   if (/pechersk|печерськ|печерск/.test(normalized)) return "pecherskyi";
   if (/shevchenk|шевченків|шевченков/.test(normalized)) return "shevchenkivskyi";
   if (/holosiiv|goloseev|голосіїв|голосеев/.test(normalized)) return "holosiivskyi";
+  if (/obolon|оболон/.test(normalized)) return "obolonskyi";
+  if (/darnytsk|darnyts|дарницьк|дарниц/.test(normalized)) return "darnytskyi";
+  if (/desnian|desnyan|деснянськ|деснян/.test(normalized)) return "desnianskyi";
+  if (/dniprov|дніпровськ|днепровск/.test(normalized)) return "dniprovskyi";
+  if (/sviatosh|svyatosh|святошинськ|святошин/.test(normalized)) return "sviatoshynskyi";
+  if (/solomian|solomyan|солом'янськ|соломянськ|соломенск/.test(normalized)) return "solomianskyi";
   return "any";
 }
 
@@ -4329,20 +4415,48 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   eyelashes: ["нарощування вій", "нарощування", "вії"],
   brows: ["брови"],
   makeup: ["макіяж"],
-  cosmetology: ["косметологія"],
+  cosmetology: ["хімічний пілінг"],
   depilation: ["депіляція"],
-  solarium: ["солярій"],
+  barber: ["барбер", "стрижка бороди", "чоловіча стрижка"],
   facial: ["чистка обличчя"],
   spa: ["spa"],
 };
-
+const CATEGORY_REAL_NAMES: Record<string, string[]> = {
+  manicure: ["Нігті"],
+  pedicure: ["Нігті"],
+  haircut: ["Волосся", "Барбер"],
+  coloring: ["Волосся"],
+  botox: ["Косметологія"],
+  massage: ["SPA", "Догляд за шкірою"],
+  eyelashes: ["Вії"],
+  brows: ["Брови"],
+  makeup: ["Макіяж"],
+  cosmetology: ["Косметологія", "Догляд за шкірою"],
+  depilation: ["Лазер"],
+   barber: ["Барбер"],
+  facial: ["Догляд за шкірою"],
+  spa: ["SPA"],
+};
 function filterByCategory(cards: CardData[], category: string): CardData[] {
+  const realNames = CATEGORY_REAL_NAMES[category] ?? [];
   const keywords = CATEGORY_KEYWORDS[category] ?? [];
-  return cards.filter((card) =>
-    card.tags.some((tag) =>
+
+  return cards.filter((card) => {
+    // Косметологія — фіксований список конкретних послуг, а не категорія бекенду
+    // (реальна категорія "Косметологія" в БД — це лише "Ботокс").
+    if (category === "cosmetology") {
+      return card.tags.some((tag) =>
+        keywords.some((keyword) => tag.toLowerCase().includes(keyword))
+      );
+    }
+
+    if (card.categories?.length) {
+      return card.categories.some((item) => realNames.includes(item));
+    }
+    return card.tags.some((tag) =>
       keywords.some((keyword) => tag.toLowerCase().includes(keyword))
-    )
-  );
+    );
+  });
 }
 export default function App() {
   const [lang, setLang] = useState<Lang>("ua");
@@ -4440,7 +4554,22 @@ export default function App() {
   const [bookingCard, setBookingCard] = useState<CardData | null>(null);
   const [salonCards, setSalonCards] = useState<CardData[]>([]);
   const [masterCards, setMasterCards] = useState<CardData[]>([]);
+  const [promotions, setPromotions] = useState<PromotionApi[]>([]);
   const t = dict[lang];
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAllPromotions()
+      .then((data) => {
+        if (!cancelled) setPromotions(data);
+      })
+      .catch((error) => {
+        console.error("Promotions are unavailable", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const path = window.location.pathname.replace(/\/+$/, "");
@@ -4581,23 +4710,59 @@ export default function App() {
 
   const citySalonCards = salonCards.filter(cityMatches);
 
-  // Для Києва секція лишається на моковому "nearby" без змін. Для Львова
-  // показуємо реальні салони (citySalonCards уже відфільтровані по місту
-  // через card.city, яке приходить із salonToCard/getSalonCityName), а не
-  // мокові київські картки.
-  const cityTopCards: CardData[] =
-    selectedCity === "Львів"
-      ? [...citySalonCards]
-          .sort((a, b) => b.rating - a.rating || b.reviews - a.reviews)
-          .slice(0, nearby.length)
-      : nearby;
+  console.log(
+    "CITY SALONS:",
+    selectedCity,
+    citySalonCards.map((card) => ({
+      id: card.backendSalonId,
+      title: card.title,
+      city: card.city,
+    }))
+  );
 
   // Ті самі мокові topRated/fresh/partners лишаються контентом і для Львова —
   // міняється тільки district (реальні salon cards тут ні до чого, це не
   // "Найкращі у ..." секція, а суто discovery-вітрина).
-  const topRatedCards = selectedCity === "Львів" ? toLvivDiscoveryCards(topRated) : topRated;
   const freshCards = selectedCity === "Львів" ? toLvivDiscoveryCards(fresh) : fresh;
-  const partnersCards = selectedCity === "Львів" ? toLvivDiscoveryCards(partners) : partners;
+  // «Пропозиції від партнерів»: реальні promotions з бекенду, зв'язані з
+  // citySalonCards (вже відфільтровані по selectedCity) через backendSalonId.
+  // Мок "partners" тут більше не використовується (лишається в файлі як є).
+  const now = new Date();
+  const activePromotions = promotions.filter((promo) => {
+    const start = new Date(promo.start_date);
+    const end = new Date(promo.end_date);
+    return start <= now && end >= now;
+  });
+
+  const partnersCards: PartnerOffer[] = activePromotions
+    .map((promo): PartnerOffer | null => {
+      const salonCard = citySalonCards.find((card) => card.backendSalonId === promo.salon);
+      if (!salonCard) return null; // немає картки салону — не показуємо promotion
+
+      const basePrice = Number(salonCard.priceFrom);
+      const hasBasePrice = Number.isFinite(basePrice) && basePrice > 0;
+      const discountedPrice = hasBasePrice
+        ? Math.round(basePrice * (1 - promo.discount_percent / 100))
+        : null;
+
+      return {
+        image: salonCard.image,
+        discount: `-${promo.discount_percent}%`,
+        validUntil: `до ${new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long" }).format(new Date(promo.end_date))}`,
+       title: promo.name.replace(new RegExp(`\\s*[—–-]\\s*${salonCard.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim(),
+        partner: salonCard.title,
+        district: salonCard.district,
+        distance: salonCard.distance,
+        openNow: salonCard.openNow,
+        oldPrice: hasBasePrice ? String(basePrice) : "",
+        newPrice: discountedPrice !== null ? String(discountedPrice) : "",
+        gift: promo.description || undefined,
+        rating: salonCard.rating,
+        reviews: salonCard.reviews,
+        website: salonCard.website,
+      };
+    })
+    .filter((offer): offer is PartnerOffer => offer !== null);
 
   const searchedSalons = citySalonCards
     .filter((card) => cardMatchesAiService(card, aiSearchIntent?.serviceQuery ?? null))
@@ -4830,6 +4995,42 @@ export default function App() {
     !card.city ||
     card.city.trim().toLowerCase() === selectedCity.toLowerCase()
   );
+
+  // «Найкращі в Києві»: об'єднуємо реальні салони + реальних solo-майстрів
+  // цього міста і ранжуємо Bayesian-зваженим рейтингом (враховує і rating,
+  // і кількість reviews), щоб 5.0 з 1-2 відгуками не обганяв 4.9 зі 100+.
+  const cityNearbyCandidates: CardData[] = [...citySalonCards, ...cityMasterCards];
+  const NEARBY_MIN_VOTES = 10; // m: поріг "довіри" — підбирається емпірично
+  const nearbyPriorRating =
+    cityNearbyCandidates.length > 0
+      ? cityNearbyCandidates.reduce((sum, c) => sum + c.rating, 0) / cityNearbyCandidates.length
+      : 0; // C: середній рейтинг по всій вибірці
+  const bayesianScore = (card: CardData): number => {
+    const v = card.reviews || 0;
+    const R = card.rating || 0;
+    return (v / (v + NEARBY_MIN_VOTES)) * R + (NEARBY_MIN_VOTES / (v + NEARBY_MIN_VOTES)) * nearbyPriorRating;
+  };
+  const cityTopCards: CardData[] = [...cityNearbyCandidates]
+    .sort((a, b) => bayesianScore(b) - bayesianScore(a))
+    .slice(0, 5);
+
+  // «Варто спробувати»: реальні салони поточного міста з rating >= 4.0,
+  // без тих, що вже в cityTopCards («Найкращі»), відсортовані тим самим
+  // bayesianScore. Кількість карток = розмір мокового topRated (5),
+  // щоб карусель не міняла layout.
+  const cityTopSalonIds = new Set(
+    cityTopCards
+      .map((card) => card.backendSalonId)
+      .filter((id): id is number => id != null)
+  );
+  const worthTryingCandidates = citySalonCards.filter(
+    (card) =>
+      card.rating >= 4.0 &&
+      !(card.backendSalonId != null && cityTopSalonIds.has(card.backendSalonId))
+  );
+  const topRatedCards: CardData[] = [...worthTryingCandidates]
+    .sort((a, b) => bayesianScore(b) - bayesianScore(a))
+    .slice(0, topRated.length);
 
   const [availabilityEligible, setAvailabilityEligible] = useState<Set<string> | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
@@ -5185,10 +5386,13 @@ export default function App() {
       }
 
       const salonTagsById = new Map<number, Set<string>>();
+      const salonCategoriesById = new Map<number, Set<string>>();
       const masterPricesById = new Map<number, number[]>();
       const masterServicesById = new Map<number, Set<string>>();
+      const masterCategoriesById = new Map<number, Set<string>>();
       const servicePriceById = new Map<number, number>();
       const servicePriceByName = new Map<string, number>();
+      const serviceCategoryByName = new Map<string, string>();
 
       const catalogNames = new Set<string>();
 
@@ -5201,6 +5405,9 @@ export default function App() {
 
         const catalogName = service.name?.trim().toLowerCase();
         if (catalogName) catalogNames.add(catalogName);
+        if (catalogName && service.category) {
+          serviceCategoryByName.set(catalogName, service.category);
+        }
 
         const price = Number(service.price);
         const hasValidPrice = Number.isFinite(price) && price > 0;
@@ -5220,6 +5427,12 @@ export default function App() {
           serviceNames.add(service.name);
           masterServicesById.set(masterId, serviceNames);
 
+          if (service.category) {
+            const categories = masterCategoriesById.get(masterId) ?? new Set<string>();
+            categories.add(service.category);
+            masterCategoriesById.set(masterId, categories);
+          }
+
           if (hasValidPrice) {
             const prices = masterPricesById.get(masterId) ?? [];
             prices.push(price);
@@ -5235,10 +5448,25 @@ export default function App() {
               ?.map((service) => service.name)
               .filter(Boolean) ?? [];
 
+          serviceNames.forEach((serviceName) => {
+            const category = serviceCategoryByName.get(serviceName.trim().toLowerCase());
+            if (!category) return;
+
+            const categories = masterCategoriesById.get(master.id) ?? new Set<string>();
+            categories.add(category);
+            masterCategoriesById.set(master.id, categories);
+          });
+
           master.salons?.forEach((salon) => {
             const tags = salonTagsById.get(salon.id) ?? new Set<string>();
             serviceNames.forEach((serviceName) => tags.add(serviceName));
             salonTagsById.set(salon.id, tags);
+
+            const categories = salonCategoriesById.get(salon.id) ?? new Set<string>();
+            (masterCategoriesById.get(master.id) ?? new Set<string>()).forEach((category) =>
+              categories.add(category)
+            );
+            salonCategoriesById.set(salon.id, categories);
           });
         });
       }
@@ -5280,7 +5508,8 @@ export default function App() {
             return salonToCard(
               salon,
               Array.from(salonTagsById.get(salon.id) ?? []),
-              salonPrices
+              salonPrices,
+              Array.from(salonCategoriesById.get(salon.id) ?? [])
             );
           })
         );
@@ -5315,7 +5544,9 @@ export default function App() {
                     ...(master.services?.map((service) => service.name).filter(Boolean) ?? []),
                     ...Array.from(masterServicesById.get(master.id) ?? []),
                   ])
-                )
+                ),
+                0,
+                Array.from(masterCategoriesById.get(master.id) ?? [])
               );
             })
         );

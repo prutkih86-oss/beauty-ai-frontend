@@ -100,21 +100,18 @@ export async function getMastersPage(
   };
 }
 
-export async function addMaster(
-  name: string,
-  specialization: string,
-  city: string,
-  address: string,
-  isSolo: boolean
-) {
-  const [first_name, ...rest] = name.trim().split(" ");
+export interface RegisterMasterPayload {
+  email: string;
+  password: string;
+  services: number[];
+  first_name: string;
+  last_name: string;
+  phone: string;
+  specialization: string;
+  bio: string;
+  years_of_experience: number;
+}
 
-  await apiPost("/api/users/masters/", {
-    first_name,
-    last_name: rest.join(" "),
-    specialization,
-    city,
-    address,
-    is_solo: isSolo,
-  });
+export async function addMaster(data: RegisterMasterPayload) {
+  return apiPost("/api/users/register-master/", data);
 }

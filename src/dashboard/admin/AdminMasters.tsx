@@ -12,6 +12,8 @@ import {
 } from "./AdminUI";
 import { addMaster, getMastersPage } from "./api/masters";
 import type { MasterRow } from "./api/masters";
+import { getServicesPage } from "./api/services";
+import type { ServiceRow } from "./api/services";
 
 export default function AdminMasters() {
   const [masters, setMasters] = useState<MasterRow[]>([]);
@@ -27,11 +29,24 @@ export default function AdminMasters() {
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(0);
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [specialization, setSpecialization] = useState("");
-  const [city, setCity] = useState("");
-  const [address, setAddress] = useState("");
-  const [isSolo, setIsSolo] = useState(false);
+  const [yearsOfExperience, setYearsOfExperience] = useState("");
+  const [bio, setBio] = useState("");
+  const [serviceIds, setServiceIds] = useState<number[]>([]);
+  const [availableServices, setAvailableServices] = useState<ServiceRow[]>([]);
+
+  useEffect(() => {
+    getServicesPage(0, 100)
+      .then(({ services }) => setAvailableServices(services))
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : String(e))
+      );
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -99,24 +114,41 @@ export default function AdminMasters() {
   const selected = sel == null ? null : filteredMasters[sel] ?? null;
 
   function resetAddForm() {
-    setName("");
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setPhone("");
+    setPassword("");
     setSpecialization("");
-    setCity("");
-    setAddress("");
-    setIsSolo(false);
+    setYearsOfExperience("");
+    setBio("");
+    setServiceIds([]);
   }
 
   async function submitMaster(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!name.trim() || !specialization.trim() || !city.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim() || !password || !specialization.trim()) {
       return;
     }
 
     try {
       setSaving(true);
       setError(null);
-      await addMaster(name, specialization, city, address, isSolo);
+
+      await addMaster({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        password,
+        specialization: specialization.trim(),
+        years_of_experience: Number(yearsOfExperience) || 0,
+        bio: bio.trim(),
+        services: serviceIds,
+         
+      });
+
       setAddOpen(false);
       resetAddForm();
       setReload((value) => value + 1);
@@ -236,45 +268,55 @@ export default function AdminMasters() {
         onClose={() => setAddOpen(false)}
       >
         <form className="admin-modal-form" onSubmit={submitMaster}>
-          <ModalField label="Name">
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
+          <ModalField label="First name">
+            <input value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
+          </ModalField>
+
+          <ModalField label="Last name">
+            <input value={lastName} onChange={(event) => setLastName(event.target.value)} required />
+          </ModalField>
+
+          <ModalField label="Email">
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </ModalField>
+
+          <ModalField label="Phone">
+            <input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} required />
+          </ModalField>
+
+          <ModalField label="Password">
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
           </ModalField>
 
           <ModalField label="Specialization">
-            <input
-              value={specialization}
-              onChange={(event) => setSpecialization(event.target.value)}
-              required
-            />
+            <input value={specialization} onChange={(event) => setSpecialization(event.target.value)} required />
           </ModalField>
 
-          <ModalField label="City">
-            <input
-              value={city}
-              onChange={(event) => setCity(event.target.value)}
-              required
-            />
+          <ModalField label="Years of experience">
+            <input type="number" min="0" value={yearsOfExperience} onChange={(event) => setYearsOfExperience(event.target.value)} />
           </ModalField>
 
-          <ModalField label="Address">
-            <input
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-            />
+          <ModalField label="Bio">
+            <textarea value={bio} onChange={(event) => setBio(event.target.value)} />
           </ModalField>
 
-          <label className="admin-modal-check">
-            <input
-              type="checkbox"
-              checked={isSolo}
-              onChange={(event) => setIsSolo(event.target.checked)}
-            />
-            Solo master
-          </label>
+          <ModalField label="Services">
+            <select
+              multiple
+              value={serviceIds.map(String)}
+              onChange={(event) =>
+                setServiceIds(
+                  Array.from(event.target.selectedOptions, (option) => Number(option.value))
+                )
+              }
+            >
+              {availableServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name} — {service.category}
+                </option>
+              ))}
+            </select>
+          </ModalField>
 
           <ModalActions>
             <ActionButton type="button" onClick={() => setAddOpen(false)}>

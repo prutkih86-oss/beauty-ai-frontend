@@ -71,6 +71,12 @@ const data = {
       ["shevchenkivskyi", "Шевченківський"],
       ["podilskyi", "Подільський"],
       ["holosiivskyi", "Голосіївський"],
+      ["obolonskyi", "Оболонський"],
+      ["darnytskyi", "Дарницький"],
+      ["desnianskyi", "Деснянський"],
+      ["dniprovskyi", "Дніпровський"],
+      ["sviatoshynskyi", "Святошинський"],
+      ["solomianskyi", "Солом’янський"],
     ],
 
     services: [
@@ -137,6 +143,12 @@ const data = {
       ["shevchenkivskyi", "Shevchenkivskyi"],
       ["podilskyi", "Podilskyi"],
       ["holosiivskyi", "Holosiivskyi"],
+      ["obolonskyi", "Obolonskyi"],
+      ["darnytskyi", "Darnytskyi"],
+      ["desnianskyi", "Desnianskyi"],
+      ["dniprovskyi", "Dniprovskyi"],
+      ["sviatoshynskyi", "Sviatoshynskyi"],
+      ["solomianskyi", "Solomianskyi"],
     ],
 
     services: [

@@ -5,7 +5,7 @@ export type AdminIconName =
   | "bookings" | "services" | "payments" | "reviews" | "ai"
   | "settings" | "calendar" | "refresh" | "user" | "chevron"
   | "revenue" | "completed" | "cancelled" | "noshow" | "clock"
-  | "star" | "home";
+  | "star" | "home" | "promotions";
 
 const paths: Record<AdminIconName, React.ReactNode> = {
   dashboard: <><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></>,
@@ -30,6 +30,7 @@ const paths: Record<AdminIconName, React.ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
   star: <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"/>,
   home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v11h14V10"/><path d="M9 21v-6h6v6"/></>,
+  promotions: <><path d="M20.6 13.6 11 23.2 1.8 14V4.8h9.2l9.6 9.6a2 2 0 0 1 0 2.8Z"/><circle cx="6.5" cy="9.5" r="1.5"/></>,
 };
 
 export default function AdminIcon({ name, size = 18 }: { name: AdminIconName; size?: number }) {

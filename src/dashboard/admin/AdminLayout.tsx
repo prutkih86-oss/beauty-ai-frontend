@@ -6,7 +6,7 @@ import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 
 export type AdminSection =
   | "dashboard" | "analytics" | "masters" | "salons" | "clients"
-  | "bookings" | "services" | "payments" | "reviews" | "ai" | "settings";
+  | "bookings" | "services" | "promotions" | "payments" | "reviews" | "ai" | "settings";
 
 const NAV: Array<{ id?: AdminSection; label?: string; icon?: AdminIconName; divider?: boolean }> = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
@@ -17,6 +17,7 @@ const NAV: Array<{ id?: AdminSection; label?: string; icon?: AdminIconName; divi
   { id: "clients", label: "Clients", icon: "clients" },
   { id: "bookings", label: "Bookings", icon: "bookings" },
   { id: "services", label: "Services", icon: "services" },
+  { id: "promotions", label: "Promotions", icon: "promotions" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "reviews", label: "Reviews", icon: "reviews" },
   { divider: true },

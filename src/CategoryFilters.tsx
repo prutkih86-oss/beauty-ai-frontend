@@ -158,7 +158,7 @@ export default function CategoryFilters({ lang = "ua", activeCategory, onCategor
   const extraCategories = [
     { id: "brows", label: isEn ? "Brows & Lashes" : "Брови та вії", icon: Icons.Brows },
     { id: "makeup", label: isEn ? "Makeup" : "Макіяж", icon: Icons.Makeup },
-    { id: "cosmetology", label: isEn ? "Cosmetology" : "Косметологія", icon: Icons.Cosmetology },
+    { id: "cosmetology", label: isEn ? "Chemical peel" : "Хімічний пілінг", icon: Icons.Cosmetology },
     { id: "depilation", label: isEn ? "Depilation" : "Депіляція", icon: Icons.Depilation },
     { id: "barber", label: isEn ? "Barber" : "Барбер", icon: Icons.Barber },
     { id: "facial", label: isEn ? "Facial" : "Чистка обличчя", icon: Icons.Facial },

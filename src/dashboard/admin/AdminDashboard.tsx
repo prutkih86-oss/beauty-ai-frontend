@@ -8,6 +8,7 @@ import AdminSalons from "./AdminSalons";
 import AdminClients from "./AdminClients";
 import AdminBookings from "./AdminBookings";
 import AdminServices from "./AdminServices";
+import AdminPromotions from "./AdminPromotions";
 import AdminPayments from "./AdminPayments";
 import AdminReviews from "./AdminReviews";
 import AdminAI from "./AdminAI";
@@ -21,6 +22,7 @@ const SECTION_TITLES: Record<AdminSection, { title: string; subtitle?: string }>
   clients: { title: "Clients" },
   bookings: { title: "Bookings" },
   services: { title: "Services" },
+  promotions: { title: "Promotions" },
   payments: { title: "Payments" },
   reviews: { title: "Reviews" },
   ai: { title: "AI" },
@@ -49,6 +51,7 @@ export default function AdminDashboard({
     clients: <AdminClients />,
     bookings: <AdminBookings />,
     services: <AdminServices />,
+    promotions: <AdminPromotions />,
     payments: <AdminPayments />,
     reviews: <AdminReviews />,
     ai: <AdminAI />,
