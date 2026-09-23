@@ -4070,15 +4070,22 @@ function PartnerOffersSection({
   offers,
   lang,
   onLocationClick,
+  sectionRef,
+  mascotVisible,
 }: {
   title: string;
   subtitle: string;
   offers: PartnerOffer[];
   lang: Lang;
   onLocationClick?: (name: string, district: string, distance: string) => void;
+  sectionRef?: React.Ref<HTMLElement>;
+  mascotVisible?: boolean;
 }) {
   return (
-    <section className="section partner-offers-section" id="promotions">
+    <section className="section partner-offers-section" id="promotions" ref={sectionRef} style={{ position: "relative", overflow: "visible" }}>
+      {mascotVisible && (
+        <BeautyAssistant state="what-you-doing-2" className="assistant-results-success assistant-lower" />
+      )}
       <div className="section-head partner-section-head">
         <div className="partner-section-copy section-heading-copy">
           <div className="section-title-anchor">
@@ -4115,11 +4122,15 @@ function KyivTopSection({
   lang,
   city,
   onLocationClick,
+  sectionRef,
+  mascotVisible,
 }: {
   cards: CardData[];
   lang: Lang;
   city: CityName;
   onLocationClick?: (name: string, district: string, distance: string) => void;
+  sectionRef?: React.Ref<HTMLElement>;
+  mascotVisible?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -4159,7 +4170,14 @@ function KyivTopSection({
   };
 
   return (
-    <section className="section kyiv-top-section" id="nearby">
+    <section className="section kyiv-top-section" id="nearby" ref={sectionRef}>
+      {mascotVisible && (
+        <BeautyAssistant
+          state="what-you-doing-2"
+          className="assistant-results-success assistant-masters-nearby"
+        />
+      )}
+
       <div className="section-head kyiv-top-head">
         <div className="section-heading-copy">
           <div className="section-title-anchor">
@@ -4378,6 +4396,8 @@ function PanelCarouselSection({
   resultsWord,
   id,
   onLocationClick,
+  sectionRef,
+  mascotVisible,
 }: {
   title: string;
   subtitle: string;
@@ -4389,9 +4409,14 @@ function PanelCarouselSection({
   resultsWord: string;
   id?: string;
   onLocationClick?: (name: string, district: string, distance: string) => void;
+  sectionRef?: React.Ref<HTMLElement>;
+  mascotVisible?: boolean;
 }) {
   return (
-    <section className="section subtle-panel-section" id={id}>
+    <section className="section subtle-panel-section" id={id} ref={sectionRef}>
+      {mascotVisible && (
+        <BeautyAssistant state="what-you-doing-2" className="assistant-results-success assistant-lower" />
+      )}
       <div className="section-head section-head-centered">
         <div className="section-heading-copy">
           <div className="section-title-anchor">
@@ -4523,6 +4548,14 @@ export default function App() {
   });
   const [assistantResultTarget, setAssistantResultTarget] = useState<"salons" | "masters">("salons");
   const mastersSectionRef = useRef<HTMLDivElement | null>(null);
+  const salonsSectionRef = useRef<HTMLDivElement | null>(null);
+  const [discoveryMascotSection, setDiscoveryMascotSection] = useState<
+    "masters" | "nearby" | "partners" | "worth-trying" | "fresh" | null
+  >(null);
+  const nearbySectionRef = useRef<HTMLElement | null>(null);
+  const partnersSectionRef = useRef<HTMLElement | null>(null);
+  const worthTryingSectionRef = useRef<HTMLElement | null>(null);
+  const freshSectionRef = useRef<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -5198,34 +5231,128 @@ export default function App() {
 
   useEffect(() => {
     if (
+      !assistantEnabled ||
       assistantUiState !== "success" ||
-      filteredSalons.length === 0 ||
-      filteredMasters.length === 0
+      recommendationFiltersOpen ||
+      !hasVisibleResults
     ) {
+      setDiscoveryMascotSection(null);
       return;
     }
 
-    const mastersSection = mastersSectionRef.current;
-    if (!mastersSection) return;
+    const sections = [
+      ...(filteredSalons.length > 0 && filteredMasters.length > 0
+        ? [{ id: "masters" as const, ref: mastersSectionRef }]
+        : []),
+      { id: "nearby" as const, ref: nearbySectionRef },
+      { id: "partners" as const, ref: partnersSectionRef },
+      { id: "worth-trying" as const, ref: worthTryingSectionRef },
+      { id: "fresh" as const, ref: freshSectionRef },
+    ];
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setAssistantResultTarget("masters");
-        } else if (entry.boundingClientRect.top > 0) {
-          setAssistantResultTarget("salons");
+    let frame = 0;
+
+    const updateMascotSection = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const triggerY = window.innerHeight / 2;
+
+        const measured = sections
+          .map((section) => {
+            const rect = section.ref.current?.getBoundingClientRect();
+
+            return rect
+              ? {
+                  section,
+                  center: rect.top + rect.height / 2,
+                }
+              : null;
+          })
+          .filter(
+            (
+              item
+            ): item is {
+              section: (typeof sections)[number];
+              center: number;
+            } => Boolean(item)
+          );
+
+        if (measured.length === 0) {
+          setDiscoveryMascotSection(null);
+          return;
         }
-      },
-      {
-        threshold: 0.2,
-      }
-    );
 
-    observer.observe(mastersSection);
+        setDiscoveryMascotSection((currentId) => {
+          let currentIndex = measured.findIndex(
+            (item) => item.section.id === currentId
+          );
 
-    return () => observer.disconnect();
+          // First activation: choose the last section whose center has
+          // already crossed the viewport center.
+          if (currentIndex === -1) {
+            let initialIndex = -1;
+
+            for (let i = 0; i < measured.length; i += 1) {
+              if (measured[i].center <= triggerY) {
+                initialIndex = i;
+              } else {
+                break;
+              }
+            }
+
+            return initialIndex >= 0 ? measured[initialIndex].section.id : null;
+          }
+
+          // Down: stay in the current section until the NEXT section's
+          // center crosses the viewport center.
+          while (
+            currentIndex < measured.length - 1 &&
+            measured[currentIndex + 1].center <= triggerY
+          ) {
+            currentIndex += 1;
+          }
+
+          // Up: stay in the current section until its own center moves
+          // back below the viewport center, then return to the previous one.
+          while (
+            currentIndex > 0 &&
+            measured[currentIndex - 1].center >= triggerY
+          ) {
+            currentIndex -= 1;
+          }
+
+          if (currentIndex === 0) {
+            const salonsRect = salonsSectionRef.current?.getBoundingClientRect();
+
+            if (salonsRect) {
+              const salonsCenter =
+                salonsRect.top + salonsRect.height / 2;
+
+              if (salonsCenter >= triggerY) {
+                return null;
+              }
+            }
+          }
+
+          return measured[currentIndex].section.id;
+        });
+      });
+    };
+
+    updateMascotSection();
+    window.addEventListener("scroll", updateMascotSection, { passive: true });
+    window.addEventListener("resize", updateMascotSection);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", updateMascotSection);
+      window.removeEventListener("resize", updateMascotSection);
+    };
   }, [
+    assistantEnabled,
     assistantUiState,
+    recommendationFiltersOpen,
+    hasVisibleResults,
     filteredSalons.length,
     filteredMasters.length,
   ]);
@@ -6165,6 +6292,11 @@ export default function App() {
                     />
                   )}
                 </div>
+
+                <div
+                  className="recommendations-filter-heading-divider"
+                  aria-hidden="true"
+                />
               </div>
 
               <FilterBar
@@ -6189,6 +6321,7 @@ export default function App() {
             <>
               {filteredSalons.length > 0 && (
                 <div
+                  ref={salonsSectionRef}
                   className={`recommendation-row recommendation-row-salons${
                     filteredMasters.length === 0 ? " recommendation-row-standalone" : ""
                   }`}
@@ -6196,6 +6329,7 @@ export default function App() {
                   {assistantEnabled &&
                     assistantUiState === "success" &&
                     assistantResultTarget === "salons" &&
+                    discoveryMascotSection === null &&
                     !recommendationFiltersOpen && (
                     <BeautyAssistant
                       state="success"
@@ -6251,18 +6385,22 @@ export default function App() {
                       <BeautyAssistant
                         state="success"
                         message={finalAssistantMessage}
-                        className="assistant-results-success"
+                        className="assistant-results-success assistant-masters-nearby"
                       />
                     )}
 
                   {assistantEnabled &&
                     assistantUiState === "success" &&
                     filteredSalons.length > 0 &&
-                    assistantResultTarget === "masters" &&
+                    discoveryMascotSection === "masters" &&
                     !recommendationFiltersOpen && (
                       <BeautyAssistant
-                        state="what-you-doing-2"
-                        className="assistant-results-success"
+                        state={filteredMasters.length >= 4 ? "what-you-doing-2" : "greeting"}
+                        className={
+                          filteredMasters.length >= 4
+                            ? "assistant-results-success assistant-masters-nearby"
+                            : "assistant-results-success assistant-masters-greeting"
+                        }
                       />
                     )}
 
@@ -6315,6 +6453,8 @@ export default function App() {
             lang={lang}
             city={selectedCity || "Київ"}
             onLocationClick={handleLocationClick}
+            sectionRef={nearbySectionRef}
+            mascotVisible={discoveryMascotSection === "nearby"}
           />
 
           <PartnerOffersSection
@@ -6323,6 +6463,8 @@ export default function App() {
             offers={partnersCards}
             lang={lang}
             onLocationClick={handleLocationClick}
+            sectionRef={partnersSectionRef}
+            mascotVisible={discoveryMascotSection === "partners"}
           />
 
           <PanelCarouselSection
@@ -6350,6 +6492,8 @@ export default function App() {
             resultsWord={lang === "ua" ? "варіантів знайдено" : "options found"}
             id="worth-trying"
             onLocationClick={handleLocationClick}
+            sectionRef={worthTryingSectionRef}
+            mascotVisible={discoveryMascotSection === "worth-trying"}
           />
 
           <PanelCarouselSection
@@ -6367,6 +6511,8 @@ export default function App() {
             resultsWord={lang === "ua" ? "новинок знайдено" : "new listings"}
             id="fresh"
             onLocationClick={handleLocationClick}
+            sectionRef={freshSectionRef}
+            mascotVisible={discoveryMascotSection === "fresh"}
           />
         </>
       )}
@@ -6957,3 +7103,4 @@ export default function App() {
     </div>
   );
 }
+

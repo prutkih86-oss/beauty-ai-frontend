@@ -3058,8 +3058,10 @@ more-filters-text-btn {
 }
 .filter-field select option {
   color: #2d2340;
+  text-align: center;
   font-size: 13px;
   font-weight: 600;
+ 
 }
 .filter-field select:hover,
 .filter-field select:focus,
@@ -3463,8 +3465,7 @@ more-filters-text-btn {
   }
 
   .recommendations-heading {
-    transform: translateY(-6px);
-    transform: translate(-22px, -6px) !important;
+    transform: translate(-22px, -3px) !important;
   }
 
   .recommendations-heading .section-title {
@@ -3570,7 +3571,14 @@ more-filters-text-btn {
   line-height: 1.2;
   letter-spacing: 0.04em;
 }
-
+.recommendations-filter-heading-divider {
+  width: 100%;
+  height: 1px;
+  margin: 10px 0 0;
+  background: rgba(113, 53, 232, 0.14);
+  border: none;
+  transform: translateY(40px);
+}
 
 .recommendation-row-salons .recommendation-intro-head {
   position: relative;
@@ -3578,6 +3586,7 @@ more-filters-text-btn {
   align-items: center;
   justify-content: center;
   gap: 16px;
+  margin-top: -5px
 }
 
 .recommendation-row-salons .recommendations-filter-menu-inline {
@@ -3737,6 +3746,7 @@ more-filters-text-btn {
 
 .recommendation-row-masters .recommendation-intro {
   min-height: 6px;
+  padding-top: 12px;
 }
 
 .recommendation-row-salons
@@ -5073,10 +5083,9 @@ button .place-modal-reviews-summary {
 }
 .recommendations-filter-panel-heading .recommendations-filter-ai {
   display: inline;
-  color:  #2d2340;
-  font-size: 1.05em;
-  font-weight: 800;
-  vertical-align: -0.02em;
+  color:  #4f4758;
+  font-size: 16px;
+  font-weight: 600;
 }
 .recommendations-filter-panel-heading > span {
   color: #4f4758;
@@ -6364,6 +6373,8 @@ button .place-modal-reviews-summary {
 .recommendations-filter-heading-row > strong {
   margin: 0;
   transform: translateY(21px);
+  font-size: 16px;
+   color: #625873;
 }
 
 
@@ -6699,7 +6710,7 @@ button .place-modal-reviews-summary {
 }
 .state-what-you-doing-2.assistant-results-success {
   right: 60px;
-  top: 9px;
+  top: 4px;
 }
 
 /* ==========================================================
@@ -6756,9 +6767,7 @@ button .place-modal-reviews-summary {
   height: auto;
   padding: 16px;
   background: linear-gradient(180deg, #f2edff 0%, #faf8ff 100%);
-  border: 1px solid rgba(113, 53, 232, 0.12);
-  border-radius: 18px;
-  margin-bottom: 10px;
+  border: 1px solid #9840f0;
   z-index: 90;
 }
 
@@ -7760,7 +7769,7 @@ button .place-modal-reviews-summary {
    ========================================= */
 .assistant-results-success.state-success {
  
- transform: translate(10px, 11px);
+ transform: translate(10px, 6px);
 }
 
 .assistant-results-success.state-success .beauty-assistant-character {
@@ -7768,7 +7777,7 @@ button .place-modal-reviews-summary {
 }
 
 .assistant-results-success.state-success .beauty-assistant-bubble {
-  transform: translate(-8px, -39px) !important;
+  transform: translate(-8px, -35px) !important;
   
 }
 .filter-field > label,
@@ -7778,7 +7787,7 @@ button .place-modal-reviews-summary {
 .filter-field select {
   text-align: center;
   text-align-last: center;
-   padding-left: 40px;
+  text-indent: 20px;
 }
 .state-waiting .beauty-assistant-bubble {
   transform: translate(10px, 0px);
@@ -8272,4 +8281,49 @@ button .place-modal-reviews-summary {
   .partner-choice-options { grid-template-columns: 1fr; }
   .partner-choice-options > button { min-height: 125px; }
   .partner-choice-desc { max-width: 260px; }
+}
+/* Success over result content */
+.recommendation-row,
+.kyiv-top-section,
+.subtle-panel-section {
+  position: relative;
+}
+
+.assistant-results-success {
+  position: absolute;
+  top: -9px;
+  right: 60px;
+  z-index: 20;
+  margin: 0;
+}
+/* Pokémon positions — append this AFTER the existing assistant styles. */
+
+/* Майстри для вас + Найкращі */
+.assistant-results-success.assistant-masters-nearby.state-what-you-doing-2 {
+  top: 9px;
+  right: 60px;
+  transform: translateY(2px);
+}
+
+/* Пропозиції від партнерів + Варто спробувати + Новинки */
+.assistant-results-success.assistant-lower.state-what-you-doing-2 {
+  top: 9px;
+  right: 60px;
+  transform: translateY(8px);
+}
+.assistant-masters-nearby .beauty-assistant-character {
+  width: 78px;
+}
+.assistant-masters-greeting {
+  position: absolute;
+  right: 60px;
+  top: 7px;
+  z-index: 20;
+}
+
+.assistant-masters-greeting .beauty-assistant-character {
+  width: 90px;
+}
+.state-detail-view .beauty-assistant-character {
+  width: 90px;
 }
