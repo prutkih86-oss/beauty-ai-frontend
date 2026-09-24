@@ -1049,6 +1049,30 @@ export async function fetchPublicMasterReviews(masterId: number): Promise<Appoin
   );
   return unwrapList(data).slice(0, 3);
 }
+
+export type MasterReviewsPage = {
+  items: AppointmentReviewApi[];
+  nextPath: string | null;
+};
+
+export async function fetchMasterReviewsPage(
+  masterIdOrPath: number | string
+): Promise<MasterReviewsPage> {
+  const path =
+    typeof masterIdOrPath === "number"
+      ? `/api/reviews/?master=${encodeURIComponent(String(masterIdOrPath))}`
+      : masterIdOrPath;
+
+  const data = await apiGet<AppointmentReviewApi[] | PaginatedResponse<AppointmentReviewApi>>(path);
+
+  return Array.isArray(data)
+    ? { items: data, nextPath: null }
+    : {
+        items: data.results ?? [],
+        nextPath: data.next ? data.next.replace(/^https?:\/\/[^/]+/, "") : null,
+      };
+}
+
 export async function fetchAllPublicReviews(): Promise<AppointmentReviewApi[]> {
   return fetchAllPages<AppointmentReviewApi>("/api/reviews/");
 }

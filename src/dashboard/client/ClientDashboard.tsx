@@ -1433,14 +1433,16 @@ useEffect(() => {
                                 readonly
                               />
                             </div>
-                            <div>
-                              <span>{ua ? "Сервіс" : "Service"}</span>
-                              <Stars
-                                value={booking.reviewSalonRating ?? 0}
-                                label={ua ? "Оцінка сервісу" : "Service rating"}
-                                readonly
-                              />
-                            </div>
+                            {booking.hasSalon && (
+                              <div>
+                                <span>{ua ? "Сервіс" : "Service"}</span>
+                                <Stars
+                                  value={booking.reviewSalonRating ?? 0}
+                                  label={ua ? "Оцінка сервісу" : "Service rating"}
+                                  readonly
+                                />
+                              </div>
+                            )}
                           </aside>
                         </div>
                       )}

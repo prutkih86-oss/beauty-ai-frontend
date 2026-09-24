@@ -7138,7 +7138,7 @@ button .place-modal-reviews-summary {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px 24px 30px ;
+  padding: 18px 24px 30px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
@@ -7879,8 +7879,8 @@ button .place-modal-reviews-summary {
 }
 .reviews-modal-all {
   display: block;
-  margin: -30px 16px 0 auto;
-  padding: 24px 14px;
+  margin: 0 16px 0 auto;
+  padding: 12px 14px 18px;
   border: 0;
   background: transparent;
   color: #6f3fc8;
@@ -7892,6 +7892,10 @@ button .place-modal-reviews-summary {
 
 .reviews-modal-all:hover {
   text-decoration: underline;
+}
+.reviews-modal-all.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 /* Joined result sections after divider */
 .section-divider-results + .section,

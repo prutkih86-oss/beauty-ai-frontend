@@ -11,6 +11,7 @@ import {
   createAppointment,
   fetchAvailableSlots,
   fetchMasters,
+  fetchMasterReviewsPage,
   fetchPublicMasterReviews,
   fetchSalons,
   fetchServices,
@@ -20,6 +21,7 @@ import {
   resolveIntentDate,
   slotsIncludeTime,
   type AiSearchIntent,
+  type AppointmentReviewApi,
   type MasterApi,
   type SalonApi,
   type ServiceApi,
@@ -1704,6 +1706,17 @@ function BookingModal({
   );
 }
 
+function mapMasterReviewRows(rows: AppointmentReviewApi[], ua: boolean): CardReview[] {
+  return rows.map((row) => ({
+    author:
+      `${row.client?.first_name ?? ""} ${row.client?.last_name ?? ""}`.trim() ||
+      (ua ? "Клієнт Beauty AI" : "Beauty AI client"),
+    rating: row.rating,
+    text: row.comment || "",
+    date: new Date(row.created_at).toLocaleDateString(ua ? "uk-UA" : "en-GB"),
+  }));
+}
+
 function getPlaceReviews(data: CardData, t: Translations): CardReview[] {
   if (data.reviewsList?.length) return data.reviewsList;
 
@@ -1769,12 +1782,18 @@ function ReviewsModal({
   reviews,
   loading = false,
   onClose,
+  onLoadMore,
+  loadingMore = false,
+  hasMore = false,
 }: {
   data: CardData;
   t: Translations;
   reviews: CardReview[];
   loading?: boolean;
   onClose: () => void;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
+  hasMore?: boolean;
 }) {
   const ua = t.placeModal.close === "Закрити";
 
@@ -1831,9 +1850,16 @@ function ReviewsModal({
           ))}
         </div>
 
-        {data.reviews > 3 && (
-          <button type="button" className="reviews-modal-all">
-            {ua ? `Усі відгуки (${data.reviews}) ` : `All reviews (${data.reviews}) `}
+        {!loading && data.variant === "solo" && onLoadMore && (
+          <button
+            type="button"
+            className={`reviews-modal-all ${!hasMore ? "is-hidden" : ""}`}
+            onClick={onLoadMore}
+            disabled={loadingMore || !hasMore}
+          >
+            {loadingMore
+              ? (ua ? "Завантаження…" : "Loading…")
+              : (ua ? "Завантажити ще" : "Load more")}
           </button>
         )}
       </div>
@@ -1861,8 +1887,15 @@ function PlaceDetailsModal({
   const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
   const [realReviews, setRealReviews] = useState<CardReview[] | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  const [reviewsPageLoaded, setReviewsPageLoaded] = useState(false);
+  const [nextReviewsPath, setNextReviewsPath] = useState<string | null>(null);
   const [serviceRowIndex, setServiceRowIndex] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
+
+  const hasMoreReviews = reviewsPageLoaded
+    ? nextReviewsPath !== null
+    : data.reviews > (realReviews?.length ?? 0);
 
   const openReviews = () => {
     setReviewsModalOpen(true);
@@ -1871,24 +1904,28 @@ function PlaceDetailsModal({
 
     setReviewsLoading(true);
     fetchPublicMasterReviews(data.backendMasterId)
-      .then((rows) => {
-        setRealReviews(
-          rows
-            .map((row) => ({
-              author:
-                `${row.client?.first_name ?? ""} ${row.client?.last_name ?? ""}`.trim() ||
-                (ua ? "Клієнт Beauty AI" : "Beauty AI client"),
-              rating: row.rating,
-              text: row.comment || "",
-              date: new Date(row.created_at).toLocaleDateString(ua ? "uk-UA" : "en-GB"),
-            }))
-        );
-      })
+      .then((rows) => setRealReviews(mapMasterReviewRows(rows, ua)))
       .catch((error) => {
         console.error("Failed to load master reviews", error);
         setRealReviews([]);
       })
       .finally(() => setReviewsLoading(false));
+  };
+
+  const loadMoreReviews = () => {
+    if (!isSolo || !data.backendMasterId || reviewsLoading || loadingMoreReviews) return;
+    if (reviewsPageLoaded && nextReviewsPath === null) return;
+
+    setLoadingMoreReviews(true);
+    fetchMasterReviewsPage(nextReviewsPath ?? data.backendMasterId)
+      .then(({ items, nextPath }) => {
+        const mapped = mapMasterReviewRows(items, ua);
+        setRealReviews((prev) => (reviewsPageLoaded ? [...(prev ?? []), ...mapped] : mapped));
+        setReviewsPageLoaded(true);
+        setNextReviewsPath(nextPath);
+      })
+      .catch((error) => console.error("Failed to load more master reviews", error))
+      .finally(() => setLoadingMoreReviews(false));
   };
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -2186,6 +2223,9 @@ function PlaceDetailsModal({
         reviews={isSolo ? realReviews ?? [] : mockReviews}
         loading={isSolo && reviewsLoading}
         onClose={() => setReviewsModalOpen(false)}
+        onLoadMore={loadMoreReviews}
+        loadingMore={loadingMoreReviews}
+        hasMore={hasMoreReviews}
       />
     )}
     </>,
@@ -2214,6 +2254,9 @@ function Card({
   const [showReviews, setShowReviews] = useState(false);
   const [realReviews, setRealReviews] = useState<CardReview[] | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  const [reviewsPageLoaded, setReviewsPageLoaded] = useState(false);
+  const [nextReviewsPath, setNextReviewsPath] = useState<string | null>(null);
   const isSolo = data.variant === "solo";
   const handleBook = () => {
     if (isSolo) {
@@ -2251,27 +2294,35 @@ function Card({
   };
 
   const uaForCard = t.placeModal.close === "Закрити";
+  const hasMoreReviews = reviewsPageLoaded
+    ? nextReviewsPath !== null
+    : data.reviews > (realReviews?.length ?? 0);
+
   const openReviews = () => {
     setShowReviews(true);
-    if (data.backendMasterId && realReviews === null && !reviewsLoading) {
+    if (isSolo && data.backendMasterId && realReviews === null && !reviewsLoading) {
       setReviewsLoading(true);
       fetchPublicMasterReviews(data.backendMasterId)
-        .then((rows) => {
-          setRealReviews(
-            rows
-              .map((row) => ({
-                author:
-                  `${row.client?.first_name ?? ""} ${row.client?.last_name ?? ""}`.trim() ||
-                  (uaForCard ? "Клієнт Beauty AI" : "Beauty AI client"),
-                rating: row.rating,
-                text: row.comment || "",
-                date: new Date(row.created_at).toLocaleDateString(uaForCard ? "uk-UA" : "en-GB"),
-              }))
-          );
-        })
+        .then((rows) => setRealReviews(mapMasterReviewRows(rows, uaForCard)))
         .catch(() => setRealReviews([]))
         .finally(() => setReviewsLoading(false));
     }
+  };
+
+  const loadMoreReviews = () => {
+    if (!isSolo || !data.backendMasterId || reviewsLoading || loadingMoreReviews) return;
+    if (reviewsPageLoaded && nextReviewsPath === null) return;
+
+    setLoadingMoreReviews(true);
+    fetchMasterReviewsPage(nextReviewsPath ?? data.backendMasterId)
+      .then(({ items, nextPath }) => {
+        const mapped = mapMasterReviewRows(items, uaForCard);
+        setRealReviews((prev) => (reviewsPageLoaded ? [...(prev ?? []), ...mapped] : mapped));
+        setReviewsPageLoaded(true);
+        setNextReviewsPath(nextPath);
+      })
+      .catch((error) => console.error("Failed to load more master reviews", error))
+      .finally(() => setLoadingMoreReviews(false));
   };
   if (data.title === "Кароліна Савчук") console.log("🟣 CARD KAROLINA:", data.image, data);
   return (
@@ -2395,6 +2446,9 @@ function Card({
           reviews={isSolo ? realReviews ?? [] : getPlaceReviews(data, t)}
           loading={isSolo && reviewsLoading}
           onClose={() => setShowReviews(false)}
+          onLoadMore={loadMoreReviews}
+          loadingMore={loadingMoreReviews}
+          hasMore={hasMoreReviews}
         />
       )}
       {showProfile && (
@@ -4038,6 +4092,7 @@ function PartnerOffersCarousel({
 
       {activeOffer && (
         <PlaceDetailsModal
+          key={`${activeOffer.partner}-${activeOffer.title}-${activeOffer.validUntil}`}
           data={{
             image: activeOffer.image,
             badges: [{ text: activeOffer.discount, kind: "discount" }],
@@ -4349,6 +4404,13 @@ function KyivTopSection({
 
       {activeCard && (
         <PlaceDetailsModal
+          key={
+            activeCard.backendMasterId != null
+              ? `master-${activeCard.backendMasterId}`
+              : activeCard.backendSalonId != null
+                ? `salon-${activeCard.backendSalonId}`
+                : `${activeCard.title}-${activeCard.district}-${activeCard.type}`
+          }
           data={activeCard}
           t={t}
           onClose={() => setActiveCard(null)}

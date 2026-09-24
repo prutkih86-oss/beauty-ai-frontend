@@ -1759,7 +1759,7 @@
 
 .kyiv-cover-price {
   color: #241a3d;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -6428,7 +6428,7 @@
 .client-empty-state.compact {
   min-height: 120px;
 }
-.client-review-delete {
+.client-review-delete-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
