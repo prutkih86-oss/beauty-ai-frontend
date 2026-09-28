@@ -413,20 +413,6 @@ type ClientAppointmentListApi = {
   created_date?: string | null;
 };
 
-type AppointmentDetailApi = {
-  appointment_id: number;
-  appointment_date?: string | null;
-  appointment_time?: string | null;
-  appointment_status: string;
-  service_name: string;
-  service_price: string;
-  salon_name: string;
-  salon_address: string;
-  master_id?: number | null;
-  master_name?: string | null;
-  created_date: string;
-};
-
 function appointmentDateParts(start: string): { date: string; time: string } {
   const parsed = new Date(start);
   if (Number.isNaN(parsed.getTime())) {
@@ -455,112 +441,60 @@ export async function fetchMyAppointments(): Promise<ClientAppointmentApi[]> {
     fetchServices(),
   ]);
 
-  return Promise.all(
-    rows.map(async (row) => {
-      const id = row.id;
+  return rows.map((row) => {
+    const id = row.id;
 
-      const master = row.master != null
-        ? masters.find((item) => item.id === row.master)
-        : undefined;
+    const master = row.master != null
+      ? masters.find((item) => item.id === row.master)
+      : undefined;
 
-      const service = row.service != null
-        ? services.find((item) => item.id === row.service)
-        : undefined;
+    const service = row.service != null
+      ? services.find((item) => item.id === row.service)
+      : undefined;
 
-      const masterName = master
-        ? [master.first_name, master.last_name].filter(Boolean).join(" ")
-        : "";
+    const masterName = master
+      ? [master.first_name, master.last_name].filter(Boolean).join(" ")
+      : "";
 
-      const serviceName = service?.name || "—";
-      const servicePrice =
-        service?.price != null ? String(service.price) : "0";
+    const serviceName = service?.name || "—";
+    const servicePrice =
+      service?.price != null ? String(service.price) : "0";
 
-      const salon = row.salon != null
-        ? master?.salons?.find((item) => item.id === row.salon)
-        : undefined;
+    const salon = row.salon != null
+      ? master?.salons?.find((item) => item.id === row.salon)
+      : undefined;
 
-      try {
-        const detail = await apiGet<AppointmentDetailApi>(
-          `/api/appointments/${id}/`
-        );
-
-        return {
-          id,
-          master_id: detail.master_id ?? row.master ?? null,
-          status:
-            detail.appointment_status ||
-            row.status ||
-            row.appointment_status ||
-            "",
-          created_at:
-            detail.created_date ||
-            row.created_at ||
-            row.created_date ||
-            "",
-          appointment_date:
-            detail.appointment_date ||
-            row.appointment_date ||
-            (row.start ? appointmentDateParts(row.start).date : ""),
-          appointment_time:
-            detail.appointment_time ||
-            row.appointment_time ||
-            (row.start ? appointmentDateParts(row.start).time : ""),
-          appointment_status:
-            detail.appointment_status ||
-            row.status ||
-            row.appointment_status ||
-            "",
-          service_name:
-            detail.service_name ||
-            row.service_name ||
-            serviceName,
-          service_price:
-            detail.service_price ||
-            row.total_price ||
-            servicePrice,
-          salon_name:
-            detail.salon_name ||
-            row.salon_name ||
-            salon?.name ||
-            "",
-          salon_address: detail.salon_address || "",
-          master_name:
-            detail.master_name ||
-            row.master_name ||
-            masterName,
-        };
-      } catch {
-        return {
-          id,
-          master_id: row.master ?? null,
-          status: row.status || row.appointment_status || "",
-          created_at: row.created_at || row.created_date || "",
-          appointment_date:
-            row.appointment_date ||
-            (row.start ? appointmentDateParts(row.start).date : ""),
-          appointment_time:
-            row.appointment_time ||
-            (row.start ? appointmentDateParts(row.start).time : ""),
-          appointment_status:
-            row.status || row.appointment_status || "",
-          service_name:
-            row.service_name ||
-            serviceName,
-          service_price:
-            row.total_price ||
-            servicePrice,
-          salon_name:
-            row.salon_name ||
-            salon?.name ||
-            "",
-          salon_address: "",
-          master_name:
-            row.master_name ||
-            masterName,
-        };
-      }
-    })
-  );
+    return {
+      id,
+      master_id: row.master ?? null,
+      status: row.status || row.appointment_status || "",
+      created_at: row.created_at || row.created_date || "",
+      appointment_date:
+        row.appointment_date ||
+        (row.start ? appointmentDateParts(row.start).date : ""),
+      appointment_time:
+        row.appointment_time ||
+        (row.start ? appointmentDateParts(row.start).time : ""),
+      appointment_status:
+        row.status || row.appointment_status || "",
+      service_name:
+        row.service_name ||
+        serviceName,
+      service_price:
+        row.total_price ||
+        servicePrice,
+      salon_name:
+        row.salon_name ||
+        salon?.name ||
+        "",
+      salon_address:
+        master?.workplace?.address ||
+        "",
+      master_name:
+        row.master_name ||
+        masterName,
+    };
+  });
 }
 
 export async function cancelMyAppointment(id: number | string): Promise<void> {
@@ -1075,4 +1009,11 @@ export async function fetchMasterReviewsPage(
 
 export async function fetchAllPublicReviews(): Promise<AppointmentReviewApi[]> {
   return fetchAllPages<AppointmentReviewApi>("/api/reviews/");
+}
+
+export async function fetchMyReviews(): Promise<AppointmentReviewApi[]> {
+  const profile = await fetchMyProfile();
+  return fetchAllPages<AppointmentReviewApi>(
+    `/api/reviews/?client=${encodeURIComponent(String(profile.id))}`
+  );
 }

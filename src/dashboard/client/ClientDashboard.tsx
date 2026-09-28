@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import beautyAISparkles from "../../assets/beauty-ai-sparkles.svg";
 import type { AuthRole, Lang, MockUser } from "../types";
-import { ApiError, cancelMyAppointment, createAppointmentReview, deleteAppointmentReview, fetchAppointmentReview, fetchMasters, fetchMyAppointments, fetchMyProfile, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
+import { ApiError, cancelMyAppointment, createAppointmentReview, fetchMasters, fetchMyAppointments, fetchMyProfile, fetchMyReviews, updateMyProfile, updateMyProfilePhoto } from "../../api/beautyApi";
 
 type ClientFavorite = {
   title: string;
@@ -189,6 +189,15 @@ function clientBookingStatus(value: string): ClientBooking["status"] {
   if (status === "cancelled" || status === "no_show" || status === "no-show") return "cancelled";
   return "confirmed";
 }
+
+function isBookingInFuture(booking: ClientBooking, reference: Date): boolean {
+  if (!booking.date) return false;
+  const time = (booking.time || "00:00").slice(0, 5);
+  const bookingDateTime = new Date(`${booking.date}T${time}:00`);
+  if (Number.isNaN(bookingDateTime.getTime())) return false;
+  return bookingDateTime.getTime() > reference.getTime();
+}
+
 function formatNoticeTime(value: string, ua: boolean) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -374,9 +383,10 @@ useEffect(() => {
 
     (async () => {
       try {
-        const [apiBookings, apiMasters] = await Promise.all([
+        const [apiBookings, apiMasters, apiReviews] = await Promise.all([
           fetchMyAppointments(),
           fetchMasters().catch(() => []),
+          fetchMyReviews(),
         ]);
         if (cancelled) return;
 
@@ -384,6 +394,9 @@ useEffect(() => {
           readClientState(user.email).bookings.map((booking) => [booking.id, booking])
         );
         const mastersById = new Map(apiMasters.map((master) => [master.id, master]));
+        const reviewsByAppointmentId = new Map(
+          apiReviews.map((review) => [String(review.appointment), review])
+        );
 
         const bookings: ClientBooking[] = apiBookings.map((appointment) => {
           const id = String(appointment.id);
@@ -442,40 +455,35 @@ useEffect(() => {
           };
         });
 
-        // Кеш локально знає лише те, що сам колись зберіг — після очищення localStorage
-        // або на іншому пристрої/сесії він "забуде" про вже залишений відгук. Тож для
-        // завершених записів звіряємо реальний статус із бекендом (джерело правди).
-        const reconciled: ClientBooking[] = await Promise.all(
-          bookings.map(async (booking) => {
-            if (booking.status !== "completed") return booking;
-            try {
-              const review = await fetchAppointmentReview(booking.id);
-              if (!review) {
-                return {
-                  ...booking,
-                  reviewSubmitted: false,
-                  reviewMasterRating: undefined,
-                  reviewSalonRating: undefined,
-                  reviewComment: undefined,
-                  reviewSubmittedAt: undefined,
-                };
-              }
-              return {
-                ...booking,
-                reviewSubmitted: true,
-                // Бекенд зберігає лише одну оцінку — якщо в кеші вже є розбивка на
-                // майстер/сервіс, лишаємо її; інакше показуємо реальну оцінку в обох.
-                reviewMasterRating: booking.reviewMasterRating ?? review.rating,
-                reviewSalonRating: booking.reviewSalonRating ?? review.rating,
-                reviewComment: review.comment ?? booking.reviewComment ?? "",
-                reviewSubmittedAt: review.created_at,
-              };
-            } catch {
-              // Не вдалось перевірити статус відгуку — лишаємо те, що було в кеші.
-              return booking;
-            }
-          })
-        );
+        // Актуальний API не має /api/appointments/{id}/review/.
+        // Отримуємо відгуки поточного клієнта через /api/reviews/?client=<id>
+        // і звіряємо їх із завершеними записами за полем review.appointment.
+        const reconciled: ClientBooking[] = bookings.map((booking) => {
+          if (booking.status !== "completed") return booking;
+
+          const review = reviewsByAppointmentId.get(booking.id);
+          if (!review) {
+            return {
+              ...booking,
+              reviewSubmitted: false,
+              reviewMasterRating: undefined,
+              reviewSalonRating: undefined,
+              reviewComment: undefined,
+              reviewSubmittedAt: undefined,
+            };
+          }
+
+          return {
+            ...booking,
+            reviewSubmitted: true,
+            // Бекенд зберігає одну загальну оцінку. Якщо локально вже є окремі
+            // оцінки майстра/сервісу — лишаємо їх, інакше використовуємо rating.
+            reviewMasterRating: booking.reviewMasterRating ?? review.rating,
+            reviewSalonRating: booking.reviewSalonRating ?? review.rating,
+            reviewComment: review.comment ?? booking.reviewComment ?? "",
+            reviewSubmittedAt: review.created_at,
+          };
+        });
 
         const current = {
           ...readClientState(user.email),
@@ -529,13 +537,15 @@ useEffect(() => {
   const visibleReviewBookings = reviewBookingId
   ? reviewBookings.filter((booking) => booking.id === reviewBookingId)
   : reviewBookings.slice(0, 1);
-  const upcomingBookings = clientState.bookings.filter((booking) => booking.status === "confirmed");
+  const upcomingBookings = clientState.bookings.filter(
+    (booking) => booking.status === "confirmed" && isBookingInFuture(booking, now)
+  );
   const visibleBookings = upcomingBookings.slice(0, 1);
   const visibleFavorites = showAllFavorites ? clientState.favorites : clientState.favorites.slice(0, 4);
   const filteredBookings = clientState.bookings.filter((booking) => {
     if (bookingFilter === "completed") return booking.status === "completed";
     if (bookingFilter === "cancelled") return booking.status === "cancelled";
-    return booking.status === "confirmed";
+    return booking.status === "confirmed" && isBookingInFuture(booking, now);
   });
 
   const commit = (updater: (state: ClientState) => ClientState) => {
@@ -667,28 +677,6 @@ useEffect(() => {
     });
     setReviewBookingId(null);
     setReviewDraft({ master: 0, salon: 0, comment: "" });
-  };
-
-  const deleteReview = async (booking: ClientBooking) => {
-    if (!booking.reviewSubmitted) return;
-    try {
-      await deleteAppointmentReview(booking.id);
-    } catch {
-      setReviewError(ua ? "Не вдалось видалити відгук. Спробуйте ще раз." : "Couldn't delete the review. Please try again.");
-      return;
-    }
-    commit((state) => ({
-      ...state,
-      bookings: state.bookings.map((item) => item.id === booking.id ? {
-        ...item,
-        reviewSubmitted: false,
-        reviewMasterRating: undefined,
-        reviewSalonRating: undefined,
-        reviewComment: undefined,
-        reviewSubmittedAt: undefined,
-      } : item),
-    }));
-    if (reviewBookingId === booking.id) setReviewBookingId(null);
   };
 
   const startReview = (booking: ClientBooking) => {
@@ -824,7 +812,7 @@ useEffect(() => {
       </div>
       {compact ? (
         <div className="client-booking-inline-actions">
-          {booking.status === "confirmed" && (
+          {booking.status === "confirmed" && isBookingInFuture(booking, now) && (
             <>
               <button type="button" className="profile-delete-btn" onClick={() => { void cancelBooking(booking.id); }}>{ua ? "Скасувати" : "Cancel"}</button>
             </>
@@ -1100,30 +1088,9 @@ useEffect(() => {
                             ×
                           </button>
                         ) : booking.reviewSubmitted ? (
-                          <div className="client-review-action-v4 client-review-actions-group-v2">
-                            <button
-                              type="button"
-                              className="client-review-delete-btn"
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 6,
-                                padding: "7px 10px",
-                                border: 0,
-                                borderRadius: 8,
-                                background: "transparent",
-                                color: "#d45b68",
-                                fontFamily: "inherit",
-                                fontSize: 13,
-                                fontWeight: 500,
-                                cursor: "pointer",
-                              }}
-                              onClick={() => deleteReview(booking)}
-                              aria-label={ua ? "Видалити відгук" : "Delete review"}
-                            >
-                              🗑 <span>{ua ? "Видалити" : "Delete"}</span>
-                            </button>
-                          </div>
+                          <span className="status-pill client-review-action-v4">
+                            {ua ? "Відгук опубліковано" : "Review published"}
+                          </span>
                         ) : (
                           <span className="status-pill neutral client-review-action-v4">
                             {ua ? "Очікує відгуку" : "Review available"}
@@ -1372,16 +1339,9 @@ useEffect(() => {
                             ×
                           </button>
                         ) : booking.reviewSubmitted ? (
-                          <div className="client-review-action-v4 client-review-actions-group-v2">
-                            <button
-                              type="button"
-                              className="client-review-delete-btn"
-                              onClick={() => deleteReview(booking)}
-                              aria-label={ua ? "Видалити відгук" : "Delete review"}
-                            >
-                              🗑 <span>{ua ? "Видалити" : "Delete"}</span>
-                            </button>
-                          </div>
+                          <span className="status-pill client-review-action-v4">
+                            {ua ? "Відгук опубліковано" : "Review published"}
+                          </span>
                         ) : (
                           <span className="status-pill neutral client-review-action-v4">
                             {ua ? "Очікує відгуку" : "Review available"}
@@ -1554,7 +1514,7 @@ useEffect(() => {
             <h3>{selectedBooking.service}</h3><p>{selectedBooking.title} · {selectedBooking.type}</p>
             <div className="client-booking-detail-grid"><div className="date-time"><span>{ua ? "Дата і час" : "Date & time"}</span><b>{formatBookingDate(selectedBooking.date, ua)} · {selectedBooking.time}</b></div><div><span>{ua ? "Локація" : "Location"}</span><button type="button" className="card-location-link client-booking-location client-booking-detail-location" onClick={() => openBookingLocation(selectedBooking)}><span className="district-pin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>{selectedBooking.district}</button></div><div><span>{ua ? "Код" : "Code"}</span><b>{selectedBooking.code}</b></div></div>
             <div className="client-booking-modal-actions">
-              {selectedBooking.status === "confirmed" && (
+              {selectedBooking.status === "confirmed" && isBookingInFuture(selectedBooking, now) && (
                 <button type="button" className="profile-delete-btn" onClick={() => cancelBooking(selectedBooking.id)}>{ua ? "Скасувати запис" : "Cancel booking"}</button>
               )}
               {selectedBooking.status === "completed" && <><button type="button" className="booking-action-btn ghost" onClick={() => { setSelectedBooking(null); openReviewFromHistory(selectedBooking); }}>{selectedBooking.reviewSubmitted ? (ua ? "Переглянути відгук" : "View review") : (ua ? "Залишити відгук" : "Leave a review")}</button><button type="button" className="cta-btn" onClick={() => { setSelectedBooking(null); rebook(selectedBooking); }}>{ua ? "Записатися знову" : "Book again"}</button></>}
