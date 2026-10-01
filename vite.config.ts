@@ -8,6 +8,7 @@ export default defineConfig({
     allowedHosts: [
       "fool-creatable-ignition.ngrok-free.dev",
       "beautyaiservice.polandcentral.cloudapp.azure.com",
+      "beautyaiserviceua.polandcentral.cloudapp.azure.com",
     ],
 
     proxy: {
