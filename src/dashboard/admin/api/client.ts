@@ -1,7 +1,7 @@
 const API_BASE_URL = import.meta.env.DEV
   ? ""
   : import.meta.env.VITE_API_BASE_URL ||
-    "https://beautyaiservice.polandcentral.cloudapp.azure.com";
+    "https://beautyaiserviceua.polandcentral.cloudapp.azure.com";
 
 const ADMIN_TOKEN_KEY = "beauty_ai_admin_token";
 const AUTH_TOKENS_KEY = "beautyai_auth_tokens";

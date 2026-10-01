@@ -4,7 +4,7 @@ const AUTH_TOKENS_KEY = "beautyai_auth_tokens";
 
 const API_BASE_URL = import.meta.env.DEV
   ? ""
-  : "https://beautyaiservice.polandcentral.cloudapp.azure.com";
+  : "https://beautyaiserviceua.polandcentral.cloudapp.azure.com";
 
 type AuthTokens = { access: string; refresh: string };
 

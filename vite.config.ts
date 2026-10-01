@@ -7,13 +7,12 @@ export default defineConfig({
   server: {
     allowedHosts: [
       "fool-creatable-ignition.ngrok-free.dev",
-      "beautyaiservice.polandcentral.cloudapp.azure.com",
       "beautyaiserviceua.polandcentral.cloudapp.azure.com",
     ],
 
     proxy: {
       "/api": {
-        target: "https://beautyaiservice.polandcentral.cloudapp.azure.com",
+        target: "https://beautyaiserviceua.polandcentral.cloudapp.azure.com",
         changeOrigin: true,
 
         // Бекенд поки на самопідписаному/недовіреному сертифікаті —
@@ -22,7 +21,7 @@ export default defineConfig({
       },
 
       "/ai-chat": {
-        target: "http://beautyaiservice.polandcentral.cloudapp.azure.com:8001",
+        target: "http://beautyaiserviceua.polandcentral.cloudapp.azure.com:8001",
         changeOrigin: true,
 
         // /ai-chat/chat -> /chat

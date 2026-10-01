@@ -456,7 +456,7 @@ const roleAvatars: Record<AuthRole, string> = {
 // Дев: йде через Vite proxy (vite.config.ts, ключ "/api") — той самий origin, без CORS/TLS болю.
 // Прод-білд: proxy не існує (це чиста статика), тож б'ємо напряму в бекенд —
 // бекенд для цього має дозволити прод-домен у CORS_ALLOWED_ORIGINS.
-const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiservice.polandcentral.cloudapp.azure.com";
+const API_BASE_URL = import.meta.env.DEV ? "" : "https://beautyaiserviceua.polandcentral.cloudapp.azure.com";
 
 type PromotionApi = {
   id: number;
