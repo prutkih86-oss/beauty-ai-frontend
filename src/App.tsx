@@ -6599,7 +6599,11 @@ export default function App() {
             support@beautyai.ua
           </a>
 
-          <a href="#">
+          <a
+            href="https://t.me/prutkih"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Telegram
           </a>
         </div>
