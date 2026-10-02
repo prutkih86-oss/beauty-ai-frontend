@@ -1,6 +1,6 @@
 # Beauty AI Frontend
 
-Frontend application for **Beauty AI** — a beauty services booking platform with personalized recommendations, salon discovery, booking workflows, role-based dashboards, and analytics.
+Frontend application for **Beauty AI** — a beauty services booking platform with personalized recommendations, salon discovery, booking workflows, role-based dashboards, and AI-assisted search.
 
 ## Overview
 
@@ -12,13 +12,27 @@ The frontend includes interfaces for:
 - beauty masters;
 - administrators.
 
-The platform combines service discovery, booking functionality, personalized recommendations, dashboards, analytics, and administrative tools in one web application.
+The platform combines service discovery, booking functionality, personalized recommendations, role-based dashboards, and platform integration in one web application.
 
 ## Preview
 
 ### Home Page
 
 <img src="docs/home.jpg" width="100%" alt="Beauty AI Home Page">
+
+### Personalized Recommendations
+
+<img src="docs/home-recommendations.jpg" width="100%" alt="Beauty AI Personalized Recommendations">
+
+### Discovery Sections
+
+<img src="docs/discovery-masters.jpg" width="100%" alt="Beauty AI Masters and Top Rated">
+
+<img src="docs/discovery-offers.jpg" width="100%" alt="Beauty AI Partner Offers and Recommendations">
+
+### Booking Flow
+
+<img src="docs/booking.jpg" width="100%" alt="Beauty AI Booking Flow">
 
 ### User Dashboard
 
@@ -32,15 +46,9 @@ The platform combines service discovery, booking functionality, personalized rec
 
 <img src="docs/admin-dashboard.jpg" width="100%" alt="Beauty AI Admin Dashboard">
 
-### Admin Analytics
-
-<img src="docs/admin-analytics.jpg" width="100%" alt="Beauty AI Admin Analytics Overview">
-
-<img src="docs/admin-analytics-details.jpg" width="100%" alt="Beauty AI Admin Analytics Details">
-
 ## My Contribution
 
-As part of the project, I worked on frontend implementation, interface development, dashboards, analytics modules, and platform integration.
+As part of the project, I worked on frontend implementation, interface development, dashboards, booking flows, AI-related interface elements, and platform integration.
 
 My contribution includes:
 
@@ -48,9 +56,11 @@ My contribution includes:
 - building reusable React components;
 - developing search and category filtering;
 - integrating the salon map;
+- implementing personalized recommendation sections;
+- developing the booking flow;
 - developing role-based dashboards for customers, masters, and administrators;
-- implementing dashboard and analytics interfaces;
-- working with platform data and API integration;
+- working with platform data and REST API integration;
+- implementing JWT-based authentication flows;
 - adapting the UI to product and UX requirements;
 - organizing and maintaining the frontend project structure.
 
@@ -66,47 +76,43 @@ My contribution includes:
 
 ## Main Features
 
+### AI-Assisted Search
+
+Users can describe the beauty service they are looking for and interact with the platform through the Beauty AI search interface.
+
 ### Search & Navigation
 
-Users can search for beauty services, salons, and navigate through the main sections of the platform.
+Users can search for beauty services and salons and navigate through the main sections of the platform.
 
 ### Category Filters
 
-The interface includes category-based filtering to help users find relevant beauty services.
+The interface includes category-based filtering to help users quickly find relevant beauty services.
 
 ### Personalized Recommendations
 
-The platform includes personalized recommendation sections based on the Beauty AI product concept.
+The platform includes recommendation sections for salons, masters, partner offers, and other relevant beauty services.
 
 ### Salon Map
 
 The frontend includes an interactive map for discovering beauty locations.
 
+### Booking Flow
+
+Users can select a service, available date and time, enter contact information, and confirm an appointment.
+
 ### User Dashboard
 
-Customers can view and manage appointments, reviews, recommendations, and loyalty information.
+Customers can view and manage appointments, favourites, reviews, and loyalty information.
 
 ### Master Dashboard
 
-Masters can manage appointments, availability, schedules, client activity, reviews, and service-related information.
+Masters can manage appointments, availability, schedules, client activity, reviews, services, and profile information.
 
 ### Admin Dashboard
 
-Administrators have access to platform-level information including bookings, clients, masters, salons, services, payments, and reviews.
+Administrators have access to platform-level information including bookings, clients, masters, salons, services, payments, reviews, and system settings.
 
-### Analytics
-
-The admin interface includes analytics modules for:
-
-- booking value;
-- booking volume;
-- average booking value;
-- cancellation rate;
-- no-show rate;
-- repeat clients;
-- revenue trends;
-- payment methods;
-- revenue by period.
+Detailed analytics are implemented in the separate **Beauty AI Admin Panel** project.
 
 ### Authentication & Roles
 
@@ -121,13 +127,17 @@ The frontend uses JWT-based authentication and supports role-based access for:
 ```text
 beauty-ai-frontend/
 ├── public/
+├── docs/
 ├── src/
 │   ├── assets/
-│   ├── components/
-│   ├── admin/
-│   ├── dashboards/
+│   ├── api/
+│   ├── dashboard/
 │   ├── App.tsx
 │   ├── App.css
+│   ├── BeautyAssistant.tsx
+│   ├── CategoryFilters.tsx
+│   ├── FilterBar.tsx
+│   ├── MapSection.tsx
 │   ├── index.css
 │   └── main.tsx
 ├── package.json
