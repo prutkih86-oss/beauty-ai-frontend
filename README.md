@@ -23,9 +23,7 @@ The platform combines service discovery, booking functionality, personalized rec
 ### Personalized Recommendations & Discovery
 
 <img src="docs/home-recommendations.jpg" width="100%" alt="Beauty AI Personalized Recommendations">
-
 <img src="docs/discovery-masters.jpg" width="100%" alt="Beauty AI Masters and Top Rated">
-
 <img src="docs/discovery-offers.jpg" width="100%" alt="Beauty AI Partner Offers and Recommendations">
 
 ### Booking Flow
