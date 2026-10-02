@@ -60,9 +60,7 @@ export default function AdminClients() {
     return clients.filter((client) => {
       const matchesSearch =
         !search ||
-        client.name.toLowerCase().includes(search) ||
-        client.city.toLowerCase().includes(search) ||
-        client.acquisitionChannel.toLowerCase().includes(search);
+        client.name.toLowerCase().includes(search);
 
       const matchesStatus =
         status === "All" ||
@@ -78,11 +76,8 @@ export default function AdminClients() {
     () =>
       filteredClients.map((client) => [
         client.name,
-        client.city,
-        client.acquisitionChannel,
         String(client.bookings),
-        `$${client.spent.toLocaleString()}`,
-        client.lastVisit,
+        `${client.spent.toLocaleString("uk-UA")} ₴`,
         client.status,
       ]),
     [filteredClients]
@@ -129,11 +124,8 @@ export default function AdminClients() {
       <DataTable
         columns={[
           "Name",
-          "City",
-          "Source",
           "Bookings",
           "Spent",
-          "Last Visit",
           "Status",
         ]}
         rows={loading ? [] : rows}
@@ -206,16 +198,10 @@ export default function AdminClients() {
           <dl className="admin-modal-details">
             <dt>Name</dt>
             <dd>{selected.name}</dd>
-            <dt>City</dt>
-            <dd>{selected.city}</dd>
-            <dt>Source</dt>
-            <dd>{selected.acquisitionChannel}</dd>
             <dt>Bookings</dt>
             <dd>{selected.bookings}</dd>
             <dt>Spent</dt>
-            <dd>${selected.spent.toLocaleString()}</dd>
-            <dt>Last Visit</dt>
-            <dd>{selected.lastVisit}</dd>
+            <dd>{selected.spent.toLocaleString("uk-UA")} ₴</dd>
             <dt>Status</dt>
             <dd>{selected.status}</dd>
           </dl>

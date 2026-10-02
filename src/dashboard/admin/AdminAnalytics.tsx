@@ -26,12 +26,12 @@ const EMPTY_DATA: AnalyticsSourceData = {
 };
 
 function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  return `${value.toLocaleString("uk-UA", { maximumFractionDigits: 0 })} ₴`;
 }
 
 function compactMoney(value: number): string {
   if (Math.abs(value) >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`;
+    return `${(value / 1000).toFixed(1)}K ₴`;
   }
   return money(value);
 }
@@ -108,6 +108,67 @@ function VerticalBars({
           <small>{label}</small>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+function CityRevenueBars({
+  rows,
+}: {
+  rows: Array<{ city: string; salons: number; masters: number }>;
+}) {
+  const max = Math.max(
+    1,
+    ...rows.flatMap((row) => [row.salons, row.masters])
+  );
+
+  if (!rows.length) {
+    return <div className="admin-analytics-empty">No data for this period</div>;
+  }
+
+  return (
+    <div className="admin-analytics-city-chart">
+      <div className="admin-analytics-city-legend">
+        <span>
+          <i className="admin-analytics-city-dot-salons" />
+          Salons
+        </span>
+
+        <span>
+          <i className="admin-analytics-city-dot-masters" />
+          Masters
+        </span>
+      </div>
+
+      <div className="admin-analytics-city-groups">
+        {rows.map((row) => (
+          <div className="admin-analytics-city-group" key={row.city}>
+            <div className="admin-analytics-city-bars">
+              {[
+                { key: "salons", value: row.salons },
+                { key: "masters", value: row.masters },
+              ].map((bar) => (
+                <div className="admin-analytics-city-bar" key={bar.key}>
+                  <b>{compactMoney(bar.value)}</b>
+
+                  <span
+                    className={`admin-analytics-city-bar-fill ${bar.key}`}
+                    style={{
+                      height: `${Math.max(
+                        bar.value > 0 ? 8 : 0,
+                        (bar.value / max) * 138
+                      )}px`,
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <small className="admin-analytics-city-label">{row.city}</small>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -266,7 +327,7 @@ export default function AdminAnalytics() {
     const totalRevenue = revenueRecords.reduce((sum, [, value]) => sum + value, 0);
     const orderCount = payments.length || bookings.length;
     const cancelled = bookings.filter((row) => statusKey(row.status) === "cancelled").length;
-    const noShow = bookings.filter((row) => ["no-show", "no show", "noshow"].includes(statusKey(row.status))).length;
+    const noShow = bookings.filter((row) => ["no-show", "no show", "noshow", "no_show"].includes(statusKey(row.status))).length;
 
     const clientCounts = new Map<string, number>();
     bookings.forEach((row) => {
@@ -306,11 +367,55 @@ export default function AdminAnalytics() {
       periodRevenue.set(key, (periodRevenue.get(key) || 0) + amount);
     });
 
-    const revenueByCity = new Map<string, number>();
+    const masterCities = new Map(
+      source.masters.map((master) => [master.name, master.city])
+    );
+    const revenueByCity = new Map<string, { salons: number; masters: number }>();
+
     bookings.forEach((row) => {
-      const city = row.city && row.city !== "N/A" ? row.city : "Solo / No salon";
-      revenueByCity.set(city, (revenueByCity.get(city) || 0) + row.price);
+      const hasSalon = Boolean(
+        row.salon &&
+        row.salon !== "—" &&
+        row.salon !== "N/A"
+      );
+      const city = hasSalon
+        ? row.city
+        : masterCities.get(row.master) || row.city;
+
+      if (!city || city === "N/A" || city === "—") {
+        return;
+      }
+
+      const current = revenueByCity.get(city) || { salons: 0, masters: 0 };
+      if (hasSalon) {
+        current.salons += row.price;
+      } else {
+        current.masters += row.price;
+      }
+      revenueByCity.set(city, current);
     });
+
+    const cityLabel = (city: string) => {
+      const normalized = city.trim().toLowerCase();
+      if (normalized === "київ" || normalized === "kyiv" || normalized === "kiev") {
+        return "Kyiv";
+      }
+      if (normalized === "львів" || normalized === "lviv" || normalized === "lvov") {
+        return "Lviv";
+      }
+      return city;
+    };
+
+    const revenueByCityRows = [...revenueByCity.entries()]
+      .map(([city, values]) => ({
+        city: cityLabel(city),
+        salons: values.salons,
+        masters: values.masters,
+      }))
+      .sort(
+        (a, b) =>
+          b.salons + b.masters - (a.salons + a.masters)
+      );
 
     const topMasters = count(bookings.filter((row) => row.master !== "—"), (row) => row.master).slice(0, 8);
     const popularServices = count(bookings.filter((row) => row.service !== "—"), (row) => row.service).slice(0, 8);
@@ -362,7 +467,7 @@ export default function AdminAnalytics() {
       revenueTrend,
       paymentMethods,
       revenueByPeriod: [...periodRevenue.entries()],
-      revenueByCity: [...revenueByCity.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+      revenueByCity: revenueByCityRows,
       topMasters,
       popularServices,
       bookingStatus,
@@ -414,7 +519,7 @@ export default function AdminAnalytics() {
       <div className="admin-section-divider" />
 
       <div className="admin-analytics-kpis">
-        <KpiCard title="Booking Value" value={loading ? "—" : compactMoney(analytics.totalRevenue)} icon="▣" />
+        <KpiCard title="Paid Revenue" value={loading ? "—" : compactMoney(analytics.totalRevenue)} icon="▣" />
         <KpiCard title="Avg Booking Value" value={loading ? "—" : money(analytics.avgBookingValue)} icon="▤" />
         <KpiCard title="Cancellation Rate" value={loading ? "—" : `${analytics.cancellationRate.toFixed(1)}%`} icon="✕" />
         <KpiCard title="No-show Rate" value={loading ? "—" : `${analytics.noShowRate.toFixed(1)}%`} icon="◒" />
@@ -453,7 +558,7 @@ export default function AdminAnalytics() {
         </ChartCard>
 
         <ChartCard title="Revenue by City">
-          <HorizontalBars rows={analytics.revenueByCity} moneyValues />
+          <CityRevenueBars rows={analytics.revenueByCity} />
         </ChartCard>
 
         <ChartCard title="New vs Returning Clients">

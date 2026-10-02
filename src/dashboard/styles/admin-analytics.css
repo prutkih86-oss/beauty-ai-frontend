@@ -287,3 +287,106 @@
     grid-column: auto;
   }
 }
+/* Revenue by City */
+
+.admin-analytics-city-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
+}
+
+.admin-analytics-city-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  color: #6f6878;
+  font-size: 12px;
+}
+
+.admin-analytics-city-legend span {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.admin-analytics-city-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.admin-analytics-city-dot-salons {
+  background: var(--analytics-donut-1);
+}
+
+.admin-analytics-city-dot-masters {
+  background: var(--analytics-donut-2);
+}
+
+.admin-analytics-city-groups {
+  display: flex;
+  min-height: 210px;
+  gap: 30px;
+  align-items: flex-end;
+  justify-content: space-around;
+  padding: 4px 20px 0;
+}
+
+.admin-analytics-city-group {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-analytics-city-bars {
+  display: flex;
+  width: 100%;
+  height: 170px;
+  gap: 12px;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid #e9e5ee;
+}
+
+.admin-analytics-city-bar {
+  display: flex;
+  width: 34%;
+  min-width: 38px;
+  max-width: 68px;
+  height: 100%;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.admin-analytics-city-bar b {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-analytics-city-bar-fill {
+  display: block;
+  width: 100%;
+  border-radius: 8px 8px 0 0;
+}
+
+.admin-analytics-city-bar-fill.salons {
+  background: var(--analytics-donut-1);
+}
+
+.admin-analytics-city-bar-fill.masters {
+  background: var(--analytics-donut-2);
+}
+
+.admin-analytics-city-label {
+  color: #2f2938;
+  font-size: 12px;
+  font-weight: 600;
+}

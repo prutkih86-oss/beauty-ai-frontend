@@ -3,14 +3,103 @@ import AdminIcon from "./AdminIcons";
 import { getDashboardData, pctChange } from "./api/dashboard";
 import type { DashboardData } from "./api/dashboard";
 
+const DEMO_30D = {
+  revenueCurrent: 407300,
+  revenuePrevious: 346565,
+  bookingsCurrent: 531,
+  bookingsPrevious: 461,
+  clientsCurrent: 10,
+  clientsPrevious: 11,
+  mastersCurrent: 88,
+  mastersPrevious: 78,
+};
+
+function demoValue(
+  realValue: number | undefined,
+  fallback: number,
+  demoMode: boolean
+) {
+  const value = realValue ?? 0;
+  return demoMode ? fallback : value;
+}
+
+const DEMO_TODAY_SCHEDULE = [
+  {
+    id: "demo-1",
+    client: "Іван Олексенко Андрійович",
+    service: "Haircut",
+    master: "Аріна Бондар",
+    dateTime: "2026-10-02 09:15",
+    status: "Completed",
+  },
+  {
+    id: "demo-2",
+    client: "Дубіна Юлія",
+    service: "SPA догляд",
+    master: "Віра Негода",
+    dateTime: "2026-10-02 10:00",
+    status: "Completed",
+  },
+  {
+    id: "demo-3",
+    client: "Радченко Олена",
+    service: "Масаж",
+    master: "Михайлина Забарна",
+    dateTime: "2026-10-02 10:15",
+    status: "Cancelled",
+  },
+  {
+    id: "demo-4",
+    client: "Верес Леонід",
+    service: "Стрижка",
+    master: "Олена Коваленко",
+    dateTime: "2026-10-02 10:45",
+    status: "No-show",
+  },
+  {
+    id: "demo-5",
+    client: "Віталій Лук'ян Забарний",
+    service: "Манікюр",
+    master: "Святослава Юрчишина",
+    dateTime: "2026-10-02 11:45",
+    status: "Completed",
+  },
+  {
+    id: "demo-6",
+    client: "Левон Миронович Лук'янко",
+    service: "Фарбування",
+    master: "Марта Чаленко",
+    dateTime: "2026-10-02 13:15",
+    status: "Completed",
+  },
+  {
+    id: "demo-7",
+    client: "Насторенко Ярослав",
+    service: "Барберинг",
+    master: "Захар Влох",
+    dateTime: "2026-10-02 16:00",
+    status: "Completed",
+  },
+  {
+    id: "demo-8",
+    client: "Шевченко Альбіна",
+    service: "Укладка",
+    master: "Аніта Москаль",
+    dateTime: "2026-10-02 16:30",
+    status: "Completed",
+  },
+];
+
 function money(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency", currency: "USD", maximumFractionDigits: 0,
-  }).format(value);
+  return `${value.toLocaleString("uk-UA", {
+    maximumFractionDigits: 0,
+  })} ₴`;
 }
 
 function compactMoney(value: number) {
-  if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+  if (Math.abs(value) >= 1000) {
+    return `${(value / 1000).toFixed(1)}K ₴`;
+  }
   return money(value);
 }
 
@@ -28,6 +117,7 @@ export default function AdminHome({ onHome }: { onHome: () => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,19 +135,30 @@ export default function AdminHome({ onHome }: { onHome: () => void }) {
 
   const d = data;
 
+  const revenueCurrent = demoValue(d?.revenueCurrent, DEMO_30D.revenueCurrent, demoMode);
+  const revenuePrevious = demoValue(d?.revenuePrevious, DEMO_30D.revenuePrevious, demoMode);
+  const bookingsCurrent = demoValue(d?.bookingsCurrent, DEMO_30D.bookingsCurrent, demoMode);
+  const bookingsPrevious = demoValue(d?.bookingsPrevious, DEMO_30D.bookingsPrevious, demoMode);
+  const clientsCurrent = demoValue(d?.clientsCurrent, DEMO_30D.clientsCurrent, demoMode);
+  const clientsPrevious = demoValue(d?.clientsPrevious, DEMO_30D.clientsPrevious, demoMode);
+  const mastersCurrent = demoValue(d?.mastersCurrent, DEMO_30D.mastersCurrent, demoMode);
+  const mastersPrevious = demoValue(d?.mastersPrevious, DEMO_30D.mastersPrevious, demoMode);
+
   const kpis = [
-    { title: "Booking Value (30d)", value: compactMoney(d?.revenueCurrent || 0), current: d?.revenueCurrent || 0, previous: d?.revenuePrevious || 0, icon: "revenue" as const },
-    { title: "Total Bookings (30d)", value: String(d?.bookingsCurrent || 0), current: d?.bookingsCurrent || 0, previous: d?.bookingsPrevious || 0, icon: "bookings" as const },
-    { title: "New Clients (30d)", value: String(d?.clientsCurrent || 0), current: d?.clientsCurrent || 0, previous: d?.clientsPrevious || 0, icon: "clients" as const },
-    { title: "Active Masters (30d)", value: String(d?.mastersCurrent || 0), current: d?.mastersCurrent || 0, previous: d?.mastersPrevious || 0, icon: "masters" as const },
+    { title: "Booking Value (30d)", value: compactMoney(revenueCurrent), current: revenueCurrent, previous: revenuePrevious, icon: "revenue" as const },
+    { title: "Total Bookings (30d)", value: String(bookingsCurrent), current: bookingsCurrent, previous: bookingsPrevious, icon: "bookings" as const },
+    { title: "New Clients (30d)", value: String(clientsCurrent), current: clientsCurrent, previous: clientsPrevious, icon: "clients" as const },
+    { title: "Active Masters (30d)", value: String(mastersCurrent), current: mastersCurrent, previous: mastersPrevious, icon: "masters" as const },
   ];
 
   const today = [
-    { title: "Bookings Today", value: d?.bookingsToday || 0, icon: "calendar" as const, tone: "purple" },
-    { title: "Completed Today", value: d?.completedToday || 0, icon: "completed" as const, tone: "green" },
-    { title: "Cancelled Today", value: d?.cancelledToday || 0, icon: "cancelled" as const, tone: "gray" },
-    { title: "No-show Today", value: d?.noShowToday || 0, icon: "noshow" as const, tone: "gray" },
+    { title: "Bookings Today", value: demoMode ? 18 : (d?.bookingsToday || 0), icon: "calendar" as const, tone: "purple" },
+    { title: "Completed Today", value: demoMode ? 13 : (d?.completedToday || 0), icon: "completed" as const, tone: "green" },
+    { title: "Cancelled Today", value: demoMode ? 2 : (d?.cancelledToday || 0), icon: "cancelled" as const, tone: "gray" },
+    { title: "No-show Today", value: demoMode ? 3 : (d?.noShowToday || 0), icon: "noshow" as const, tone: "gray" },
   ];
+
+  const todaySchedule = demoMode ? DEMO_TODAY_SCHEDULE : (d?.todaySchedule || []);
 
   return (
     <div className="admin-dashboard-v3">
@@ -84,6 +185,16 @@ export default function AdminHome({ onHome }: { onHome: () => void }) {
                 <span>Backend unavailable</span>
               </div>
             )}
+
+            <button
+              type="button"
+              className="admin-refresh-v3"
+              onClick={() => setDemoMode((value) => !value)}
+              aria-pressed={demoMode}
+              title={demoMode ? "Show real data" : "Show demo data"}
+            >
+              {demoMode ? "Demo: ON" : "Demo: OFF"}
+            </button>
 
             <button
               type="button"
@@ -142,7 +253,7 @@ export default function AdminHome({ onHome }: { onHome: () => void }) {
             <div><h2>Today's Schedule</h2></div>
           </div>
           <div className="admin-schedule-list-v3">
-            {d?.todaySchedule.length ? d.todaySchedule.map((b) => {
+            {todaySchedule.length ? todaySchedule.map((b) => {
               const time = b.dateTime.includes(" ") ? b.dateTime.split(" ", 2)[1]?.slice(0, 5) : "";
               return (
                 <div className="admin-schedule-row-v3" key={String(b.id)}>
@@ -154,25 +265,6 @@ export default function AdminHome({ onHome }: { onHome: () => void }) {
             }) : <div className="admin-empty-card-v3">No bookings scheduled for this date.</div>}
           </div>
         </article>
-      </section>
-
-      <section className="admin-panel-v3 admin-top-masters-v3">
-        <div className="admin-panel-head-v3">
-          <div><h2>Active Now</h2></div>
-          <small>{d?.activeNow.length || 0} in progress</small>
-        </div>
-
-        {d?.activeNow.length ? (
-          <div className="admin-master-cards-v3">
-            {d.activeNow.map((booking) => (
-              <article key={String(booking.id)}>
-                <div className="admin-master-name-v3"><strong>{booking.master}</strong><span>{booking.dateTime.slice(-5)}</span></div>
-                <div className="admin-master-metric-v3"><span>Client</span><strong>{booking.client}</strong></div>
-                <div className="admin-master-metric-v3"><span>Service</span><strong>{booking.service}</strong></div>
-              </article>
-            ))}
-          </div>
-        ) : <div className="admin-empty-card-v3">No masters active right now.</div>}
       </section>
     </div>
   );

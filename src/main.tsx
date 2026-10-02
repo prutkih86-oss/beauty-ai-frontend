@@ -8,7 +8,5 @@ import App from "./App";
 // is the actual Beauty AI stylesheet — no global import needed here.
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <App />
 );

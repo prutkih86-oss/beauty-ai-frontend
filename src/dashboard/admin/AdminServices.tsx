@@ -32,15 +32,12 @@ export default function AdminServices() {
         if (active) {
           setServices(pageItems);
           setTotalServices(count);
+          setLoading(false);
         }
       })
       .catch((e: unknown) => {
         if (active) {
           setError(e instanceof Error ? e.message : String(e));
-        }
-      })
-      .finally(() => {
-        if (active) {
           setLoading(false);
         }
       });
@@ -94,9 +91,8 @@ export default function AdminServices() {
         service.name,
         service.category,
         `${service.duration} min`,
-        `$${service.price.toLocaleString()}`,
+        `${service.price.toLocaleString("uk-UA")} ₴`,
         formatMastersCount(service.mastersCount),
-        String(service.bookings),
       ]),
     [filteredServices]
   );
@@ -148,7 +144,6 @@ export default function AdminServices() {
           "Duration",
           "Price",
           "Master(s)",
-          "Bookings",
         ]}
         rows={loading ? [] : rows}
         selectedIndex={sel}
@@ -226,7 +221,7 @@ export default function AdminServices() {
             <dt>Duration</dt>
             <dd>{selected.duration} min</dd>
             <dt>Price</dt>
-            <dd>${selected.price.toLocaleString()}</dd>
+            <dd>{selected.price.toLocaleString("uk-UA")} ₴</dd>
             <dt>Master(s)</dt>
             <dd>
               <strong>{formatMastersCount(selected.mastersCount)}</strong>
@@ -234,8 +229,6 @@ export default function AdminServices() {
                 <div style={{ marginTop: 6 }}>{selected.mastersDetail}</div>
               )}
             </dd>
-            <dt>Bookings</dt>
-            <dd>{selected.bookings}</dd>
           </dl>
         )}
       </Modal>

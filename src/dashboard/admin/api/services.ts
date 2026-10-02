@@ -1,4 +1,4 @@
-import { apiGetPageSlice } from "./client";
+import { apiGet } from "./client";
 
 export interface ServiceRow {
   id: number | string;
@@ -31,6 +31,13 @@ export type ServicesPage = {
   count: number;
 };
 
+type ServicesApiPage = {
+  count?: number;
+  next?: string | null;
+  previous?: string | null;
+  results?: RawService[];
+};
+
 function mapService(item: RawService): ServiceRow {
   let mastersCount = 0;
   let mastersDetail = "—";
@@ -39,7 +46,11 @@ function mapService(item: RawService): ServiceRow {
     const masters = item.masters
       .map((master) => {
         if (typeof master === "object" && master) {
-          return master.name || master.full_name || String(master.id ?? "");
+          return (
+            master.name ||
+            master.full_name ||
+            String(master.id ?? "")
+          );
         }
 
         return String(master);
@@ -61,7 +72,7 @@ function mapService(item: RawService): ServiceRow {
     price: Number(item.price ?? 0) || 0,
     mastersCount,
     mastersDetail,
-    bookings: 0,
+    bookings: -1,
   };
 }
 
@@ -69,14 +80,67 @@ export async function getServicesPage(
   page: number,
   pageSize = 15
 ): Promise<ServicesPage> {
-  const data = await apiGetPageSlice<RawService>(
-    "/api/services/",
-    page,
-    pageSize
+  const safePage = Math.max(0, page);
+  const startIndex = safePage * pageSize;
+
+  // First request gives us the real total count and backend page size.
+  const first = await apiGet<ServicesApiPage>(
+    "/api/services/?page=1"
+  );
+
+  const backendPageSize = Math.max(
+    1,
+    first.results?.length ?? 10
+  );
+
+  const count = first.count ?? first.results?.length ?? 0;
+
+  if (startIndex >= count) {
+    return {
+      services: [],
+      count,
+    };
+  }
+
+  const firstBackendPage =
+    Math.floor(startIndex / backendPageSize) + 1;
+
+  const offset = startIndex % backendPageSize;
+
+  const lastItemIndex = Math.min(
+    count,
+    startIndex + pageSize
+  );
+
+  const lastBackendPage =
+    Math.ceil(lastItemIndex / backendPageSize);
+
+  const pageNumbers = Array.from(
+    {
+      length:
+        lastBackendPage - firstBackendPage + 1,
+    },
+    (_, index) => firstBackendPage + index
+  );
+
+  const responses = await Promise.all(
+    pageNumbers.map((backendPage) =>
+      backendPage === 1
+        ? Promise.resolve(first)
+        : apiGet<ServicesApiPage>(
+            `/api/services/?page=${backendPage}`
+          )
+    )
+  );
+
+  const items = responses.flatMap(
+    (response) => response.results ?? []
   );
 
   return {
-    services: data.items.map(mapService),
-    count: data.count,
+    services: items
+      .slice(offset, offset + pageSize)
+      .map(mapService),
+    count,
   };
 }

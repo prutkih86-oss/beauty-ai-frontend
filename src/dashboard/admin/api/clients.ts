@@ -3,11 +3,8 @@ import { apiGet } from "./client";
 export type ClientRow = {
   id: number | string;
   name: string;
-  city: string;
-  acquisitionChannel: string;
   bookings: number;
   spent: number;
-  lastVisit: string;
   status: string;
 };
 
@@ -31,20 +28,11 @@ function mapClient(item: any): ClientRow {
       `${item.first_name || ""} ${item.last_name || ""}`.trim() ||
       item.email ||
       "—",
-    city: item.residence?.city_name || item.city || "—",
-    acquisitionChannel:
-      item.acquisition_channel ||
-      item.source ||
-      "—",
     bookings:
       item.bookings_count ??
       item.bookings ??
       0,
     spent: Number(item.total_spent ?? item.spent ?? 0),
-    lastVisit:
-      item.last_visit ||
-      item.lastVisit ||
-      "—",
     status:
       item.is_active === false
         ? "Inactive"

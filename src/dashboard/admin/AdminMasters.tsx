@@ -41,14 +41,6 @@ export default function AdminMasters() {
   const [availableServices, setAvailableServices] = useState<ServiceRow[]>([]);
 
   useEffect(() => {
-    getServicesPage(0, 100)
-      .then(({ services }) => setAvailableServices(services))
-      .catch((e: unknown) =>
-        setError(e instanceof Error ? e.message : String(e))
-      );
-  }, []);
-
-  useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
@@ -104,8 +96,6 @@ export default function AdminMasters() {
         master.specialization,
         master.rating.toFixed(1),
         master.city,
-        String(master.bookings),
-        `$${master.revenue.toLocaleString()}`,
         master.isSolo ? "Solo" : "Salon",
       ]),
     [filteredMasters]
@@ -163,7 +153,19 @@ export default function AdminMasters() {
     <>
       <Toolbar
         right={
-          <PrimaryButton onClick={() => setAddOpen(true)}>
+          <PrimaryButton
+            onClick={() => {
+              setAddOpen(true);
+
+              if (!availableServices.length) {
+                getServicesPage(0, 10)
+                  .then(({ services }) => setAvailableServices(services))
+                  .catch((e: unknown) =>
+                    setError(e instanceof Error ? e.message : String(e))
+                  );
+              }
+            }}
+          >
             ＋ Add Master
           </PrimaryButton>
         }
@@ -202,8 +204,6 @@ export default function AdminMasters() {
           "Specialization",
           "Rating",
           "City",
-          "Bookings",
-          "Revenue",
           "Type",
         ]}
         rows={loading ? [] : rows}
@@ -344,10 +344,6 @@ export default function AdminMasters() {
             <dd>{selected.rating.toFixed(1)}</dd>
             <dt>City</dt>
             <dd>{selected.city}</dd>
-            <dt>Bookings</dt>
-            <dd>{selected.bookings}</dd>
-            <dt>Revenue</dt>
-            <dd>${selected.revenue.toLocaleString()}</dd>
             <dt>Type</dt>
             <dd>{selected.isSolo ? "Solo" : "Salon"}</dd>
           </dl>
