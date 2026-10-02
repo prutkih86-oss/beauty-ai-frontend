@@ -20,7 +20,7 @@ The platform combines service discovery, booking functionality, personalized rec
 
 <img src="docs/home.jpg" width="100%" alt="Beauty AI Home Page">
 
-### Personalized Recommendations
+### Personalized Recommendations & Discovery
 
 <img src="docs/home-recommendations.jpg" width="100%" alt="Beauty AI Personalized Recommendations">
 
