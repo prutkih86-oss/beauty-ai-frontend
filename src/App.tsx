@@ -28,6 +28,20 @@ import {
 } from "./api/beautyApi";
 import BeautyAssistant from "./BeautyAssistant";
 
+declare global {
+  interface Window {
+    dataLayer: Record<string, unknown>[];
+  }
+}
+
+function trackGaEvent(event: string, params: Record<string, unknown> = {}) {
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({
+    event,
+    ...params,
+  });
+}
+
 const AI_CONVERSATION_STORAGE_KEY = "beautyai_ai_conversation_id";
 
 function readAiConversationId(): string | number | null {
@@ -273,7 +287,7 @@ const dict = {
     heroTitle2: "BEAUTY MATCH",          // новий рядок
     heroTitle3: "ЗА ДОПОМОГОЮ AI",
     heroEyebrow: "ТВІЙ РОЗУМНИЙ ПОШУК КРАСИ",
-    heroSubtitle: "Опиши, що тобі потрібно — AI підбере майстра під твій запит",
+    heroSubtitle: "Опиши, що тобі потрібно — AI знайде найкраще саме для тебе",
     searchPlaceholder: "Наприклад: манікюр у центрі Києва сьогодні",
     searchBtn: "Знайти",
     filters: "Фільтри",
@@ -309,7 +323,7 @@ const dict = {
       experience: "Досвід / команда",
       location: "Розташування",
       status: "Статус",
-      book: "Записатися",
+      book: "Перейти до запису",
     },
     bookingModal: {
       close: "Закрити",
@@ -346,7 +360,7 @@ const dict = {
     heroTitle2: "beauty match",
     heroTitle3: "with the help of AI",
     heroEyebrow: "YOUR SMART BEAUTY SEARCH",
-    heroSubtitle: "Describe what you need — we'll find the best options nearby",
+    heroSubtitle: "Describe what you need — AI will find \n the right match for you",
     searchPlaceholder: "E.g.: manicure in central Kyiv today",
     searchBtn: "Search",
     filters: "Filters",
@@ -382,7 +396,7 @@ const dict = {
       experience: "Experience / team",
       location: "Location",
       status: "Status",
-      book: "Book now",
+      book: "Continue to booking",
     },
     bookingModal: {
       close: "Close",
@@ -1415,7 +1429,13 @@ function getSalonWebsite(name: string, explicit?: string) {
 }
 
 function openSalonWebsite(name: string, explicit?: string) {
-  window.open(getSalonWebsite(name, explicit), "_blank", "noopener,noreferrer");
+  const url = getSalonWebsite(name, explicit);
+  trackGaEvent("salon_booking_redirect", {
+    salon_name: name,
+    salon_id: null,
+    destination_url: url,
+  });
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function getBookingDates() {
@@ -1451,6 +1471,14 @@ function BookingModal({
   const storedServices = (storedMaster?.services ?? []).filter((item) => item.active);
   const backendServices = data.backendServices ?? [];
   const hasBackendBooking = Boolean(data.backendMasterId && backendServices.length);
+
+  useEffect(() => {
+    trackGaEvent("booking_started", {
+      master_name: data.title,
+      master_id: data.backendMasterId ?? null,
+      salon_id: data.backendSalonId ?? null,
+    });
+  }, []);
 
   const services = hasBackendBooking
     ? backendServices.map((item) => item.name)
@@ -1544,6 +1572,15 @@ function BookingModal({
       // Тимчасовий fallback для старих локальних/demo-карток.
       saveClientBooking({ ...data, priceFrom: selectedPriceFrom }, service, date, time, phone, bookingCode);
       if (storedMaster) consumeStoredMasterWindow(data.title, date, time);
+      trackGaEvent("booking_completed", {
+        master_name: data.title,
+        master_id: data.backendMasterId ?? null,
+        salon_id: data.backendSalonId ?? null,
+        service_name: service,
+        service_id: selectedBackendService?.id ?? null,
+        appointment_date: date,
+        appointment_time: time,
+      });
       setConfirmed(true);
       return;
     }
@@ -1559,6 +1596,15 @@ function BookingModal({
               appointment_time: time.length === 5 ? `${time}:00` : time,
             });
       saveBackendClientBooking(created.id, { ...data, priceFrom: selectedPriceFrom }, service, date, time, phone);
+      trackGaEvent("booking_completed", {
+        master_name: data.title,
+        master_id: data.backendMasterId,
+        salon_id: data.backendSalonId ?? null,
+        service_name: service,
+        service_id: selectedBackendService.id,
+        appointment_date: date,
+        appointment_time: time,
+      });
       setConfirmed(true);
     } catch (error) {
       console.error("Failed to create appointment", error);
@@ -1665,7 +1711,7 @@ function BookingModal({
                 <span>{service}</span>
                 <span>{dates.find((item) => item.value === date)?.label} {time ? `· ${time}` : ""}</span>
                 <span>{data.title} · {data.district}</span>
-                <b>{selectedPriceFrom} грн+</b>
+                <b>{selectedPriceFrom} грн</b>
               </div>
 
               {bookingError && <small className="booking-api-error" role="alert">{bookingError}</small>}
@@ -1879,7 +1925,7 @@ function PlaceDetailsModal({
   t: Translations;
   onClose: () => void;
   onBook: () => void;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
 }) {
   const isSolo = data.variant === "solo";
   const ua = t.placeModal.close === "Закрити";
@@ -2031,7 +2077,7 @@ function PlaceDetailsModal({
               <button
                 type="button"
                 className="card-location-link place-modal-location-link"
-                onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
+                onClick={() => onLocationClick?.(data.title, data.district, data.distance, data.lat, data.lng)}
                 title={t.placeModal.location}
               >
                 <span className="district-pin">
@@ -2246,7 +2292,7 @@ function Card({
   hideTags?: boolean;
   hideReason?: boolean;
   hideAiMatch?: boolean;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
 }) {
   const [showReason, setShowReason] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -2281,6 +2327,11 @@ function Card({
 
     // Салони бронюються у їхній зовнішній системі (Altegio / власний booking page).
     if (data.website) {
+      trackGaEvent("salon_booking_redirect", {
+        salon_name: data.title,
+        salon_id: data.backendSalonId ?? null,
+        destination_url: data.website,
+      });
       window.open(data.website, "_blank", "noopener,noreferrer");
       return;
     }
@@ -2324,7 +2375,7 @@ function Card({
       .catch((error) => console.error("Failed to load more master reviews", error))
       .finally(() => setLoadingMoreReviews(false));
   };
-  if (data.title === "Кароліна Савчук") console.log("🟣 CARD KAROLINA:", data.image, data);
+  if (data.title === "Кароліна Савчук") console.log("🟣 CARD KAROLINA:", data);
   return (
     <div className={`card ${isSolo ? "card-solo" : ""}`}>
       <div
@@ -2367,7 +2418,7 @@ function Card({
           <button
             type="button"
             className="card-location-link"
-            onClick={() => onLocationClick?.(data.title, data.district, data.distance)}
+            onClick={() => onLocationClick?.(data.title, data.district, data.distance, data.lat, data.lng)}
             title="Показати на карті"
           >
             <span className="district-pin">
@@ -2534,15 +2585,15 @@ function getMasterFallbackImage(masterId: number, firstName?: string): string {
 
 function parseCoordinates(value?: string | null): { lat: number; lng: number } | null {
   if (!value) return null;
-  const numbers = value.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-  if (numbers.length < 2 || !numbers.every(Number.isFinite)) return null;
+  const match = value.match(/POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/i);
+  if (!match) return null;
 
-  // Backend workplace/location coordinates are stored as latitude, longitude.
-  const [lat, lng] = numbers;
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const lng = Number(match[1]);
+  const lat = Number(match[2]);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
 }
-
 function getSalonCoordinates(salon: SalonApi): { lat: number; lng: number } | null {
   if (salon.latitude != null && salon.longitude != null) {
     const lat = Number(salon.latitude);
@@ -3658,7 +3709,7 @@ const fresh: CardData[] = [
     mastersCount: "4 майстри",
   },
   {
-    image: "https://images.pexels.com/photos/7755296/pexels-photo-7755296.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    image: "https://images.pexels.com/photos/6135684/pexels-photo-6135684.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
     badges: [{ text: "НОВИЙ МАЙСТЕР", kind: "new-master" }],
     title: "Kate Nails",
     type: "Майстер манікюру",
@@ -3672,7 +3723,7 @@ const fresh: CardData[] = [
     mastersCount: "1 майстер",
   },
   {
-    image: "https://images.pexels.com/photos/7755665/pexels-photo-7755665.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
+    image: "https://images.pexels.com/photos/7750114/pexels-photo-7750114.jpeg?auto=compress&cs=tinysrgb&w=800&h=500&fit=crop",
     badges: [{ text: "НОВА ПОСЛУГА", kind: "new-service" }],
     title: "VIP Beauty Club",
     type: "Салон краси",
@@ -3737,7 +3788,7 @@ function RecommendationCarousel({
   cards: CardData[];
   t: Translations;
   variant: "salons" | "masters" | "nearby" | "worth-trying" | "fresh";
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
   hasSearch?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -3896,7 +3947,7 @@ function PartnerOffersCarousel({
 }: {
   offers: PartnerOffer[];
   lang: Lang;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const ua = lang === "ua";
@@ -4132,7 +4183,7 @@ function PartnerOffersSection({
   subtitle: string;
   offers: PartnerOffer[];
   lang: Lang;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
   sectionRef?: React.Ref<HTMLElement>;
   mascotVisible?: boolean;
 }) {
@@ -4183,7 +4234,7 @@ function KyivTopSection({
   cards: CardData[];
   lang: Lang;
   city: CityName;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
   sectionRef?: React.Ref<HTMLElement>;
   mascotVisible?: boolean;
 }) {
@@ -4316,7 +4367,7 @@ function KyivTopSection({
                 <button
                   type="button"
                   className="kyiv-cover-location"
-                  onClick={() => onLocationClick?.(card.title, card.district, card.distance)}
+                  onClick={() => onLocationClick?.(card.title, card.district, card.distance, card.lat, card.lng)}
                   aria-label={ua ? `Показати ${card.title} на карті` : `Show ${card.title} on map`}
                 >
                   <span className="district-pin">
@@ -4426,6 +4477,11 @@ function KyivTopSection({
               setActiveCard(null);
             } else {
               if (activeCard.website) {
+                trackGaEvent("salon_booking_redirect", {
+                  salon_name: activeCard.title,
+                  salon_id: activeCard.backendSalonId ?? null,
+                  destination_url: activeCard.website,
+                });
                 window.open(activeCard.website, "_blank", "noopener,noreferrer");
               } else {
                 window.alert(
@@ -4470,7 +4526,7 @@ function PanelCarouselSection({
   variant: "nearby" | "worth-trying" | "fresh";
   resultsWord: string;
   id?: string;
-  onLocationClick?: (name: string, district: string, distance: string) => void;
+  onLocationClick?: (name: string, district: string, distance: string, lat?: number, lng?: number) => void;
   sectionRef?: React.Ref<HTMLElement>;
   mascotVisible?: boolean;
 }) {
@@ -4620,6 +4676,10 @@ export default function App() {
   const freshSectionRef = useRef<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const voiceRecognitionRef = useRef<any>(null);
+  const searchInputTypeRef = useRef<"typed" | "voice" | "quick_category">("typed");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isResettingSearch, setIsResettingSearch] = useState(false);
@@ -4865,6 +4925,94 @@ export default function App() {
     .filter((card) => cardMatchesAiRating(card, aiSearchIntent?.minRating ?? null));
   const hasSearch = appliedSearch.trim().length > 0;
 
+  const toggleVoiceSearch = () => {
+    if (isSearching) return;
+
+    if (voiceListening) {
+      voiceRecognitionRef.current?.stop?.();
+      return;
+    }
+
+    const browserWindow = window as typeof window & {
+      SpeechRecognition?: new () => any;
+      webkitSpeechRecognition?: new () => any;
+    };
+    const SpeechRecognitionCtor =
+      browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      setVoiceError(
+        lang === "ua"
+          ? "Голосовий ввід не підтримується цим браузером."
+          : "Voice input is not supported by this browser."
+      );
+      return;
+    }
+
+    setVoiceError("");
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = lang === "ua" ? "uk-UA" : "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setVoiceListening(true);
+      searchInputTypeRef.current = "voice";
+      trackGaEvent("voice_search_started", {
+        language: lang === "ua" ? "uk-UA" : "en-US",
+      });
+    };
+
+    recognition.onresult = (event: any) => {
+      const result = event.results?.[event.results.length - 1];
+      const transcript = result?.[0]?.transcript?.trim?.() ?? "";
+      if (!transcript) return;
+
+      setSearchQuery(transcript);
+      searchInputTypeRef.current = "voice";
+
+      if (result.isFinal) {
+        trackGaEvent("voice_search_result", {
+          language: lang === "ua" ? "uk-UA" : "en-US",
+          query_length: transcript.length,
+        });
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      const code = String(event?.error || "");
+      setVoiceListening(false);
+      setVoiceError(
+        code === "not-allowed" || code === "service-not-allowed"
+          ? lang === "ua"
+            ? "Дозвольте доступ до мікрофона в Chrome."
+            : "Allow microphone access in Chrome."
+          : code === "no-speech"
+            ? lang === "ua"
+              ? "Не почув голос. Спробуйте ще раз."
+              : "No speech detected. Try again."
+            : lang === "ua"
+              ? "Не вдалося розпізнати голос. Спробуйте ще раз."
+              : "Could not recognize speech. Try again."
+      );
+    };
+
+    recognition.onend = () => {
+      setVoiceListening(false);
+      voiceRecognitionRef.current = null;
+    };
+
+    voiceRecognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  useEffect(() => {
+    return () => {
+      voiceRecognitionRef.current?.abort?.();
+    };
+  }, []);
+
   const runSearch = () => {
     if (resetTransitionTimeoutRef.current !== null) {
       window.clearTimeout(resetTransitionTimeoutRef.current);
@@ -4877,6 +5025,11 @@ export default function App() {
     if (!query) {
       return;
     }
+
+    trackGaEvent("search_input_used", {
+      search_input_type: searchInputTypeRef.current,
+      query_length: query.length,
+    });
 
     setGreetingDismissed(true);
     setSearchFocused(false);
@@ -5065,6 +5218,11 @@ export default function App() {
 
     // First let the current result state leave gracefully. Only after the
     // short fade do we collapse the search state and expand the idle hero.
+    voiceRecognitionRef.current?.abort?.();
+    voiceRecognitionRef.current = null;
+    setVoiceListening(false);
+    setVoiceError("");
+    searchInputTypeRef.current = "typed";
     setSearchQuery("");
     setIsSearching(false);
     setSearchFocused(false);
@@ -5955,8 +6113,8 @@ export default function App() {
     return () => window.removeEventListener("beautyai:open-location", onOpenLocation as EventListener);
   }, [selectedCity]);
 
-  const handleLocationClick = (name: string, district: string, distance: string) => {
-    const coords = resolveLocationCoords(name, district, selectedCity);
+  const handleLocationClick = (name: string, district: string, distance: string, lat?: number, lng?: number) => {
+    const coords = lat != null && lng != null ? [lat, lng] : resolveLocationCoords(name, district, selectedCity);
 
     setSelectedMapLocation({
       name,
@@ -6204,8 +6362,8 @@ export default function App() {
                   message={
                     assistantUiState === "greeting"
                       ? (lang === "ua"
-                          ? "Привіт! Я Beauty AI. Опиши, що тобі потрібно."
-                          : "Hi! I'm Beauty AI. Tell me what you need.")
+                          ? "Вітаю в Beauty AI 💜\n Знайдемо найкраще саме для тебе "
+                          : "Hi! I’m Beauty AI 💜\n I’d be happy to help!")
                       : (lang === "ua" ? "Очікуємо ваш запит" : "Waiting for your request")
                   }
                   className="hero-search-assistant"
@@ -6234,7 +6392,11 @@ export default function App() {
                 setGreetingDismissed(true);
                 setSearchFocused(true);
               }}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                searchInputTypeRef.current = "typed";
+                setVoiceError("");
+                setSearchQuery(event.target.value);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") runSearch();
               }}
@@ -6258,7 +6420,35 @@ export default function App() {
                   ×
                 </button>
               )}
-              <button className="search-btn" onClick={runSearch}>
+              <button
+                type="button"
+                className={`voice-search-btn${voiceListening ? " is-listening" : ""}`}
+                onClick={toggleVoiceSearch}
+                disabled={isSearching}
+                aria-pressed={voiceListening}
+                aria-label={
+                  voiceListening
+                    ? (lang === "ua" ? "Зупинити голосовий ввід" : "Stop voice input")
+                    : (lang === "ua" ? "Голосовий ввід" : "Voice input")
+                }
+                title={
+                  voiceError ||
+                  (voiceListening
+                    ? (lang === "ua" ? "Слухаю… Натисніть, щоб зупинити" : "Listening… Click to stop")
+                    : (lang === "ua" ? "Ввести запит голосом" : "Enter query by voice"))
+                }
+              >
+                <span className="voice-search-pulse" aria-hidden="true" />
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 14.25a3.75 3.75 0 0 0 3.75-3.75V6.75a3.75 3.75 0 1 0-7.5 0v3.75A3.75 3.75 0 0 0 12 14.25Z" />
+                  <path d="M5.75 10.5a6.25 6.25 0 0 0 12.5 0M12 16.75V21M8.75 21h6.5" />
+                </svg>
+              </button>
+              <button
+                id="ga-search-button"
+                className="search-btn"
+                onClick={runSearch}
+              >
                 <img
                   src={beautyAISparkles}
                   alt=""
@@ -6281,6 +6471,8 @@ export default function App() {
                 setGreetingDismissed(true);
                 setSearchFocused(false);
                 setActiveCategory(id);
+                searchInputTypeRef.current = "quick_category";
+                setVoiceError("");
                 setSearchQuery(label);
               }}
             />
