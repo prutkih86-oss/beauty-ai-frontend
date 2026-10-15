@@ -60,5 +60,5 @@ jobs:
             --resource-group beauty-app-rg \
             --name TestingVM \
             --command-id RunShellScript \
-            --scripts "systemctl is-active nginx || true; docker ps; ss -tln | grep -E ':80 |:443 |:5173 ' || true" \
+            --scripts "systemctl is-active nginx || true; docker ps; sudo ss -tlnp | grep -E ':80 |:443 |:5173 ' || true" \
             --query "value[0].message" -o tsv
