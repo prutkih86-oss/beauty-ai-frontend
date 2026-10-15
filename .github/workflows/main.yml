@@ -54,11 +54,13 @@ jobs:
             --scripts "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:latest && \
               systemctl restart igorfrontend.service"
 
+     
       - name: Check server configuration
         run: |
           az vm run-command invoke \
             --resource-group beauty-app-rg \
             --name TestingVM \
             --command-id RunShellScript \
-            --scripts "systemctl is-active nginx || true; docker ps; sudo ss -tlnp | grep -E ':80 |:443 |:5173 ' || true" \
+            --scripts "sudo nginx -T 2>&1 | grep -E 'server_name|listen|ssl_certificate|proxy_pass' || true" \
             --query "value[0].message" -o tsv
+
