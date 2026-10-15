@@ -1,0 +1,40 @@
+
+name: Azure VM Diagnostics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostics:
+    name: Check Nginx and HTTPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Inspect server
+        run: |
+          az vm run-command invoke \
+            --resource-group beauty-app-rg \
+            --name TestingVM \
+            --command-id RunShellScript \
+            --scripts '
+              echo "=== NGINX INSTALLATION ==="
+              command -v nginx || true
+              ls -ld /etc/nginx /etc/nginx/sites-enabled 2>&1 || true
+
+              echo "=== NGINX CONFIGURATION ==="
+              if command -v nginx >/dev/null 2>&1; then
+                nginx -T 2>&1 | grep -E "server_name|listen|ssl_certificate|proxy_pass" || true
+              fi
+
+              echo "=== PORTS ==="
+              ss -tlnp | grep -E ":(80|443|5173) " || true
+
+              echo "=== DOCKER GATEWAY ==="
+              docker inspect loki_service-gateway-1 --format "{{.Name}} {{json .HostConfig.PortBindings}}" 2>&1 || true
+            ' \
+            --query "value[0].message" -o tsv
