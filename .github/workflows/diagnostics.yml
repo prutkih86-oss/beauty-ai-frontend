@@ -22,34 +22,28 @@ jobs:
             --name TestingVM \
             --command-id RunShellScript \
             --scripts '
-              echo "=== NGINX PROCESSES ==="
-              ps -ef | grep "[n]ginx" || true
-
-              echo "=== NGINX EXECUTABLE AND CGROUP ==="
-              for pid in $(pgrep nginx); do
-                echo "PID: $pid"
-                readlink /proc/$pid/exe || true
-                tr "\0" " " < /proc/$pid/cmdline || true
-                echo
-                echo "CGROUP:"
-                head -n 3 /proc/$pid/cgroup || true
-              done
+              echo "=== CONTAINER IDS ==="
+              docker ps --no-trunc \
+                --format "{{.ID}} {{.Names}}" |
+                grep -E "beauty-frontend|igor-frontend|loki_service-gateway" || true
 
               echo "=== FRONTEND NETWORK MODE ==="
               docker inspect beauty-frontend \
                 --format "{{.HostConfig.NetworkMode}}" 2>&1 || true
 
-              echo "=== FRONTEND CONTAINER ==="
-              docker inspect beauty-frontend \
-                --format "Name={{.Name}} Image={{.Config.Image}} Ports={{json .HostConfig.PortBindings}}" 2>&1 || true
+              echo "=== NGINX ROUTING ==="
+              docker exec beauty-frontend nginx -T 2>&1 |
+                grep -E "server_name|listen|ssl_certificate |proxy_pass" || true
+
+              echo "=== CERTIFICATE ON PORT 443 ==="
+              timeout 8 openssl s_client \
+                -connect 127.0.0.1:443 \
+                -servername beautyaiserviceua.polandcentral.cloudapp.azure.com \
+                </dev/null 2>/dev/null |
+                openssl x509 -noout -subject -issuer -dates || true
 
               echo "=== LISTENING PORTS ==="
               ss -tlnp | grep -E ":(80|443|5173) " || true
-
-              echo "=== NGINX CONFIG FILES ==="
-              find /etc/nginx -maxdepth 3 -type f -name "*.conf" -print 2>&1 || true
-
-              echo "=== HTTPS CERTIFICATES ==="
-              ls -la /etc/letsencrypt/live 2>&1 || true
             ' \
             --query "value[0].message" -o tsv
+
