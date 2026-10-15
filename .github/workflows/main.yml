@@ -1,47 +1,50 @@
+
 name: frontend-workflow
-run-name: "${{ github.actor }}-${{github.sha}}"
+run-name: "${{ github.actor }}-${{ github.sha }}"
+
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
-    
+    branches: ["main"]
+
 env:
-   DockerImageName: igor-frontend
-   container-name: igor-frontend
+  DockerImageName: igor-frontend
+  container-name: igor-frontend
+
 jobs:
   nodejs-build:
     name: Build and push Docker image
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v7.0.1
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Build and push image
-      uses: docker/build-push-action@v7.3.0
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:1.0.${{ github.run_number }}
-          ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:latest
+      - name: Build and push image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:1.0.${{ github.run_number }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:latest
 
   nodejs-deploy:
-      name: Deploy to Azure VM
-      runs-on: ubuntu-latest
-      needs: nodejs-build  
-      steps:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+    needs: nodejs-build
+    steps:
       - name: Azure login
         uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-  
+
       - name: Start container
         run: |
           az vm run-command invoke \
@@ -50,4 +53,12 @@ jobs:
             --command-id RunShellScript \
             --scripts "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:latest && \
               systemctl restart igorfrontend.service"
-  
+
+      - name: Check server configuration
+        run: |
+          az vm run-command invoke \
+            --resource-group beauty-app-rg \
+            --name TestingVM \
+            --command-id RunShellScript \
+            --scripts "systemctl is-active nginx || true; docker ps; ss -tln | grep -E ':80 |:443 |:5173 ' || true" \
+            --query "value[0].message" -o tsv
