@@ -22,30 +22,34 @@ jobs:
             --name TestingVM \
             --command-id RunShellScript \
             --scripts '
-              echo "=== NGINX INSTALLATION ==="
-              command -v nginx || true
-              ls -ld /etc/nginx /etc/nginx/sites-enabled 2>&1 || true
+              echo "=== NGINX PROCESSES ==="
+              ps -ef | grep "[n]ginx" || true
 
-              echo "=== NGINX CONFIG FILES ==="
-              find /etc/nginx -maxdepth 3 -type f -name "*.conf" -print 2>&1 || true
+              echo "=== NGINX EXECUTABLE AND CGROUP ==="
+              for pid in $(pgrep nginx); do
+                echo "PID: $pid"
+                readlink /proc/$pid/exe || true
+                tr "\0" " " < /proc/$pid/cmdline || true
+                echo
+                echo "CGROUP:"
+                head -n 3 /proc/$pid/cgroup || true
+              done
 
-              echo "=== NGINX CONFIGURATION ==="
-              if [ -x /usr/sbin/nginx ]; then
-                /usr/sbin/nginx -T 2>&1 | grep -E "server_name|listen|ssl_certificate|proxy_pass" || true
-              else
-                echo "Nginx binary not found at /usr/sbin/nginx"
-              fi
+              echo "=== FRONTEND NETWORK MODE ==="
+              docker inspect beauty-frontend \
+                --format "{{.HostConfig.NetworkMode}}" 2>&1 || true
 
-              echo "=== HTTPS CERTIFICATES ==="
-              ls -la /etc/letsencrypt/live 2>&1 || true
+              echo "=== FRONTEND CONTAINER ==="
+              docker inspect beauty-frontend \
+                --format "Name={{.Name}} Image={{.Config.Image}} Ports={{json .HostConfig.PortBindings}}" 2>&1 || true
 
               echo "=== LISTENING PORTS ==="
               ss -tlnp | grep -E ":(80|443|5173) " || true
 
-              echo "=== DOCKER CONTAINERS ==="
-              docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}" || true
+              echo "=== NGINX CONFIG FILES ==="
+              find /etc/nginx -maxdepth 3 -type f -name "*.conf" -print 2>&1 || true
 
-              echo "=== DOCKER GATEWAY ==="
-              docker inspect loki_service-gateway-1 --format "{{.Name}} {{json .HostConfig.PortBindings}}" 2>&1 || true
+              echo "=== HTTPS CERTIFICATES ==="
+              ls -la /etc/letsencrypt/live 2>&1 || true
             ' \
             --query "value[0].message" -o tsv
